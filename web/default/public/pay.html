@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SynthAPI - 在线充值</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --card-bg: rgba(255, 255, 255, 0.95);
+      --text-primary: #1e293b;
+      --text-secondary: #64748b;
+      --success: #10b981;
+      --warning: #f59e0b;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--bg-gradient);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 背景装饰 */
+    body::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 50%);
+      animation: float 20s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      33% { transform: translate(30px, -50px) rotate(120deg); }
+      66% { transform: translate(-20px, 20px) rotate(240deg); }
+    }
+
+    .container {
+      background: var(--card-bg);
+      border-radius: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* 头部 Logo */
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+    }
+
+    .logo svg {
+      width: 36px;
+      height: 36px;
+      fill: white;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* 金额显示 */
+    .amount-card {
+      background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 28px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .amount-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .amount-value {
+      font-size: 42px;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .amount-value .currency {
+      font-size: 24px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-right: 4px;
+    }
+
+    /* 支付方式选择 */
+    .payment-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .tab {
+      padding: 14px 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-secondary);
+      background: white;
+    }
+
+    .tab:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+    }
+
+    .tab.active {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: white;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .tab .icon {
+      width: 32px;
+      height: 32px;
+      margin: 0 auto 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tab .icon svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .tab.active .icon svg {
+      fill: white;
+    }
+
+    /* 二维码容器 */
+    .qr-container {
+      display: none;
+      text-align: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .qr-container.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .qr-frame {
+      background: white;
+      padding: 20px;
+      border-radius: 16px;
+      display: inline-block;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      border: 1px solid #e2e8f0;
+      margin-bottom: 16px;
+    }
+
+    .qr-frame img {
+      width: 220px;
+      height: 220px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .qr-hint {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 12px;
+    }
+
+    .qr-hint strong {
+      color: var(--primary);
+    }
+
+    /* 步骤说明 */
+    .steps {
+      margin-top: 28px;
+      padding-top: 24px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .steps-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .steps-title::before {
+      content: '';
+      width: 4px;
+      height: 16px;
+      background: var(--primary);
+      border-radius: 2px;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .step-num {
+      background: linear-gradient(135deg, var(--primary), #8b5cf6);
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .step-text {
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.6;
+      padding-top: 4px;
+    }
+
+    /* 提示框 */
+    .notice {
+      margin-top: 24px;
+      padding: 16px;
+      background: linear-gradient(135deg, #fef3c7, #fde68a);
+      border-radius: 12px;
+      color: #92400e;
+      font-size: 13px;
+      line-height: 1.6;
+      border: 1px solid #fcd34d;
+    }
+
+    .notice-icon {
+      margin-right: 6px;
+    }
+
+    /* 订单信息 */
+    .order-info {
+      margin-top: 20px;
+      padding: 16px;
+      background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+      border-radius: 12px;
+      border: 1px solid #bae6fd;
+      text-align: center;
+    }
+
+    .order-label {
+      font-size: 12px;
+      color: #0369a1;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .order-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0c4a6e;
+      font-family: monospace;
+      letter-spacing: 1px;
+    }
+
+    /* 支付状态 */
+    .payment-status {
+      margin-top: 24px;
+      padding: 24px;
+      border-radius: 16px;
+      text-align: center;
+      animation: fadeInUp 0.5s ease;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .payment-status.success {
+      background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+      border: 2px solid #34d399;
+    }
+
+    .payment-status.warning {
+      background: linear-gradient(135deg, #fef3c7, #fde68a);
+      border: 2px solid #fbbf24;
+    }
+
+    .status-icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .success .status-icon {
+      background: #34d399;
+      color: white;
+    }
+
+    .warning .status-icon {
+      background: #fbbf24;
+      color: white;
+    }
+
+    .status-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .success .status-title {
+      color: #065f46;
+    }
+
+    .warning .status-title {
+      color: #92400e;
+    }
+
+    .status-desc {
+      font-size: 14px;
+    }
+
+    .success .status-desc {
+      color: #047857;
+    }
+
+    .warning .status-desc {
+      color: #b45309;
+    }
+
+    /* 返回按钮 */
+    .back-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 24px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .back-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+    }
+
+    .back-btn:active {
+      transform: translateY(0);
+    }
+
+    /* 响应式 */
+    @media (max-width: 520px) {
+      .container {
+        padding: 28px 20px;
+        border-radius: 20px;
+      }
+
+      .amount-value {
+        font-size: 36px;
+      }
+
+      .qr-frame img {
+        width: 180px;
+        height: 180px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 头部 -->
+    <div class="header">
+      <div class="logo">
+        <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="15" fill="rgba(255,255,255,0.2)"/>
+          <path d="M11 11C11 8.5 12.5 7 14.5 7.5C16.5 8 17.5 10 16.5 11.5C15.5 13 12.5 14 11.5 16C10.5 18 11.5 21 14 21.5C16.5 22 18 20.5 18 18.5" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+          <line x1="20" y1="12" x2="24" y2="12" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+          <circle cx="25" cy="12" r="1" fill="white" opacity="0.8"/>
+          <line x1="20" y1="16" x2="25" y2="16" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+          <circle cx="26" cy="16" r="1" fill="white" opacity="0.9"/>
+          <line x1="20" y1="20" x2="24" y2="20" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+          <circle cx="25" cy="20" r="1" fill="white" opacity="0.8"/>
+        </svg>
+      </div>
+      <h1>SynthAPI 充值</h1>
+      <p>扫描二维码完成支付</p>
+    </div>
+
+    <!-- 金额 -->
+    <div class="amount-card">
+      <div class="amount-label">充值金额</div>
+      <div class="amount-value">
+        <span class="currency">¥</span><span id="amount">0.00</span>
+      </div>
+    </div>
+
+    <!-- 支付方式 -->
+    <div class="payment-tabs">
+      <div class="tab active" onclick="switchTab('alipay', event)">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" fill="#1677FF" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21.422 15.358c-3.32-1.272-6.022-2.478-6.022-4.222 0-1.378 1.022-2.378 2.6-2.378 1.822 0 2.71 1.156 2.71 2.378h2.488c0-2.622-1.732-4.622-5.198-4.622-3.2 0-5.2 1.91-5.2 4.622 0 3.356 2.822 4.956 6.31 6.356 2.356.934 3.822 1.844 3.822 3.378 0 1.512-1.266 2.488-2.956 2.488-2.044 0-3.178-1.156-3.178-2.488H9.2c0 2.71 1.8 4.732 5.378 4.732 3.466 0 5.644-1.91 5.644-4.732 0-3.4-2.8-5.044-6.378-6.534v-.156z"/>
+            <path d="M21.422 15.358c-3.32-1.272-6.022-2.478-6.022-4.222 0-1.378 1.022-2.378 2.6-2.378 1.822 0 2.71 1.156 2.71 2.378h2.488c0-2.622-1.732-4.622-5.198-4.622-3.2 0-5.2 1.91-5.2 4.622 0 3.356 2.822 4.956 6.31 6.356 2.356.934 3.822 1.844 3.822 3.378 0 1.512-1.266 2.488-2.956 2.488-2.044 0-3.178-1.156-3.178-2.488H9.2c0 2.71 1.8 4.732 5.378 4.732 3.466 0 5.644-1.91 5.644-4.732 0-3.4-2.8-5.044-6.378-6.534v-.156z" opacity="0.6"/>
+          </svg>
+        </span>
+        支付宝
+      </div>
+      <div class="tab" onclick="switchTab('wechat', event)">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" fill="#07C160" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15.857 12.343c-2.626 0-4.762 1.753-4.762 3.914 0 2.16 2.136 3.914 4.762 3.914.534 0 1.05-.082 1.537-.234l1.507.753-.424-1.378c1.01-.73 1.644-1.753 1.644-2.907 0-2.16-2.136-3.914-4.762-3.914l.498-.148zm-7.714 0c-2.626 0-4.762 1.753-4.762 3.914 0 2.16 2.136 3.914 4.762 3.914.534 0 1.05-.082 1.537-.234l1.507.753-.424-1.378c1.01-.73 1.644-1.753 1.644-2.907 0-2.16-2.136-3.914-4.762-3.914v-.148zm0-5.143c-3.504 0-6.343 2.407-6.343 5.378 0 1.564.744 2.97 1.926 3.96l-.726 2.36 2.734-1.366c.78.22 1.6.343 2.45.343.226 0 .45-.01.672-.028-.14-.458-.218-.945-.218-1.449 0-2.97 2.496-5.378 5.562-5.378.176 0 .35.008.52.024C17.22 5.93 15.07 4.2 12.5 4.2h-.357v3zm7.714 0v-.148h-.357c-2.57 0-4.72 1.73-5.255 4.024.17-.016.344-.024.52-.024 3.066 0 5.562 2.408 5.562 5.378 0 .504-.078.99-.218 1.45.222.017.446.027.672.027.85 0 1.67-.122 2.45-.343l2.734 1.366-.726-2.36c1.182-.99 1.926-2.396 1.926-3.96 0-2.97-2.839-5.378-6.343-5.378l-.625-.006z"/>
+          </svg>
+        </span>
+        微信
+      </div>
+      <div class="tab" onclick="switchTab('unionpay', event)">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" fill="#E21E2C" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-5-5 1.41-1.41L11 14.17l7.59-7.59L20 8l-9 9z"/>
+          </svg>
+        </span>
+        云闪付
+      </div>
+    </div>
+
+    <!-- 二维码 -->
+    <div class="qr-container active" id="qr-alipay">
+      <div class="qr-frame">
+        <img src="/alipay.jpg" alt="支付宝收款码">
+      </div>
+      <div class="qr-hint">打开 <strong>支付宝</strong> → 扫一扫 → 完成付款</div>
+    </div>
+
+    <div class="qr-container" id="qr-wechat">
+      <div class="qr-frame">
+        <img src="/wechat.png" alt="微信收款码">
+      </div>
+      <div class="qr-hint">打开 <strong>微信</strong> → 扫一扫 → 完成付款</div>
+    </div>
+
+    <div class="qr-container" id="qr-unionpay">
+      <div class="qr-frame">
+        <img src="/unionpay.png" alt="云闪付收款码">
+      </div>
+      <div class="qr-hint">打开 <strong>云闪付</strong> → 扫一扫 → 完成付款</div>
+    </div>
+
+    <!-- 步骤 -->
+    <div class="steps">
+      <div class="steps-title">支付步骤</div>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">选择支付方式，扫描上方二维码</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">输入显示的金额，完成支付</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">支付完成后返回系统，等待确认（1-5分钟）</div>
+      </div>
+    </div>
+
+    <!-- 订单信息 -->
+    <div id="order-info" class="order-info" style="display: none;">
+      <div class="order-label">订单号</div>
+      <div class="order-value" id="trade-no">-</div>
+    </div>
+
+    <!-- 支付状态 -->
+    <div id="payment-status" class="payment-status" style="display: none;">
+      <div class="status-icon">✓</div>
+      <div class="status-title">支付成功！</div>
+      <div class="status-desc">您的余额已更新，即将跳转回钱包...</div>
+    </div>
+
+    <!-- 提示 -->
+    <div class="notice">
+      <span class="notice-icon">⚠️</span>
+      <strong>重要提示：</strong>请确保支付金额与订单金额一致。支付完成后系统会自动确认，如超过5分钟未到账请联系管理员。
+    </div>
+
+    <!-- 返回按钮 -->
+    <button class="back-btn" onclick="goBack()">
+      ← 返回钱包
+    </button>
+  </div>
+
+  <script>
+    // 获取 URL 参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const amount = urlParams.get('amount') || '0';
+    const method = urlParams.get('method') || 'alipay';
+    const tradeNo = urlParams.get('trade_no') || '';
+
+    // 显示金额
+    document.getElementById('amount').textContent = parseFloat(amount).toFixed(2);
+
+    // 显示订单号
+    if (tradeNo) {
+      document.getElementById('trade-no').textContent = tradeNo;
+      document.getElementById('order-info').style.display = 'block';
+    }
+
+    // 支付方式映射（兼容不同的 method 参数）
+    const methodMap = {
+      'alipay': 'alipay',
+      'wxpay': 'wechat',
+      'wechat': 'wechat',
+      'unionpay': 'unionpay'
+    };
+
+    // 切换支付方式
+    function switchTab(type, event) {
+      // 更新标签
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      if (event && event.currentTarget) {
+        event.currentTarget.classList.add('active');
+      }
+
+      // 更新二维码
+      document.querySelectorAll('.qr-container').forEach(qr => qr.classList.remove('active'));
+      document.getElementById('qr-' + type).classList.add('active');
+    }
+
+    // 返回钱包
+    function goBack() {
+      window.location.href = '/wallet';
+    }
+
+    // 轮询订单状态
+    let pollInterval = null;
+    let pollCount = 0;
+    const MAX_POLLS = 60; // 最多轮询60次（5分钟）
+
+    async function checkOrderStatus() {
+      if (!tradeNo) return;
+
+      try {
+        const response = await fetch(`/api/user/xpay/status/${tradeNo}`);
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          const status = data.data.status;
+
+          if (status === 'paid' || status === 'success') {
+            // 支付成功
+            showPaymentSuccess();
+            return true;
+          } else if (status === 'expired' || status === 'cancelled') {
+            // 订单过期或取消
+            showPaymentExpired();
+            return true;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check order status:', error);
+      }
+
+      pollCount++;
+      if (pollCount >= MAX_POLLS) {
+        // 超时，停止轮询
+        showPaymentTimeout();
+        return true;
+      }
+
+      return false;
+    }
+
+    // 显示支付成功
+    function showPaymentSuccess() {
+      stopPolling();
+
+      const statusEl = document.getElementById('payment-status');
+      statusEl.style.display = 'block';
+      statusEl.className = 'payment-status success';
+
+      // 隐藏二维码和步骤
+      document.querySelector('.payment-tabs').style.display = 'none';
+      document.querySelectorAll('.qr-container').forEach(el => el.style.display = 'none');
+      document.querySelector('.steps').style.display = 'none';
+      document.querySelector('.notice').style.display = 'none';
+
+      // 3秒后跳转回钱包
+      setTimeout(() => {
+        window.location.href = '/wallet';
+      }, 3000);
+    }
+
+    // 显示支付过期
+    function showPaymentExpired() {
+      stopPolling();
+
+      const statusEl = document.getElementById('payment-status');
+      statusEl.style.display = 'block';
+      statusEl.className = 'payment-status warning';
+      statusEl.innerHTML = `
+        <div class="status-icon">!</div>
+        <div class="status-title">订单已过期</div>
+        <div class="status-desc">请返回钱包重新发起支付</div>
+      `;
+    }
+
+    // 显示支付超时
+    function showPaymentTimeout() {
+      stopPolling();
+
+      const statusEl = document.getElementById('payment-status');
+      statusEl.style.display = 'block';
+      statusEl.className = 'payment-status warning';
+      statusEl.innerHTML = `
+        <div class="status-icon">⏱</div>
+        <div class="status-title">等待超时</div>
+        <div class="status-desc">如已支付请等待确认，或联系管理员</div>
+      `;
+    }
+
+    // 停止轮询
+    function stopPolling() {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+
+    // 开始轮询
+    function startPolling() {
+      if (!tradeNo) return;
+
+      // 立即检查一次
+      checkOrderStatus();
+
+      // 每5秒轮询一次
+      pollInterval = setInterval(async () => {
+        const shouldStop = await checkOrderStatus();
+        if (shouldStop) {
+          stopPolling();
+        }
+      }, 5000);
+    }
+
+    // 初始化 - 根据 method 参数选择对应的支付方式
+    const mappedMethod = methodMap[method] || 'alipay';
+    const tabs = document.querySelectorAll('.tab');
+    const tabMap = { 'alipay': 0, 'wechat': 1, 'unionpay': 2 };
+    if (tabMap[mappedMethod] !== undefined) {
+      // 延迟执行以确保 DOM 已加载
+      setTimeout(() => {
+        tabs[tabMap[mappedMethod]].click();
+      }, 100);
+    }
+
+    // 开始轮询订单状态
+    startPolling();
+  </script>
+</body>
+</html>
