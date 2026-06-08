@@ -164,7 +164,7 @@ export function DynamicPricingBreakdown({
 
   const { symbol, rate } = useMemo(() => {
     if (currency.quotaDisplayType === 'CNY') {
-      return { symbol: '¥', rate: currency.usdExchangeRate || 7 }
+      return { symbol: '¥', rate: currency.usdExchangeRate || 7.3 }
     }
     if (currency.quotaDisplayType === 'CUSTOM') {
       return {

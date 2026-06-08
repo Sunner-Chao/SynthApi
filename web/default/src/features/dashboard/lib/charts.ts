@@ -769,6 +769,7 @@ export function processUserChartData(
       legends: { visible: false },
       color: { type: 'ordinal', range: userColorRange },
       background: { fill: 'transparent' },
+      animation: false,
     },
     spec_user_trend: {
       type: 'area',
@@ -785,6 +786,7 @@ export function processUserChartData(
       color: { type: 'ordinal', range: userColorRange },
       point: { visible: false },
       background: { fill: 'transparent' },
+      animation: false,
     },
   }
 
@@ -809,14 +811,6 @@ export function processUserChartData(
     rawQuota: quota,
     Usage: Number((quota / quotaPerUnit).toFixed(4)),
   }))
-
-  const userColorMap = topUsers.reduce<Record<string, string>>(
-    (acc, user, i) => {
-      acc[user] = userColorRange[i % userColorRange.length]
-      return acc
-    },
-    {}
-  )
 
   const timeUserMap = new Map<string, Map<string, number>>()
   const allTimePoints = new Set<string>()
@@ -866,15 +860,7 @@ export function processUserChartData(
         subtext: `${tt('Total:')} ${formatVal(totalQuota)}`,
       },
       legends: { visible: false },
-      bar: {
-        state: { hover: { stroke: '#000', lineWidth: 1 } },
-      },
-      label: {
-        visible: true,
-        position: 'outside',
-        formatMethod: (value: number) => formatVal(value),
-        style: { fontSize: 11 },
-      },
+      bar: {},
       axes: [
         { orient: 'left', type: 'band' },
         { orient: 'bottom', type: 'linear', visible: false },
@@ -905,9 +891,9 @@ export function processUserChartData(
           },
         },
       },
-      color: { specified: userColorMap },
+      color: { type: 'ordinal', range: userColorRange },
       background: { fill: 'transparent' },
-      animation: true,
+      animation: false,
     },
     spec_user_trend: {
       type: 'area',
@@ -986,9 +972,9 @@ export function processUserChartData(
         },
       },
       point: { visible: false },
-      color: { specified: userColorMap },
+      color: { type: 'ordinal', range: userColorRange },
       background: { fill: 'transparent' },
-      animation: true,
+      animation: false,
     },
   }
 }

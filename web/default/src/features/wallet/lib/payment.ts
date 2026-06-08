@@ -86,6 +86,14 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.WAFFO_PANCAKE
 }
 
+export function isXPayPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.XPAY
+}
+
+export function isXPayRoutedPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.XPAY || paymentType === PAYMENT_TYPES.ALIPAY
+}
+
 /**
  * Get default payment type from topup info
  */
@@ -94,9 +102,16 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
     return DEFAULT_PAYMENT_TYPE
   }
 
+  if (topupInfo.enable_mpay_topup || topupInfo.enable_xpay_topup) {
+    return PAYMENT_TYPES.ALIPAY
+  }
+
   // Return first available payment method or default
-  if (topupInfo.pay_methods?.length > 0) {
-    return topupInfo.pay_methods[0].type
+  const visiblePayMethod = topupInfo.pay_methods?.find(
+    (method) => method.type !== PAYMENT_TYPES.XPAY
+  )
+  if (visiblePayMethod) {
+    return visiblePayMethod.type
   }
 
   if (topupInfo.enable_stripe_topup) {
@@ -120,6 +135,14 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
 export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
   if (!topupInfo) {
     return DEFAULT_MIN_TOPUP
+  }
+
+  if (topupInfo.enable_mpay_topup) {
+    return topupInfo.mpay_min_topup || DEFAULT_MIN_TOPUP
+  }
+
+  if (topupInfo.enable_xpay_topup) {
+    return topupInfo.xpay_min_topup || DEFAULT_MIN_TOPUP
   }
 
   if (topupInfo.enable_online_topup) {

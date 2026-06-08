@@ -14,6 +14,7 @@ export default defineConfig(({ envMode }) => {
     'http://localhost:3000'
 
   const isProd = envMode === 'production'
+  const disableMinify = process.env.RSBUILD_MINIFY === 'false'
   const devProxy = Object.fromEntries(
     (['/api', '/mj', '/pg'] as const).map((key) => [
       key,
@@ -70,7 +71,7 @@ export default defineConfig(({ envMode }) => {
     },
     output: {
       // Production optimizations
-      minify: isProd,
+      minify: isProd && !disableMinify,
       target: 'web',
       distPath: {
         root: 'dist',

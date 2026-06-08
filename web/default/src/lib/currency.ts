@@ -30,7 +30,7 @@ For commercial licensing, please contact support@quantumnous.com
  * 1. **System USD**: Internal currency unit used throughout the system (e.g., 10 USD)
  * 2. **Local Currency**: Admin-configured display currency (e.g., CNY, custom currency)
  * 3. **Exchange Rate (usdExchangeRate)**: Conversion rate from USD to local currency
- *    - Example: usdExchangeRate = 7 means 1 USD = 7 CNY
+ *    - Example: usdExchangeRate = 7.3 means 1 USD = 7.3 CNY
  * 4. **Recharge Price (priceRatio)**: Cost in local currency to purchase 1 system USD
  *    - Example: priceRatio = 5 means user pays 5 CNY to get 1 USD credit
  * 5. **Tokens**: Alternative display unit (e.g., 500,000 tokens = 1 USD)
@@ -46,17 +46,17 @@ For commercial licensing, please contact support@quantumnous.com
  *
  * Admin Configuration:
  * - quotaDisplayType: 'CNY'
- * - usdExchangeRate: 7 (1 USD = 7 CNY)
+ * - usdExchangeRate: 7.3 (1 USD = 7.3 CNY)
  * - priceRatio: 5 (5 CNY per 1 USD credit)
  * - quotaPerUnit: 500000 (tokens per USD)
  *
  * User Flow:
  * 1. Recharge option: 10 USD
- *    - Display: formatCurrencyFromUSD(10) → "¥70"
+ *    - Display: formatCurrencyFromUSD(10) → "¥73"
  * 2. Payment amount: 10 × 5 = 50 (already in CNY)
  *    - Display: formatLocalCurrencyAmount(50) → "¥50"
  * 3. User receives: 10 USD credit
- *    - Balance display: formatCurrencyFromUSD(10) → "¥70"
+ *    - Balance display: formatCurrencyFromUSD(10) → "¥73"
  *
  * ## Quick Reference Guide
  *
@@ -325,8 +325,8 @@ export function getCurrencyDisplay() {
  * formatCurrencyFromUSD(10) → "$10"
  *
  * @example
- * // With quotaDisplayType: 'CNY', usdExchangeRate: 7
- * formatCurrencyFromUSD(10) → "¥70"
+ * // With quotaDisplayType: 'CNY', usdExchangeRate: 7.3
+ * formatCurrencyFromUSD(10) → "¥73"
  *
  * @example
  * // With quotaDisplayType: 'TOKENS', quotaPerUnit: 500000
@@ -390,8 +390,8 @@ export function formatCurrencyFromUSD(
  * formatBillingCurrencyFromUSD(10) → "$10"  (not "5,000,000 tokens")
  *
  * @example
- * // With quotaDisplayType: 'CNY', usdExchangeRate: 7
- * formatBillingCurrencyFromUSD(10) → "¥70"
+ * // With quotaDisplayType: 'CNY', usdExchangeRate: 7.3
+ * formatBillingCurrencyFromUSD(10) → "¥73"
  *
  * @remarks
  * Use this function for:
@@ -437,8 +437,8 @@ export function formatBillingCurrencyFromUSD(
  * formatQuotaWithCurrency(5000000) → "$10"
  *
  * @example
- * // With quotaPerUnit: 500000, quotaDisplayType: 'CNY', usdExchangeRate: 7
- * formatQuotaWithCurrency(5000000) → "¥70"
+ * // With quotaPerUnit: 500000, quotaDisplayType: 'CNY', usdExchangeRate: 7.3
+ * formatQuotaWithCurrency(5000000) → "¥73"
  *
  * @remarks
  * Use this function for:

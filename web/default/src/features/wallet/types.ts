@@ -59,6 +59,16 @@ export type WaffoPancakePaymentResponse = ApiResponse<
     }
   | string
 >
+export type XPayPaymentResponse = ApiResponse<{
+  trade_no: string
+  out_trade_no: string
+  amount: number
+  money: number
+  payment_method: string
+  status: string
+  pay_url?: string
+  created_at: number
+}>
 
 /**
  * Creem product configuration
@@ -150,6 +160,14 @@ export interface TopupInfo {
   enable_waffo_pancake_topup?: boolean
   /** Minimum topup amount for Waffo Pancake */
   waffo_pancake_min_topup?: number
+  /** Whether XPay topup is enabled */
+  enable_xpay_topup?: boolean
+  /** Minimum topup amount for XPay */
+  xpay_min_topup?: number
+  /** Whether MPay topup is enabled */
+  enable_mpay_topup?: boolean
+  /** Minimum topup amount for MPay */
+  mpay_min_topup?: number
   /** Whether redemption code usage is enabled */
   enable_redemption?: boolean
   /** Whether compliance confirmation has been completed */

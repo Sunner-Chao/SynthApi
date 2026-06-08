@@ -263,6 +263,27 @@ export type BillingSettings = {
   // section (saved via /api/option/waffo-pancake/save).
   WaffoPancakeStoreID: string
   WaffoPancakeProductID: string
+  XPayEnabled: boolean
+  XPayApiBase: string
+  XPayAppID: string
+  XPayAppSecret: string
+  XPayPaymentType: string
+  XPayReturnURL: string
+  XPayNotifyURL: string
+  XPayUnitPrice: number
+  XPayMinTopUp: number
+  XPayGatewayPath: string
+  XPayNotifySuccess: string
+  MPayEnabled: boolean
+  MPayApiBase: string
+  MPayPid: string
+  MPayKey: string
+  MPayPaymentType: string
+  MPayReturnURL: string
+  MPayNotifyURL: string
+  MPayUnitPrice: number
+  MPayMinTopUp: number
+  MPayNotifySuccess: string
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number

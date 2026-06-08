@@ -958,6 +958,262 @@ func ClaudeHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayI
 	return claudeInfo.Usage, nil
 }
 
+func ClaudeResponsesHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+	}
+	logger.LogDebug(c, "responseBody: %s", responseBody)
+
+	var claudeResponse dto.ClaudeResponse
+	if err := common.Unmarshal(responseBody, &claudeResponse); err != nil {
+		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+	}
+	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
+		return nil, types.WithClaudeError(*claudeError, http.StatusInternalServerError)
+	}
+	maybeMarkClaudeRefusal(c, claudeResponse.StopReason)
+
+	usage := &dto.Usage{}
+	if claudeResponse.Usage != nil {
+		usage.PromptTokens = claudeResponse.Usage.InputTokens
+		usage.CompletionTokens = claudeResponse.Usage.OutputTokens
+		usage.TotalTokens = claudeResponse.Usage.InputTokens + claudeResponse.Usage.OutputTokens
+		usage.UsageSemantic = "anthropic"
+		usage.InputTokens = claudeResponse.Usage.InputTokens
+		usage.OutputTokens = claudeResponse.Usage.OutputTokens
+		usage.PromptTokensDetails.CachedTokens = claudeResponse.Usage.CacheReadInputTokens
+		usage.PromptTokensDetails.CachedCreationTokens = claudeResponse.Usage.CacheCreationInputTokens
+		usage.InputTokensDetails = &dto.InputTokenDetails{
+			CachedTokens:         claudeResponse.Usage.CacheReadInputTokens,
+			CachedCreationTokens: claudeResponse.Usage.CacheCreationInputTokens,
+		}
+		usage.ClaudeCacheCreation5mTokens = claudeResponse.Usage.GetCacheCreation5mTokens()
+		usage.ClaudeCacheCreation1hTokens = claudeResponse.Usage.GetCacheCreation1hTokens()
+	}
+
+	text := ""
+	for _, part := range claudeResponse.Content {
+		if part.Type == dto.ContentTypeText {
+			text += part.GetText()
+		}
+	}
+	responseID := strings.TrimSpace(claudeResponse.Id)
+	if responseID == "" {
+		responseID = helper.GetResponseID(c)
+	}
+	responseModel := claudeResponse.Model
+	if responseModel == "" {
+		responseModel = info.UpstreamModelName
+	}
+	completedStatus, _ := common.Marshal("completed")
+	nullRaw := json.RawMessage("null")
+	responsesResponse := dto.OpenAIResponsesResponse{
+		ID:        responseID,
+		Object:    "response",
+		CreatedAt: int(common.GetTimestamp()),
+		Status:    completedStatus,
+		Model:     responseModel,
+		Output: []dto.ResponsesOutput{{
+			Type:   "message",
+			ID:     responseID + "-0",
+			Status: "completed",
+			Role:   "assistant",
+			Content: []dto.ResponsesOutputContent{{
+				Type:        "output_text",
+				Text:        text,
+				Annotations: []interface{}{},
+			}},
+		}},
+		ParallelToolCalls:  true,
+		PreviousResponseID: nullRaw,
+		Instructions:       nullRaw,
+		Truncation:         nullRaw,
+		ToolChoice:         json.RawMessage(`"auto"`),
+		Usage:              usage,
+	}
+	data, err := common.Marshal(responsesResponse)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+	}
+	service.IOCopyBytesGracefully(c, resp, data)
+	return usage, nil
+}
+
+func responseStreamData(c *gin.Context, eventType string, payload any) error {
+	data, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: eventType}, string(data))
+	return nil
+}
+
+func claudeResponsesUsageFromClaudeUsage(claudeUsage *dto.ClaudeUsage) *dto.Usage {
+	usage := &dto.Usage{}
+	if claudeUsage == nil {
+		return usage
+	}
+	usage.PromptTokens = claudeUsage.InputTokens
+	usage.CompletionTokens = claudeUsage.OutputTokens
+	usage.TotalTokens = claudeUsage.InputTokens + claudeUsage.OutputTokens
+	usage.UsageSemantic = "anthropic"
+	usage.InputTokens = claudeUsage.InputTokens
+	usage.OutputTokens = claudeUsage.OutputTokens
+	usage.PromptTokensDetails.CachedTokens = claudeUsage.CacheReadInputTokens
+	usage.PromptTokensDetails.CachedCreationTokens = claudeUsage.CacheCreationInputTokens
+	usage.InputTokensDetails = &dto.InputTokenDetails{
+		CachedTokens:         claudeUsage.CacheReadInputTokens,
+		CachedCreationTokens: claudeUsage.CacheCreationInputTokens,
+	}
+	usage.ClaudeCacheCreation5mTokens = claudeUsage.GetCacheCreation5mTokens()
+	usage.ClaudeCacheCreation1hTokens = claudeUsage.GetCacheCreation1hTokens()
+	return usage
+}
+
+func ClaudeResponsesStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+
+	responseID := helper.GetResponseID(c)
+	createdAt := int(common.GetTimestamp())
+	modelName := info.UpstreamModelName
+	usage := &dto.Usage{}
+	var outputText strings.Builder
+	var err *types.NewAPIError
+	outputIndex := 0
+	contentIndex := 0
+
+	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		var claudeResponse dto.ClaudeResponse
+		if unmarshalErr := common.UnmarshalJsonStr(data, &claudeResponse); unmarshalErr != nil {
+			sr.Stop(types.NewError(unmarshalErr, types.ErrorCodeBadResponseBody))
+			return
+		}
+		if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
+			sr.Stop(types.WithClaudeError(*claudeError, http.StatusInternalServerError))
+			return
+		}
+		maybeMarkClaudeRefusal(c, claudeResponse.StopReason)
+
+		switch claudeResponse.Type {
+		case "message_start":
+			if claudeResponse.Message != nil {
+				if strings.TrimSpace(claudeResponse.Message.Id) != "" {
+					responseID = claudeResponse.Message.Id
+				}
+				if claudeResponse.Message.Model != "" {
+					modelName = claudeResponse.Message.Model
+				}
+				if claudeResponse.Message.Usage != nil {
+					usage = claudeResponsesUsageFromClaudeUsage(claudeResponse.Message.Usage)
+				}
+			}
+			response := &dto.OpenAIResponsesResponse{
+				ID:                 responseID,
+				Object:             "response",
+				CreatedAt:          createdAt,
+				Status:             json.RawMessage(`"in_progress"`),
+				Model:              modelName,
+				Output:             []dto.ResponsesOutput{},
+				ParallelToolCalls:  true,
+				PreviousResponseID: json.RawMessage("null"),
+				Instructions:       json.RawMessage("null"),
+				Truncation:         json.RawMessage("null"),
+				ToolChoice:         json.RawMessage(`"auto"`),
+				Usage:              usage,
+			}
+			if sendErr := responseStreamData(c, "response.created", dto.ResponsesStreamResponse{Type: "response.created", Response: response}); sendErr != nil {
+				sr.Error(sendErr)
+				return
+			}
+		case "content_block_start":
+			itemID := fmt.Sprintf("%s-%d", responseID, outputIndex)
+			item := &dto.ResponsesOutput{
+				Type:    "message",
+				ID:      itemID,
+				Status:  "in_progress",
+				Role:    "assistant",
+				Content: []dto.ResponsesOutputContent{},
+			}
+			if sendErr := responseStreamData(c, dto.ResponsesOutputTypeItemAdded, dto.ResponsesStreamResponse{Type: dto.ResponsesOutputTypeItemAdded, OutputIndex: &outputIndex, Item: item}); sendErr != nil {
+				sr.Error(sendErr)
+				return
+			}
+		case "content_block_delta":
+			if claudeResponse.Delta != nil {
+				delta := claudeResponse.Delta.GetText()
+				if delta != "" {
+					outputText.WriteString(delta)
+					if sendErr := responseStreamData(c, "response.output_text.delta", dto.ResponsesStreamResponse{Type: "response.output_text.delta", OutputIndex: &outputIndex, ContentIndex: &contentIndex, Delta: delta}); sendErr != nil {
+						sr.Error(sendErr)
+						return
+					}
+				}
+			}
+		case "message_delta":
+			if claudeResponse.Usage != nil {
+				usage = claudeResponsesUsageFromClaudeUsage(claudeResponse.Usage)
+			}
+		case "message_stop":
+			itemID := fmt.Sprintf("%s-%d", responseID, outputIndex)
+			item := &dto.ResponsesOutput{
+				Type:   "message",
+				ID:     itemID,
+				Status: "completed",
+				Role:   "assistant",
+				Content: []dto.ResponsesOutputContent{{
+					Type:        "output_text",
+					Text:        outputText.String(),
+					Annotations: []interface{}{},
+				}},
+			}
+			if sendErr := responseStreamData(c, dto.ResponsesOutputTypeItemDone, dto.ResponsesStreamResponse{Type: dto.ResponsesOutputTypeItemDone, OutputIndex: &outputIndex, Item: item}); sendErr != nil {
+				sr.Error(sendErr)
+				return
+			}
+			response := &dto.OpenAIResponsesResponse{
+				ID:        responseID,
+				Object:    "response",
+				CreatedAt: createdAt,
+				Status:    json.RawMessage(`"completed"`),
+				Model:     modelName,
+				Output: []dto.ResponsesOutput{{
+					Type:   "message",
+					ID:     itemID,
+					Status: "completed",
+					Role:   "assistant",
+					Content: []dto.ResponsesOutputContent{{
+						Type:        "output_text",
+						Text:        outputText.String(),
+						Annotations: []interface{}{},
+					}},
+				}},
+				ParallelToolCalls:  true,
+				PreviousResponseID: json.RawMessage("null"),
+				Instructions:       json.RawMessage("null"),
+				Truncation:         json.RawMessage("null"),
+				ToolChoice:         json.RawMessage(`"auto"`),
+				Usage:              usage,
+			}
+			if sendErr := responseStreamData(c, "response.completed", dto.ResponsesStreamResponse{Type: "response.completed", Response: response}); sendErr != nil {
+				sr.Error(sendErr)
+				return
+			}
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	if usage.PromptTokens == 0 && outputText.Len() > 0 {
+		usage = service.ResponseText2Usage(c, outputText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		usage.UsageSemantic = "anthropic"
+	}
+	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	return usage, nil
+}
+
 func mapToolChoice(toolChoice any, parallelToolCalls *bool) *dto.ClaudeToolChoice {
 	var claudeToolChoice *dto.ClaudeToolChoice
 

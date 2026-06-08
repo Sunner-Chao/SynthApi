@@ -1097,7 +1097,7 @@ export function getCurrencyConfig() {
     try {
       if (statusStr) {
         const s = JSON.parse(statusStr);
-        rate = s?.usd_exchange_rate || 7;
+        rate = s?.usd_exchange_rate || 7.3;
       }
     } catch (e) {}
   } else if (quotaDisplayType === 'CUSTOM') {

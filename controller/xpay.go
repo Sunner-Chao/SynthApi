@@ -4,146 +4,78 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 )
 
-// XPayCreateOrderRequest 创建 XPay 订单请求
 type XPayCreateOrderRequest struct {
 	Amount        float64 `json:"amount" binding:"required,gt=0"`
-	PaymentMethod string  `json:"payment_method" binding:"required"`
+	PaymentMethod string `json:"payment_method"`
 }
 
-// XPayCreateOrder 创建 XPay 订单
 func XPayCreateOrder(c *gin.Context) {
 	var req XPayCreateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request: " + err.Error(),
-		})
+		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
 
-	// 验证支付方式
-	validMethods := map[string]bool{
-		"alipay":   true,
-		"wechat":   true,
-		"unionpay": true,
-		"qq":       true,
-	}
-	if !validMethods[req.PaymentMethod] {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid payment method",
-		})
-		return
-	}
-
-	// 获取用户 ID
 	userID := c.GetInt("id")
-	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Unauthorized",
-		})
-		return
+
+	paymentMethod := req.PaymentMethod
+	if paymentMethod == "" || paymentMethod == model.PaymentMethodXPay {
+		paymentMethod = setting.XPayPaymentType
+	}
+	if paymentMethod == "" {
+		paymentMethod = "DMF"
 	}
 
-	// 创建订单
-	order, err := service.CreateXPayOrder(c.Request.Context(), userID, req.Amount, req.PaymentMethod)
+	order, err := service.CreateXPayOrder(c.Request.Context(), userID, req.Amount, paymentMethod, "", "")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to create order: " + err.Error(),
-		})
+		logger.LogError(c.Request.Context(), fmt.Sprintf("XPay 创建订单失败 user_id=%d amount=%.2f method=%s error=%q", userID, req.Amount, paymentMethod, err.Error()))
+		common.ApiError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Order created successfully",
-		"data":    order,
-	})
+	common.ApiSuccess(c, order)
 }
 
-// XPayOrderStatus 获取 XPay 订单状态
 func XPayOrderStatus(c *gin.Context) {
 	tradeNo := c.Param("trade_no")
 	if tradeNo == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Trade number is required",
-		})
+		common.ApiErrorMsg(c, "订单号不能为空")
 		return
 	}
-
 	order, err := service.GetXPayOrderStatus(tradeNo)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		common.ApiError(c, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    order,
-	})
+	common.ApiSuccess(c, order)
 }
 
-// XPayConfirmOrder 确认 XPay 订单（管理员）
 func XPayConfirmOrder(c *gin.Context) {
 	tradeNo := c.Param("trade_no")
 	if tradeNo == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Trade number is required",
-		})
+		common.ApiErrorMsg(c, "订单号不能为空")
 		return
 	}
-
-	adminID := c.GetInt("id")
-	if adminID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Unauthorized",
-		})
+	if err := service.ConfirmXPayOrder(tradeNo, 0, c.ClientIP()); err != nil {
+		common.ApiError(c, err)
 		return
 	}
-
-	if err := service.ConfirmXPayOrder(tradeNo, adminID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to confirm order: " + err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Order confirmed successfully",
-	})
+	common.ApiSuccess(c, nil)
 }
 
-// XPayUserOrders 获取用户的 XPay 订单
 func XPayUserOrders(c *gin.Context) {
 	userID := c.GetInt("id")
-	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Unauthorized",
-		})
-		return
-	}
-
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-
 	if page < 1 {
 		page = 1
 	}
@@ -153,204 +85,95 @@ func XPayUserOrders(c *gin.Context) {
 
 	orders, total, err := service.GetUserXPayOrders(userID, page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to get orders: " + err.Error(),
-		})
+		common.ApiError(c, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"items": orders,
-			"total": total,
-			"page":  page,
-			"size":  pageSize,
-		},
-	})
+	common.ApiSuccess(c, gin.H{"items": orders, "total": total, "page": page, "size": pageSize})
 }
 
-// XPayCallbackRequest 回调请求结构
-type XPayCallbackRequest struct {
-	TradeNo  string `json:"trade_no" form:"trade_no"`
-	Status   string `json:"status" form:"status"`
-	Amount   string `json:"amount" form:"amount"`
-	Sign     string `json:"sign" form:"sign"`
-	Platform string `json:"platform" form:"platform"`
-}
-
-// XPayCallback XPay 支付回调（自动确认）
 func XPayCallback(c *gin.Context) {
-	var req XPayCallbackRequest
+	params := map[string]string{}
 
-	// 支持 JSON 和 form-urlencoded
-	if c.ContentType() == "application/json" {
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "Invalid request format",
-			})
-			return
+	if c.Request.Method == http.MethodGet {
+		for key, values := range c.Request.URL.Query() {
+			if len(values) > 0 {
+				params[key] = values[0]
+			}
 		}
 	} else {
-		req.TradeNo = c.PostForm("trade_no")
-		req.Status = c.PostForm("status")
-		req.Amount = c.PostForm("amount")
-		req.Sign = c.PostForm("sign")
-		req.Platform = c.PostForm("platform")
-	}
-
-	// 也支持 URL 参数
-	if req.TradeNo == "" {
-		req.TradeNo = c.Query("trade_no")
-	}
-	if req.Status == "" {
-		req.Status = c.Query("status")
-	}
-
-	// 验证密钥
-	secretKey := c.GetHeader("X-Callback-Secret")
-	if secretKey == "" {
-		secretKey = c.GetHeader("Authorization")
-	}
-	if secretKey == "" {
-		secretKey = c.Query("secret")
-	}
-
-	expectedSecret := common.GetCallbackSecret()
-	if expectedSecret != "" && secretKey != expectedSecret {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid secret",
-		})
-		return
-	}
-
-	// 验证必填字段
-	if req.TradeNo == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Trade number is required",
-		})
-		return
-	}
-
-	// 支持多种状态值
-	confirmStatuses := []string{"success", "paid", "completed", "TRADE_SUCCESS", "TRADE_FINISHED"}
-	shouldConfirm := false
-	for _, s := range confirmStatuses {
-		if req.Status == s {
-			shouldConfirm = true
-			break
-		}
-	}
-
-	if shouldConfirm {
-		// 自动确认订单
-		if err := service.ConfirmXPayOrder(req.TradeNo, 0); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "Failed to confirm order: " + err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "Order confirmed successfully",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Callback received, status: " + req.Status,
-	})
-}
-
-// XPayQRCode 获取支付二维码（用于显示收款码）
-func XPayQRCode(c *gin.Context) {
-	method := c.Query("method")
-	amount := c.Query("amount")
-
-	if method == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Payment method is required",
-		})
-		return
-	}
-
-	// 返回收款码图片路径
-	qrPath := fmt.Sprintf("/pay/%s.png", method)
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"qr_path": qrPath,
-			"method":  method,
-			"amount":  amount,
-		},
-	})
-}
-
-// XPaySubmitNotification 提交支付通知（用于手动或自动通知）
-func XPaySubmitNotification(c *gin.Context) {
-	var notification service.PaymentNotification
-
-	// 支持 JSON 和 form-urlencoded
-	if c.ContentType() == "application/json" {
-		if err := c.ShouldBindJSON(&notification); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "Invalid request format",
-			})
-			return
-		}
-	} else {
-		notification.Platform = c.PostForm("platform")
-		notification.RawText = c.PostForm("text")
-
-		// 尝试解析金额
-		amountStr := c.PostForm("amount")
-		if amountStr != "" {
-			amount, err := strconv.ParseFloat(amountStr, 64)
-			if err == nil {
-				notification.Amount = amount
+		contentType := c.ContentType()
+		if contentType == "application/json" {
+			var body map[string]any
+			if err := common.DecodeJson(c.Request.Body, &body); err != nil {
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf("XPay 回调 JSON 解析失败 client_ip=%s error=%q", c.ClientIP(), err.Error()))
+				_, _ = c.Writer.Write([]byte("FAIL"))
+				return
+			}
+			for key, value := range body {
+				params[key] = fmt.Sprint(value)
+			}
+		} else {
+			if err := c.Request.ParseForm(); err != nil {
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf("XPay 回调表单解析失败 client_ip=%s error=%q", c.ClientIP(), err.Error()))
+				_, _ = c.Writer.Write([]byte("FAIL"))
+				return
+			}
+			for key, values := range c.Request.PostForm {
+				if len(values) > 0 {
+					params[key] = values[0]
+				}
 			}
 		}
 	}
 
-	// 如果没有提供平台和金额，尝试从文本解析
-	if notification.Platform == "" && notification.RawText != "" {
-		parsed, err := service.ParsePaymentNotification(notification.RawText)
-		if err == nil {
-			notification.Platform = parsed.Platform
-			notification.Amount = parsed.Amount
-		}
-	}
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("XPay 回调收到 client_ip=%s params=%q", c.ClientIP(), common.GetJsonString(params)))
 
-	// 验证必填字段
-	if notification.Amount <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Amount is required and must be positive",
-		})
+	if !service.IsXPayTopUpEnabled() {
+		logger.LogWarn(c.Request.Context(), "XPay 回调被拒绝 reason=disabled")
+		_, _ = c.Writer.Write([]byte("FAIL"))
+		return
+	}
+	if !service.VerifyXPayCallback(params) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("XPay 回调验签失败 client_ip=%s params=%q", c.ClientIP(), common.GetJsonString(params)))
+		_, _ = c.Writer.Write([]byte("FAIL"))
 		return
 	}
 
-	// 提交到监听器
-	listener := service.GetPaymentListener()
-	notification.Timestamp = time.Now().Unix()
-	listener.SubmitNotification(notification)
+	tradeNo := service.ExtractXPayTradeNo(params)
+	if tradeNo == "" {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("XPay 回调缺少订单号 client_ip=%s params=%q", c.ClientIP(), common.GetJsonString(params)))
+		_, _ = c.Writer.Write([]byte("FAIL"))
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Notification submitted successfully",
-		"data": gin.H{
-			"platform": notification.Platform,
-			"amount":   notification.Amount,
-		},
-	})
+	status := params["status"]
+	if status == "" {
+		status = params["tradeStatus"]
+	}
+	if status == "" {
+		status = params["trade_status"]
+	}
+	if !service.IsXPayPaidStatus(status) {
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("XPay 回调忽略非成功状态 trade_no=%s status=%s", tradeNo, status))
+		_, _ = c.Writer.Write([]byte(setting.XPayNotifySuccess))
+		return
+	}
+
+	LockOrder(tradeNo)
+	defer UnlockOrder(tradeNo)
+	if err := service.ConfirmXPayOrder(tradeNo, service.ExtractXPayMoney(params), c.ClientIP()); err != nil {
+		if err == model.ErrTopUpStatusInvalid {
+			_, _ = c.Writer.Write([]byte(setting.XPayNotifySuccess))
+			return
+		}
+		logger.LogError(c.Request.Context(), fmt.Sprintf("XPay 回调入账失败 trade_no=%s client_ip=%s error=%q", tradeNo, c.ClientIP(), err.Error()))
+		_, _ = c.Writer.Write([]byte("FAIL"))
+		return
+	}
+
+	_, _ = c.Writer.Write([]byte(setting.XPayNotifySuccess))
+}
+
+func XPaySubmitNotification(c *gin.Context) {
+	XPayCallback(c)
 }

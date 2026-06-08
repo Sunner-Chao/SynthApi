@@ -25,10 +25,24 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 	defaultFS := common.EmbedFolder(assets.DefaultBuildFS, "web/default/dist")
 	classicFS := common.EmbedFolder(assets.ClassicBuildFS, "web/classic/dist")
 	themeFS := common.NewThemeAwareFS(defaultFS, classicFS)
+	serveIndex := func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache")
+		if common.GetTheme() == "classic" {
+			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
+		} else {
+			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.DefaultIndexPage)
+		}
+	}
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
+	router.GET("/dashboard/models", serveIndex)
+	router.GET("/dashboard/overview", serveIndex)
+	router.GET("/dashboard/users", serveIndex)
+	router.GET("/models/*path", serveIndex)
+	router.GET("/system-settings/*path", serveIndex)
+	router.GET("/usage-logs/*path", serveIndex)
 	router.Use(static.Serve("/", themeFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
@@ -36,11 +50,6 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 			controller.RelayNotFound(c)
 			return
 		}
-		c.Header("Cache-Control", "no-cache")
-		if common.GetTheme() == "classic" {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
-		} else {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.DefaultIndexPage)
-		}
+		serveIndex(c)
 	})
 }

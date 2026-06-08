@@ -142,10 +142,10 @@ function hasRatio(value: number | null | undefined): boolean {
  * 2. Display currency = CNY:
  *    - Model: 1 USD
  *    - priceRate = 4 (recharge ¥4 to get $1 credit)
- *    - usdExchangeRate = 7 (real rate: 1 USD = ¥7)
- *    - Return: 1 × 4 / 7 = 0.571
- *    - formatCurrencyFromUSD(0.571) → 0.571 × 7 = ¥4 ✓
- *    - Normal price: ¥7, Recharge price: ¥4 (cheaper!)
+ *    - usdExchangeRate = 7.3 (real rate: 1 USD = ¥7.3)
+ *    - Return: 1 × 4 / 7.3 = 0.548
+ *    - formatCurrencyFromUSD(0.548) → 0.548 × 7.3 = ¥4 ✓
+ *    - Normal price: ¥7.3, Recharge price: ¥4 (cheaper!)
  */
 function applyRechargeRate(
   price: number,

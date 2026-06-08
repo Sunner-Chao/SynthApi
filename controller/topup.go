@@ -73,6 +73,44 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	enableXPay := service.IsXPayTopUpEnabled()
+	enableMPay := service.IsMPayTopUpEnabled()
+	if enableXPay {
+		hasXPay := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodXPay {
+				hasXPay = true
+				break
+			}
+		}
+		if !hasXPay {
+			xpayMethod := map[string]string{
+				"name":      "XPay",
+				"type":      model.PaymentMethodXPay,
+				"color":     "#6366F1",
+				"min_topup": strconv.FormatFloat(setting.XPayMinTopUp, 'f', -1, 64),
+			}
+			payMethods = append(payMethods, xpayMethod)
+		}
+	}
+	if enableMPay {
+		hasAlipay := false
+		for _, method := range payMethods {
+			if method["type"] == "alipay" {
+				hasAlipay = true
+				break
+			}
+		}
+		if !hasAlipay {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "支付宝",
+				"type":      "alipay",
+				"color":     "#1677FF",
+				"min_topup": strconv.FormatFloat(service.GetMPayMinTopup(), 'f', -1, 64),
+			})
+		}
+	}
+
 	// 如果启用了 Waffo 支付，添加到支付方法列表
 	enableWaffo := isWaffoTopUpEnabled()
 	if enableWaffo {
@@ -101,6 +139,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_xpay_topup":                enableXPay,
+		"enable_mpay_topup":                enableMPay,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
@@ -116,6 +156,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"stripe_min_topup":        setting.StripeMinTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
+		"xpay_min_topup":          setting.XPayMinTopUp,
+		"mpay_min_topup":          service.GetMPayMinTopup(),
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
@@ -169,13 +211,7 @@ func GetEpayV2Client() *common.EpayV2Client {
 }
 
 func getPayMoney(amount int64, group string) float64 {
-	dAmount := decimal.NewFromInt(amount)
-	// 充值金额以“展示类型”为准：
-	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		dAmount = dAmount.Div(dQuotaPerUnit)
-	}
+	dAmount := decimal.NewFromFloat(operation_setting.DisplayAmountToUSD(float64(amount)))
 
 	topupGroupRatio := common.GetTopupGroupRatio(group)
 	if topupGroupRatio == 0 {
@@ -288,11 +324,6 @@ func RequestEpay(c *gin.Context) {
 		}
 	}
 	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dAmount := decimal.NewFromInt(int64(amount))
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		amount = dAmount.Div(dQuotaPerUnit).IntPart()
-	}
 	topUp := &model.TopUp{
 		UserId:          id,
 		Amount:          amount,
@@ -470,9 +501,7 @@ func EpayNotify(c *gin.Context) {
 			}
 			//user, _ := model.GetUserById(topUp.UserId, false)
 			//user.Quota += topUp.Amount * 500000
-			dAmount := decimal.NewFromInt(int64(topUp.Amount))
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
+			quotaToAdd := operation_setting.DisplayAmountToQuota(float64(topUp.Amount))
 			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
 			if err != nil {
 				logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 更新用户额度失败 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d error=%q topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, err.Error(), common.GetJsonString(topUp)))
