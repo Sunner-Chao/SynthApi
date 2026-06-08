@@ -517,7 +517,7 @@ export function processChartData(
         },
       },
       background: { fill: 'transparent' },
-      animation: true,
+      animation: false,
     },
     spec_line: {
       type: 'bar',
@@ -555,7 +555,7 @@ export function processChartData(
         },
       },
       background: { fill: 'transparent' },
-      animation: true,
+      animation: false,
     },
     spec_area: {
       type: 'area',
@@ -603,7 +603,7 @@ export function processChartData(
       },
       point: { visible: false },
       background: { fill: 'transparent' },
-      animation: true,
+      animation: false,
     },
     spec_model_line: {
       type: 'area',
@@ -681,7 +681,7 @@ export function processChartData(
       },
       point: { visible: false },
       background: { fill: 'transparent' },
-      animation: true,
+      animation: false,
     },
     spec_rank_bar: {
       type: 'bar',
@@ -712,7 +712,7 @@ export function processChartData(
         },
       },
       background: { fill: 'transparent' },
-      animation: true,
+      animation: false,
     },
     totalQuotaDisplay: formatQuotaTotal(totalQuotaRaw),
     totalCountDisplay: formatInt(totalTimes),

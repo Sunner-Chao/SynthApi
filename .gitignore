@@ -33,6 +33,7 @@ web/dist
 .env
 one-api
 new-api
+synthapi-server-new*
 /__debug_bin*
 .DS_Store
 tiktoken_cache

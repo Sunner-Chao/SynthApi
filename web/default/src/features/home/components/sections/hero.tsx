@@ -46,8 +46,9 @@ const MoreIcon = () => (
 export function Hero(props: HeroProps) {
   const { t } = useTranslation()
   const { status } = useStatus()
+  const rawDocsUrl = status?.docs_link as string | undefined
   const docsUrl =
-    (status?.docs_link as string | undefined) || 'https://docs.newapi.pro'
+    rawDocsUrl && !rawDocsUrl.includes('docs.newapi.pro') ? rawDocsUrl : '/docs'
 
   const renderDocsButton = () => {
     const isExternal = docsUrl.startsWith('http')

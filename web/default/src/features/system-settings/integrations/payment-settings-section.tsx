@@ -1059,7 +1059,9 @@ export function PaymentSettingsSection({
                 <Wallet className='size-5' />
               </div>
               <div className='min-w-0 flex-1'>
-                <h3 className='text-lg font-semibold'>{t('General Settings')}</h3>
+                <h3 className='text-lg font-semibold'>
+                  {t('General Settings')}
+                </h3>
                 <p className='text-muted-foreground text-sm'>
                   {t('Shared configuration for all payment gateways')}
                 </p>
@@ -1292,7 +1294,10 @@ export function PaymentSettingsSection({
               <div className='min-w-0 flex-1'>
                 <div className='flex flex-wrap items-center gap-2'>
                   <h3 className='text-lg font-semibold'>{t('Epay Gateway')}</h3>
-                  <Badge variant='outline' className='bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'>
+                  <Badge
+                    variant='outline'
+                    className='bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                  >
                     <Lock className='mr-1 size-3' />
                     {t('Classic')}
                   </Badge>
@@ -1397,23 +1402,31 @@ export function PaymentSettingsSection({
           <Separator />
 
           {/* Gateway Card: XPay */}
-          <div className={cn(
-            'rounded-xl border p-5 transition-colors',
-            form.watch('XPayEnabled')
-              ? 'bg-gradient-to-br from-cyan-50 to-blue-100 dark:from-cyan-950 dark:to-blue-900'
-              : 'bg-muted/30'
-          )}>
+          <div
+            className={cn(
+              'rounded-xl border p-5 transition-colors',
+              form.watch('XPayEnabled')
+                ? 'bg-gradient-to-br from-cyan-50 to-blue-100 dark:from-cyan-950 dark:to-blue-900'
+                : 'bg-muted/30'
+            )}
+          >
             <div className='mb-4 flex items-center justify-between gap-3'>
               <div className='flex items-center gap-3'>
-                <div className={cn(
-                  'flex size-10 shrink-0 items-center justify-center rounded-lg shadow-sm transition-colors',
-                  form.watch('XPayEnabled') ? 'bg-cyan-500 text-white' : 'bg-muted text-muted-foreground'
-                )}>
+                <div
+                  className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-lg shadow-sm transition-colors',
+                    form.watch('XPayEnabled')
+                      ? 'bg-cyan-500 text-white'
+                      : 'bg-muted text-muted-foreground'
+                  )}
+                >
                   <MessageSquare className='size-5' />
                 </div>
                 <div className='min-w-0'>
                   <div className='flex flex-wrap items-center gap-2'>
-                    <h3 className='text-lg font-semibold'>{t('XPay Gateway')}</h3>
+                    <h3 className='text-lg font-semibold'>
+                      {t('XPay Gateway')}
+                    </h3>
                     {form.watch('XPayEnabled') && (
                       <Badge className='bg-cyan-500 text-white hover:bg-cyan-600'>
                         <CheckCircle2 className='mr-1 size-3' />
@@ -1551,7 +1564,7 @@ export function PaymentSettingsSection({
                     <FormLabel>{t('XPay notify URL')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='http://118.25.43.185:3000/api/xpay/callback'
+                        placeholder='https://118.25.43.185:3000/api/xpay/callback'
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1654,23 +1667,31 @@ export function PaymentSettingsSection({
           <Separator />
 
           {/* Gateway Card: MPay */}
-          <div className={cn(
-            'rounded-xl border p-5 transition-colors',
-            form.watch('MPayEnabled')
-              ? 'bg-gradient-to-br from-teal-50 to-emerald-100 dark:from-teal-950 dark:to-emerald-900'
-              : 'bg-muted/30'
-          )}>
+          <div
+            className={cn(
+              'rounded-xl border p-5 transition-colors',
+              form.watch('MPayEnabled')
+                ? 'bg-gradient-to-br from-teal-50 to-emerald-100 dark:from-teal-950 dark:to-emerald-900'
+                : 'bg-muted/30'
+            )}
+          >
             <div className='mb-4 flex items-center justify-between gap-3'>
               <div className='flex items-center gap-3'>
-                <div className={cn(
-                  'flex size-10 shrink-0 items-center justify-center rounded-lg shadow-sm transition-colors',
-                  form.watch('MPayEnabled') ? 'bg-teal-500 text-white' : 'bg-muted text-muted-foreground'
-                )}>
+                <div
+                  className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-lg shadow-sm transition-colors',
+                    form.watch('MPayEnabled')
+                      ? 'bg-teal-500 text-white'
+                      : 'bg-muted text-muted-foreground'
+                  )}
+                >
                   <Smartphone className='size-5' />
                 </div>
                 <div className='min-w-0'>
                   <div className='flex flex-wrap items-center gap-2'>
-                    <h3 className='text-lg font-semibold'>{t('MPay Gateway')}</h3>
+                    <h3 className='text-lg font-semibold'>
+                      {t('MPay Gateway')}
+                    </h3>
                     {form.watch('MPayEnabled') && (
                       <Badge className='bg-teal-500 text-white hover:bg-teal-600'>
                         <CheckCircle2 className='mr-1 size-3' />
@@ -1679,7 +1700,9 @@ export function PaymentSettingsSection({
                     )}
                   </div>
                   <p className='text-muted-foreground text-sm'>
-                    {t('MPay personal-code automatic callback payment integration')}
+                    {t(
+                      'MPay personal-code automatic callback payment integration'
+                    )}
                   </p>
                 </div>
               </div>
@@ -1726,7 +1749,9 @@ export function PaymentSettingsSection({
                         onChange={(event) => field.onChange(event.target.value)}
                       />
                     </FormControl>
-                    <FormDescription>{t('Use alipay or wxpay')}</FormDescription>
+                    <FormDescription>
+                      {t('Use alipay or wxpay')}
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1785,7 +1810,7 @@ export function PaymentSettingsSection({
                     <FormLabel>{t('MPay notify URL')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='http://118.25.43.185/api/mpay/notify'
+                        placeholder='https://118.25.43.185/api/mpay/notify'
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1806,7 +1831,7 @@ export function PaymentSettingsSection({
                     <FormLabel>{t('MPay return URL')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='http://118.25.43.185/wallet'
+                        placeholder='https://118.25.43.185/wallet'
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1895,8 +1920,13 @@ export function PaymentSettingsSection({
               </div>
               <div className='min-w-0 flex-1'>
                 <div className='flex flex-wrap items-center gap-2'>
-                  <h3 className='text-lg font-semibold'>{t('Stripe Gateway')}</h3>
-                  <Badge variant='outline' className='bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'>
+                  <h3 className='text-lg font-semibold'>
+                    {t('Stripe Gateway')}
+                  </h3>
+                  <Badge
+                    variant='outline'
+                    className='bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                  >
                     <Globe className='mr-1 size-3' />
                     {t('Global')}
                   </Badge>
@@ -2094,8 +2124,13 @@ export function PaymentSettingsSection({
               </div>
               <div className='min-w-0 flex-1'>
                 <div className='flex flex-wrap items-center gap-2'>
-                  <h3 className='text-lg font-semibold'>{t('Creem Gateway')}</h3>
-                  <Badge variant='outline' className='bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'>
+                  <h3 className='text-lg font-semibold'>
+                    {t('Creem Gateway')}
+                  </h3>
+                  <Badge
+                    variant='outline'
+                    className='bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'
+                  >
                     <UserCheck className='mr-1 size-3' />
                     {t('Modern')}
                   </Badge>

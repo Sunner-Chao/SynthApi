@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { Construction } from 'lucide-react'
+import { BadgeCheck, GitBranch, ShieldCheck, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -42,20 +42,53 @@ function EmptyAboutState() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <div className='flex min-h-[60vh] items-center justify-center p-8'>
-      <div className='max-w-2xl space-y-6 text-center'>
-        <div className='flex justify-center'>
-          <Construction className='text-muted-foreground h-24 w-24' />
+    <div className='mx-auto flex min-h-[60vh] max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8'>
+      <div className='max-w-3xl space-y-4'>
+        <div className='bg-primary/10 text-primary flex size-12 items-center justify-center rounded-lg'>
+          <Sparkles className='size-6' />
         </div>
-        <div className='space-y-2'>
-          <h2 className='text-2xl font-bold'>{t('No About Content Set')}</h2>
-          <p className='text-muted-foreground'>
-            {t(
-              'The administrator has not configured any about content yet. You can set it in the settings page, supporting HTML or URL.'
-            )}
+        <div className='space-y-3'>
+          <h1 className='text-3xl font-semibold tracking-tight sm:text-4xl'>
+            关于 SynthAPI
+          </h1>
+          <p className='text-muted-foreground text-base leading-7'>
+            SynthAPI 是面向 AI 应用的统一 API 网关，提供多模型接入、令牌管理、
+            用量计费、钱包充值、使用日志、渠道调度和管理后台能力。项目目标是让
+            OpenAI 兼容协议成为业务系统接入不同 AI 服务商的稳定入口。
           </p>
         </div>
-        <div className='space-y-4 text-sm'>
+      </div>
+
+      <div className='grid gap-4 md:grid-cols-3'>
+        <div className='rounded-lg border p-5'>
+          <BadgeCheck className='text-primary mb-4 size-6' />
+          <h2 className='font-medium'>统一协议</h2>
+          <p className='text-muted-foreground mt-2 text-sm leading-6'>
+            对外保持 OpenAI 兼容接口，对内通过渠道配置接入不同模型供应商。
+          </p>
+        </div>
+        <div className='rounded-lg border p-5'>
+          <ShieldCheck className='text-primary mb-4 size-6' />
+          <h2 className='font-medium'>可控计费</h2>
+          <p className='text-muted-foreground mt-2 text-sm leading-6'>
+            支持模型倍率、分组倍率、额度展示、钱包充值和详细使用日志。
+          </p>
+        </div>
+        <div className='rounded-lg border p-5'>
+          <GitBranch className='text-primary mb-4 size-6' />
+          <h2 className='font-medium'>可扩展运营</h2>
+          <p className='text-muted-foreground mt-2 text-sm leading-6'>
+            管理员可以维护用户、渠道、模型、兑换码、排行榜和系统设置。
+          </p>
+        </div>
+      </div>
+
+      <div className='space-y-4 rounded-lg border p-5 text-sm leading-6'>
+        <p>
+          本站当前品牌为 <span className='font-medium'>SynthAPI</span>。
+          受保护的上游项目与作者标识按项目策略保留：
+        </p>
+        <div className='text-muted-foreground space-y-3'>
           <p>
             {t('New API Project Repository:')}{' '}
             <a
@@ -67,7 +100,7 @@ function EmptyAboutState() {
               {t('https://github.com/QuantumNous/new-api')}
             </a>
           </p>
-          <p className='text-muted-foreground'>
+          <p>
             <a
               href='https://github.com/QuantumNous/new-api'
               target='_blank'
@@ -104,7 +137,7 @@ function EmptyAboutState() {
               {t('JustSong')}
             </a>
           </p>
-          <p className='text-muted-foreground'>
+          <p>
             {t('This project must be used in compliance with the')}{' '}
             <a
               href='https://github.com/QuantumNous/new-api/blob/main/LICENSE'
