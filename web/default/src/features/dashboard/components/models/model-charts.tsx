@@ -163,6 +163,7 @@ export function ModelCharts(props: ModelChartsProps) {
               ...spec,
               theme: resolvedTheme === 'dark' ? 'dark' : 'light',
               background: 'transparent',
+              animation: false,
             }}
             option={VCHART_OPTION}
           />
