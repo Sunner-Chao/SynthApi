@@ -38,6 +38,7 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  XPayPaymentResponse,
 } from './types'
 
 // ============================================================================
@@ -124,16 +125,21 @@ export async function requestQRCodePayment(
  * Create XPay order
  */
 export async function createXPayOrder(request: PaymentRequest): Promise<
-  ApiResponse<{
-    trade_no: string
-    out_trade_no: string
-    amount: number
-    payment_method: string
-    status: string
-    created_at: number
-  }>
+  XPayPaymentResponse
 > {
   const res = await api.post('/api/user/xpay/create', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Create MPay order
+ */
+export async function createMPayOrder(request: PaymentRequest): Promise<
+  XPayPaymentResponse
+> {
+  const res = await api.post('/api/user/mpay/create', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
   return res.data

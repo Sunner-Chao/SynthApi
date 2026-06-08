@@ -41,6 +41,7 @@ import {
   getMinTopupAmount,
   calculatePresetPricing,
 } from '../lib'
+import { PAYMENT_TYPES } from '../constants'
 import type {
   PaymentMethod,
   PresetAmount,
@@ -123,9 +124,18 @@ export function RechargeFormCard({
   }, [topupAmount])
 
   const handleAmountChange = (value: string) => {
+    if (!/^\d*\.?\d*$/.test(value)) {
+      return
+    }
+
     setLocalAmount(value)
-    const numValue = parseFloat(value) || 0
-    if (numValue >= 0) {
+
+    if (value === '' || value === '.' || value === '0' || value === '0.') {
+      return
+    }
+
+    const numValue = parseFloat(value)
+    if (Number.isFinite(numValue) && numValue > 0) {
       onTopupAmountChange(numValue)
     }
   }
@@ -133,14 +143,35 @@ export function RechargeFormCard({
   const hasConfigurableTopup =
     topupInfo?.enable_online_topup ||
     topupInfo?.enable_stripe_topup ||
+    topupInfo?.enable_mpay_topup ||
+    topupInfo?.enable_xpay_topup ||
     enableWaffoTopup ||
     enableWaffoPancakeTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
-  const hasStandardPaymentMethods =
-    Array.isArray(topupInfo?.pay_methods) && topupInfo.pay_methods.length > 0
+  const standardPaymentMethods = (
+    topupInfo?.pay_methods?.filter((method) => method.type !== PAYMENT_TYPES.XPAY) ||
+    []
+  ).concat(
+    (topupInfo?.enable_mpay_topup || topupInfo?.enable_xpay_topup) &&
+      !topupInfo?.pay_methods?.some(
+        (method) => method.type === PAYMENT_TYPES.ALIPAY
+      )
+      ? [
+          {
+            type: PAYMENT_TYPES.ALIPAY,
+            name: t('Alipay'),
+            min_topup:
+              topupInfo.mpay_min_topup || topupInfo.xpay_min_topup || 0,
+          },
+        ]
+      : []
+  )
+  const hasVisibleStandardPaymentMethods = standardPaymentMethods.length > 0
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
+  const inputStep =
+    topupInfo?.enable_mpay_topup || topupInfo?.enable_xpay_topup ? 0.1 : 1
   const redemptionEnabled = topupInfo?.enable_redemption !== false
 
   if (loading) {
@@ -289,10 +320,10 @@ export function RechargeFormCard({
                 <div className='grid grid-cols-[minmax(0,1fr)_minmax(110px,0.55fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
                   <Input
                     id='topup-amount'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     value={localAmount}
                     onChange={(e) => handleAmountChange(e.target.value)}
-                    min={minTopup}
                     placeholder={`Minimum ${minTopup}`}
                     className='h-9 text-base sm:h-10 sm:text-lg'
                   />
@@ -315,9 +346,9 @@ export function RechargeFormCard({
                 <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                   {t('Payment Method')}
                 </Label>
-                {hasStandardPaymentMethods ? (
+                {hasVisibleStandardPaymentMethods ? (
                   <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
-                    {topupInfo?.pay_methods?.map((method) => {
+                    {standardPaymentMethods.map((method) => {
                       const minTopup = method.min_topup || 0
                       const disabled = minTopup > topupAmount
 

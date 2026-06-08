@@ -24,14 +24,15 @@ import {
   calculateStripeAmount,
   calculateWaffoPancakeAmount,
   requestPayment,
-  requestQRCodePayment,
   requestStripePayment,
+  createMPayOrder,
   createXPayOrder,
   isApiSuccess,
 } from '../api'
 import {
   isStripePayment,
   isWaffoPancakePayment,
+  isXPayRoutedPayment,
   submitPaymentForm,
 } from '../lib'
 
@@ -96,19 +97,21 @@ export function usePayment(
 
   // Process payment
   const processPayment = useCallback(
-    async (topupAmount: number, paymentType: string) => {
+    async (topupAmount: number, paymentType: string, paymentGateway?: string) => {
       try {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
+        const isMPay = paymentGateway === 'mpay'
+        const isXPay = isXPayRoutedPayment(paymentType)
         // 保留小数，不使用 Math.floor
         const amount = Math.round(topupAmount * 100) / 100
 
-        // For non-Stripe payments, use XPay API
-        if (!isStripe) {
-          const response = await createXPayOrder({
+        if (isMPay || isXPay) {
+          const createOrder = isMPay ? createMPayOrder : createXPayOrder
+          const response = await createOrder({
             amount,
-            payment_method: paymentType,
+            payment_method: isMPay ? paymentType : 'Alipay',
           })
 
           if (!isApiSuccess(response)) {
@@ -116,17 +119,39 @@ export function usePayment(
             return false
           }
 
-          // Show QR code payment page with trade number
-          const tradeNo = response.data?.trade_no || ''
-          const payUrl = `/pay.html?amount=${amount}&method=${paymentType}&trade_no=${tradeNo}`
+          const payUrl = response.data?.pay_url
+          if (!payUrl) {
+            toast.error(i18next.t('Payment request failed'))
+            return false
+          }
           window.open(payUrl, '_blank')
           toast.success(i18next.t('Redirecting to payment page...'))
           return true
         }
 
-        const response = await requestStripePayment({
+        if (isStripe) {
+          const response = await requestStripePayment({
+            amount,
+            payment_method: 'stripe',
+          })
+
+          if (!isApiSuccess(response)) {
+            toast.error(response.message || i18next.t('Payment request failed'))
+            return false
+          }
+
+          if (response.data?.pay_link) {
+            window.open(response.data.pay_link as string, '_blank')
+            toast.success(i18next.t('Redirecting to payment page...'))
+            return true
+          }
+
+          return false
+        }
+
+        const response = await requestPayment({
           amount,
-          payment_method: 'stripe',
+          payment_method: paymentType,
         })
 
         if (!isApiSuccess(response)) {
@@ -134,9 +159,8 @@ export function usePayment(
           return false
         }
 
-        // Handle Stripe payment
-        if (response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
+        if (response.url && response.data) {
+          submitPaymentForm(response.url, response.data)
           toast.success(i18next.t('Redirecting to payment page...'))
           return true
         }

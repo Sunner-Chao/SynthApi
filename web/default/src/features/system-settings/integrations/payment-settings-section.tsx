@@ -21,7 +21,22 @@ import * as z from 'zod'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Code2, Eye, ShieldAlert } from 'lucide-react'
+import {
+  Building2,
+  CheckCircle2,
+  CreditCard,
+  Eye,
+  Globe,
+  Lock,
+  MessageSquare,
+  Receipt,
+  ShieldAlert,
+  Smartphone,
+  Sparkles,
+  UserCheck,
+  Wallet,
+  Code2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -31,6 +46,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -142,6 +158,51 @@ const paymentSchema = z.object({
       })
     }
   }),
+  XPayEnabled: z.boolean(),
+  XPayApiBase: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  XPayAppID: z.string(),
+  XPayAppSecret: z.string(),
+  XPayPaymentType: z.string(),
+  XPayReturnURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  XPayNotifyURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  XPayUnitPrice: z.coerce.number().min(0),
+  XPayMinTopUp: z.coerce.number().min(0.1),
+  XPayGatewayPath: z.string(),
+  XPayNotifySuccess: z.string(),
+  MPayEnabled: z.boolean(),
+  MPayApiBase: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  MPayPid: z.string(),
+  MPayKey: z.string(),
+  MPayPaymentType: z.string(),
+  MPayReturnURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  MPayNotifyURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  MPayUnitPrice: z.coerce.number().min(0),
+  MPayMinTopUp: z.coerce.number().min(0.1),
+  MPayNotifySuccess: z.string(),
   WaffoEnabled: z.boolean(),
   WaffoApiKey: z.string(),
   WaffoPrivateKey: z.string(),
@@ -308,7 +369,6 @@ export function PaymentSettingsSection({
     ],
     [t]
   )
-
   const complianceConfirmed =
     complianceDefaults.confirmed &&
     complianceDefaults.termsVersion === CURRENT_COMPLIANCE_TERMS_VERSION
@@ -419,6 +479,27 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: values.CreemWebhookSecret.trim(),
       CreemTestMode: values.CreemTestMode,
       CreemProducts: values.CreemProducts.trim(),
+      XPayEnabled: values.XPayEnabled,
+      XPayApiBase: removeTrailingSlash(values.XPayApiBase.trim()),
+      XPayAppID: values.XPayAppID.trim(),
+      XPayAppSecret: values.XPayAppSecret.trim(),
+      XPayPaymentType: values.XPayPaymentType.trim() || 'DMF',
+      XPayReturnURL: removeTrailingSlash(values.XPayReturnURL.trim()),
+      XPayNotifyURL: removeTrailingSlash(values.XPayNotifyURL.trim()),
+      XPayUnitPrice: values.XPayUnitPrice,
+      XPayMinTopUp: values.XPayMinTopUp,
+      XPayGatewayPath: values.XPayGatewayPath.trim() || '/alipay/precreate',
+      XPayNotifySuccess: values.XPayNotifySuccess.trim() || 'OK',
+      MPayEnabled: values.MPayEnabled,
+      MPayApiBase: removeTrailingSlash(values.MPayApiBase.trim()),
+      MPayPid: values.MPayPid.trim(),
+      MPayKey: values.MPayKey.trim(),
+      MPayPaymentType: values.MPayPaymentType.trim() || 'alipay',
+      MPayReturnURL: removeTrailingSlash(values.MPayReturnURL.trim()),
+      MPayNotifyURL: removeTrailingSlash(values.MPayNotifyURL.trim()),
+      MPayUnitPrice: values.MPayUnitPrice,
+      MPayMinTopUp: values.MPayMinTopUp,
+      MPayNotifySuccess: values.MPayNotifySuccess.trim() || 'success',
       WaffoEnabled: values.WaffoEnabled,
       WaffoSandbox: values.WaffoSandbox,
       WaffoMerchantId: values.WaffoMerchantId.trim(),
@@ -464,6 +545,29 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: initialRef.current.CreemWebhookSecret.trim(),
       CreemTestMode: initialRef.current.CreemTestMode,
       CreemProducts: initialRef.current.CreemProducts.trim(),
+      XPayEnabled: initialRef.current.XPayEnabled,
+      XPayApiBase: removeTrailingSlash(initialRef.current.XPayApiBase),
+      XPayAppID: initialRef.current.XPayAppID.trim(),
+      XPayAppSecret: initialRef.current.XPayAppSecret.trim(),
+      XPayPaymentType: initialRef.current.XPayPaymentType.trim() || 'DMF',
+      XPayReturnURL: removeTrailingSlash(initialRef.current.XPayReturnURL),
+      XPayNotifyURL: removeTrailingSlash(initialRef.current.XPayNotifyURL),
+      XPayUnitPrice: initialRef.current.XPayUnitPrice,
+      XPayMinTopUp: initialRef.current.XPayMinTopUp,
+      XPayGatewayPath:
+        initialRef.current.XPayGatewayPath.trim() || '/alipay/precreate',
+      XPayNotifySuccess: initialRef.current.XPayNotifySuccess.trim() || 'OK',
+      MPayEnabled: initialRef.current.MPayEnabled,
+      MPayApiBase: removeTrailingSlash(initialRef.current.MPayApiBase),
+      MPayPid: initialRef.current.MPayPid.trim(),
+      MPayKey: initialRef.current.MPayKey.trim(),
+      MPayPaymentType: initialRef.current.MPayPaymentType.trim() || 'alipay',
+      MPayReturnURL: removeTrailingSlash(initialRef.current.MPayReturnURL),
+      MPayNotifyURL: removeTrailingSlash(initialRef.current.MPayNotifyURL),
+      MPayUnitPrice: initialRef.current.MPayUnitPrice,
+      MPayMinTopUp: initialRef.current.MPayMinTopUp,
+      MPayNotifySuccess:
+        initialRef.current.MPayNotifySuccess.trim() || 'success',
       WaffoEnabled: initialRef.current.WaffoEnabled,
       WaffoSandbox: initialRef.current.WaffoSandbox,
       WaffoMerchantId: initialRef.current.WaffoMerchantId.trim(),
@@ -609,6 +713,96 @@ export function PaymentSettingsSection({
       normalizeJsonForComparison(initial.CreemProducts)
     ) {
       updates.push({ key: 'CreemProducts', value: sanitized.CreemProducts })
+    }
+
+    if (sanitized.XPayEnabled !== initial.XPayEnabled) {
+      updates.push({ key: 'XPayEnabled', value: sanitized.XPayEnabled })
+    }
+
+    if (sanitized.XPayApiBase !== initial.XPayApiBase) {
+      updates.push({ key: 'XPayApiBase', value: sanitized.XPayApiBase })
+    }
+
+    if (sanitized.XPayAppID !== initial.XPayAppID) {
+      updates.push({ key: 'XPayAppID', value: sanitized.XPayAppID })
+    }
+
+    if (sanitized.XPayAppSecret) {
+      updates.push({ key: 'XPayAppSecret', value: sanitized.XPayAppSecret })
+    }
+
+    if (sanitized.XPayPaymentType !== initial.XPayPaymentType) {
+      updates.push({ key: 'XPayPaymentType', value: sanitized.XPayPaymentType })
+    }
+
+    if (sanitized.XPayReturnURL !== initial.XPayReturnURL) {
+      updates.push({ key: 'XPayReturnURL', value: sanitized.XPayReturnURL })
+    }
+
+    if (sanitized.XPayNotifyURL !== initial.XPayNotifyURL) {
+      updates.push({ key: 'XPayNotifyURL', value: sanitized.XPayNotifyURL })
+    }
+
+    if (sanitized.XPayUnitPrice !== initial.XPayUnitPrice) {
+      updates.push({ key: 'XPayUnitPrice', value: sanitized.XPayUnitPrice })
+    }
+
+    if (sanitized.XPayMinTopUp !== initial.XPayMinTopUp) {
+      updates.push({ key: 'XPayMinTopUp', value: sanitized.XPayMinTopUp })
+    }
+
+    if (sanitized.XPayGatewayPath !== initial.XPayGatewayPath) {
+      updates.push({ key: 'XPayGatewayPath', value: sanitized.XPayGatewayPath })
+    }
+
+    if (sanitized.XPayNotifySuccess !== initial.XPayNotifySuccess) {
+      updates.push({
+        key: 'XPayNotifySuccess',
+        value: sanitized.XPayNotifySuccess,
+      })
+    }
+
+    if (sanitized.MPayEnabled !== initial.MPayEnabled) {
+      updates.push({ key: 'MPayEnabled', value: sanitized.MPayEnabled })
+    }
+
+    if (sanitized.MPayApiBase !== initial.MPayApiBase) {
+      updates.push({ key: 'MPayApiBase', value: sanitized.MPayApiBase })
+    }
+
+    if (sanitized.MPayPid !== initial.MPayPid) {
+      updates.push({ key: 'MPayPid', value: sanitized.MPayPid })
+    }
+
+    if (sanitized.MPayKey) {
+      updates.push({ key: 'MPayKey', value: sanitized.MPayKey })
+    }
+
+    if (sanitized.MPayPaymentType !== initial.MPayPaymentType) {
+      updates.push({ key: 'MPayPaymentType', value: sanitized.MPayPaymentType })
+    }
+
+    if (sanitized.MPayReturnURL !== initial.MPayReturnURL) {
+      updates.push({ key: 'MPayReturnURL', value: sanitized.MPayReturnURL })
+    }
+
+    if (sanitized.MPayNotifyURL !== initial.MPayNotifyURL) {
+      updates.push({ key: 'MPayNotifyURL', value: sanitized.MPayNotifyURL })
+    }
+
+    if (sanitized.MPayUnitPrice !== initial.MPayUnitPrice) {
+      updates.push({ key: 'MPayUnitPrice', value: sanitized.MPayUnitPrice })
+    }
+
+    if (sanitized.MPayMinTopUp !== initial.MPayMinTopUp) {
+      updates.push({ key: 'MPayMinTopUp', value: sanitized.MPayMinTopUp })
+    }
+
+    if (sanitized.MPayNotifySuccess !== initial.MPayNotifySuccess) {
+      updates.push({
+        key: 'MPayNotifySuccess',
+        value: sanitized.MPayNotifySuccess,
+      })
     }
 
     if (sanitized.WaffoEnabled !== initial.WaffoEnabled) {
@@ -857,12 +1051,19 @@ export function PaymentSettingsSection({
             isSaving={updateOption.isPending || isSubmitting}
             saveLabel='Save all settings'
           />
-          <div className='space-y-4'>
-            <div>
-              <h3 className='text-lg font-medium'>{t('General Settings')}</h3>
-              <p className='text-muted-foreground text-sm'>
-                {t('Shared configuration for all payment gateways')}
-              </p>
+
+          {/* Gateway Card: General Settings */}
+          <div className='rounded-xl border bg-gradient-to-br from-slate-50 to-slate-100 p-5 dark:from-slate-900 dark:to-slate-800'>
+            <div className='mb-4 flex flex-wrap items-center gap-3 sm:flex-nowrap'>
+              <div className='flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-white shadow-sm'>
+                <Wallet className='size-5' />
+              </div>
+              <div className='min-w-0 flex-1'>
+                <h3 className='text-lg font-semibold'>{t('General Settings')}</h3>
+                <p className='text-muted-foreground text-sm'>
+                  {t('Shared configuration for all payment gateways')}
+                </p>
+              </div>
             </div>
 
             <div className='grid gap-6 md:grid-cols-2'>
@@ -917,7 +1118,7 @@ export function PaymentSettingsSection({
               control={form.control}
               name='PayMethods'
               render={({ field }) => (
-                <FormItem>
+                <FormItem className='mt-4'>
                   <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                     <FormLabel>{t('Payment methods')}</FormLabel>
                     <Button
@@ -969,7 +1170,7 @@ export function PaymentSettingsSection({
               )}
             />
 
-            <div className='grid gap-6 md:grid-cols-2 md:items-start'>
+            <div className='mt-4 grid gap-6 md:grid-cols-2 md:items-start'>
               <FormField
                 control={form.control}
                 name='AmountOptions'
@@ -1082,12 +1283,24 @@ export function PaymentSettingsSection({
 
           <Separator />
 
-          <div className='space-y-4'>
-            <div>
-              <h3 className='text-lg font-medium'>{t('Epay Gateway')}</h3>
-              <p className='text-muted-foreground text-sm'>
-                {t('Configuration for Epay payment integration')}
-              </p>
+          {/* Gateway Card: Epay */}
+          <div className='rounded-xl border bg-gradient-to-br from-amber-50 to-orange-100 p-5 dark:from-amber-950 dark:to-orange-900'>
+            <div className='mb-4 flex flex-wrap items-center gap-3 sm:flex-nowrap'>
+              <div className='flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white shadow-sm'>
+                <Building2 className='size-5' />
+              </div>
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <h3 className='text-lg font-semibold'>{t('Epay Gateway')}</h3>
+                  <Badge variant='outline' className='bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'>
+                    <Lock className='mr-1 size-3' />
+                    {t('Classic')}
+                  </Badge>
+                </div>
+                <p className='text-muted-foreground text-sm'>
+                  {t('Configuration for Epay payment integration')}
+                </p>
+              </div>
             </div>
 
             <div className='grid gap-6 md:grid-cols-2'>
@@ -1183,30 +1396,536 @@ export function PaymentSettingsSection({
 
           <Separator />
 
-          <div className='space-y-4'>
-            <div>
-              <h3 className='text-lg font-medium'>{t('Stripe Gateway')}</h3>
-              <p className='text-muted-foreground text-sm'>
-                {t('Configuration for Stripe payment integration')}
-              </p>
+          {/* Gateway Card: XPay */}
+          <div className={cn(
+            'rounded-xl border p-5 transition-colors',
+            form.watch('XPayEnabled')
+              ? 'bg-gradient-to-br from-cyan-50 to-blue-100 dark:from-cyan-950 dark:to-blue-900'
+              : 'bg-muted/30'
+          )}>
+            <div className='mb-4 flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-3'>
+                <div className={cn(
+                  'flex size-10 shrink-0 items-center justify-center rounded-lg shadow-sm transition-colors',
+                  form.watch('XPayEnabled') ? 'bg-cyan-500 text-white' : 'bg-muted text-muted-foreground'
+                )}>
+                  <MessageSquare className='size-5' />
+                </div>
+                <div className='min-w-0'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <h3 className='text-lg font-semibold'>{t('XPay Gateway')}</h3>
+                    {form.watch('XPayEnabled') && (
+                      <Badge className='bg-cyan-500 text-white hover:bg-cyan-600'>
+                        <CheckCircle2 className='mr-1 size-3' />
+                        {t('Active')}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className='text-muted-foreground text-sm'>
+                    {t('XPay v3.1 automatic callback payment integration')}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={form.watch('XPayEnabled')}
+                onCheckedChange={(checked) =>
+                  setPaymentValue('XPayEnabled', checked)
+                }
+              />
             </div>
 
-            <div className='rounded-md bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100'>
-              <p className='mb-2 font-medium'>{t('Webhook Configuration:')}</p>
-              <ul className='list-inside list-disc space-y-1'>
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='XPayApiBase'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay API base URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='https://pay.example.com'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Base address of your XPay v3.1 service')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='XPayGatewayPath'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay create order path')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='/alipay/precreate'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('XPay v3.1 create-order API path')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-3'>
+              <FormField
+                control={form.control}
+                name='XPayAppID'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay App ID')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        autoComplete='off'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='XPayAppSecret'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay App Secret')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='password'
+                        placeholder={t('Enter new secret to update')}
+                        autoComplete='new-password'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank unless rotating the secret')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='XPayPaymentType'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay payment type')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='DMF'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Default XPay channel used by wallet top-ups')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='XPayNotifyURL'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay notify URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='http://118.25.43.185:3000/api/xpay/callback'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank to use the default callback URL')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='XPayReturnURL'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay return URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='https://gateway.example.com/console/topup'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank to return to the wallet page')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-3'>
+              <FormField
+                control={form.control}
+                name='XPayUnitPrice'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay unit price')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        step='0.01'
+                        min={0}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('How much to charge for each US dollar of balance')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='XPayMinTopUp'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay minimum top-up')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        step='0.1'
+                        min={0.1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='XPayNotifySuccess'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('XPay success response')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='OK'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Response body returned after successful callback')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Gateway Card: MPay */}
+          <div className={cn(
+            'rounded-xl border p-5 transition-colors',
+            form.watch('MPayEnabled')
+              ? 'bg-gradient-to-br from-teal-50 to-emerald-100 dark:from-teal-950 dark:to-emerald-900'
+              : 'bg-muted/30'
+          )}>
+            <div className='mb-4 flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-3'>
+                <div className={cn(
+                  'flex size-10 shrink-0 items-center justify-center rounded-lg shadow-sm transition-colors',
+                  form.watch('MPayEnabled') ? 'bg-teal-500 text-white' : 'bg-muted text-muted-foreground'
+                )}>
+                  <Smartphone className='size-5' />
+                </div>
+                <div className='min-w-0'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <h3 className='text-lg font-semibold'>{t('MPay Gateway')}</h3>
+                    {form.watch('MPayEnabled') && (
+                      <Badge className='bg-teal-500 text-white hover:bg-teal-600'>
+                        <CheckCircle2 className='mr-1 size-3' />
+                        {t('Active')}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className='text-muted-foreground text-sm'>
+                    {t('MPay personal-code automatic callback payment integration')}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={form.watch('MPayEnabled')}
+                onCheckedChange={(checked) =>
+                  setPaymentValue('MPayEnabled', checked)
+                }
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='MPayApiBase'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay API base URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='https://mpay.example.com'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Base address of your MPay service')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='MPayPaymentType'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay payment type')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='alipay'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>{t('Use alipay or wxpay')}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='MPayPid'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay merchant ID')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        autoComplete='off'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='MPayKey'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay secret key')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='password'
+                        placeholder={t('Enter new key to update')}
+                        autoComplete='new-password'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank unless rotating the secret')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='MPayNotifyURL'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay notify URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='http://118.25.43.185/api/mpay/notify'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank to use the default callback URL')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='MPayReturnURL'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay return URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='http://118.25.43.185/wallet'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank to return to the wallet page')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-3'>
+              <FormField
+                control={form.control}
+                name='MPayUnitPrice'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay unit price')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        step='0.01'
+                        min={0}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('How much to charge for each US dollar of balance')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='MPayMinTopUp'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay minimum top-up')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        step='0.1'
+                        min={0.1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='MPayNotifySuccess'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('MPay success response')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='success'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Response body returned after successful callback')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Gateway Card: Stripe */}
+          <div className='rounded-xl border bg-gradient-to-br from-purple-50 to-indigo-100 p-5 dark:from-purple-950 dark:to-indigo-900'>
+            <div className='mb-4 flex flex-wrap items-center gap-3 sm:flex-nowrap'>
+              <div className='flex size-10 shrink-0 items-center justify-center rounded-lg bg-purple-500 text-white shadow-sm'>
+                <CreditCard className='size-5' />
+              </div>
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <h3 className='text-lg font-semibold'>{t('Stripe Gateway')}</h3>
+                  <Badge variant='outline' className='bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'>
+                    <Globe className='mr-1 size-3' />
+                    {t('Global')}
+                  </Badge>
+                </div>
+                <p className='text-muted-foreground text-sm'>
+                  {t('Configuration for Stripe payment integration')}
+                </p>
+              </div>
+            </div>
+
+            <div className='rounded-lg bg-white/60 p-4 text-sm text-blue-900 dark:bg-black/20 dark:text-blue-100'>
+              <div className='mb-2 flex items-center gap-2 font-medium'>
+                <Receipt className='size-4' />
+                {t('Webhook Configuration:')}
+              </div>
+              <ul className='list-inside list-disc space-y-1.5'>
                 <li>
                   {t('Webhook URL:')}{' '}
-                  <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
+                  <code className='rounded bg-purple-100 px-1.5 py-0.5 text-xs dark:bg-purple-900'>
                     {'<ServerAddress>/api/stripe/webhook'}
                   </code>
                 </li>
                 <li>
                   {t('Required events:')}{' '}
-                  <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
+                  <code className='rounded bg-purple-100 px-1.5 py-0.5 text-xs dark:bg-purple-900'>
                     {t('checkout.session.completed')}
                   </code>{' '}
                   {t('and')}{' '}
-                  <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
+                  <code className='rounded bg-purple-100 px-1.5 py-0.5 text-xs dark:bg-purple-900'>
                     {t('checkout.session.expired')}
                   </code>
                 </li>
@@ -1367,20 +2086,35 @@ export function PaymentSettingsSection({
 
           <Separator />
 
-          <div className='space-y-4'>
-            <div>
-              <h3 className='text-lg font-medium'>{t('Creem Gateway')}</h3>
-              <p className='text-muted-foreground text-sm'>
-                {t('Configuration for Creem payment integration')}
-              </p>
+          {/* Gateway Card: Creem */}
+          <div className='rounded-xl border bg-gradient-to-br from-pink-50 to-rose-100 p-5 dark:from-pink-950 dark:to-rose-900'>
+            <div className='mb-4 flex flex-wrap items-center gap-3 sm:flex-nowrap'>
+              <div className='flex size-10 shrink-0 items-center justify-center rounded-lg bg-pink-500 text-white shadow-sm'>
+                <Sparkles className='size-5' />
+              </div>
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <h3 className='text-lg font-semibold'>{t('Creem Gateway')}</h3>
+                  <Badge variant='outline' className='bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'>
+                    <UserCheck className='mr-1 size-3' />
+                    {t('Modern')}
+                  </Badge>
+                </div>
+                <p className='text-muted-foreground text-sm'>
+                  {t('Configuration for Creem payment integration')}
+                </p>
+              </div>
             </div>
 
-            <div className='rounded-md bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100'>
-              <p className='mb-2 font-medium'>{t('Webhook Configuration:')}</p>
-              <ul className='list-inside list-disc space-y-1'>
+            <div className='rounded-lg bg-white/60 p-4 text-sm text-pink-900 dark:bg-black/20 dark:text-pink-100'>
+              <div className='mb-2 flex items-center gap-2 font-medium'>
+                <Receipt className='size-4' />
+                {t('Webhook Configuration:')}
+              </div>
+              <ul className='list-inside list-disc space-y-1.5'>
                 <li>
                   {t('Webhook URL:')}{' '}
-                  <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
+                  <code className='rounded bg-pink-100 px-1.5 py-0.5 text-xs dark:bg-pink-900'>
                     {'<ServerAddress>/api/creem/webhook'}
                   </code>
                 </li>

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Component } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -31,6 +33,35 @@ import { useRankings } from './hooks/use-rankings'
 import type { RankingPeriod } from './types'
 
 const VALID_PERIODS: RankingPeriod[] = ['today', 'week', 'month', 'year', 'all']
+
+type RankingsSectionErrorBoundaryProps = {
+  children: ReactNode
+  fallback: ReactNode
+}
+
+type RankingsSectionErrorBoundaryState = {
+  hasError: boolean
+}
+
+class RankingsSectionErrorBoundary extends Component<
+  RankingsSectionErrorBoundaryProps,
+  RankingsSectionErrorBoundaryState
+> {
+  state: RankingsSectionErrorBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): RankingsSectionErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
+    console.error('Rankings section failed to render', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback
+    return this.props.children
+  }
+}
 
 export function Rankings() {
   const { t } = useTranslation()
@@ -86,27 +117,51 @@ export function Rankings() {
             />
           ) : (
             <>
-              <ModelsSection
-                history={snapshot.models_history}
-                rows={snapshot.models}
-                period={period}
-              />
+              <RankingsSectionErrorBoundary
+                fallback={<RankingsSectionFallback title={t('Top Models')} />}
+              >
+                <ModelsSection
+                  history={snapshot.models_history}
+                  rows={snapshot.models}
+                  period={period}
+                />
+              </RankingsSectionErrorBoundary>
 
-              <MarketShareSection
-                history={snapshot.vendor_share_history}
-                rows={snapshot.vendors}
-                period={period}
-              />
+              <RankingsSectionErrorBoundary
+                fallback={<RankingsSectionFallback title={t('Market Share')} />}
+              >
+                <MarketShareSection
+                  history={snapshot.vendor_share_history}
+                  rows={snapshot.vendors}
+                  period={period}
+                />
+              </RankingsSectionErrorBoundary>
 
-              <PulseSection
-                movers={snapshot.top_movers}
-                droppers={snapshot.top_droppers}
-              />
+              <RankingsSectionErrorBoundary
+                fallback={<RankingsSectionFallback title={t('Trending')} />}
+              >
+                <PulseSection
+                  movers={snapshot.top_movers}
+                  droppers={snapshot.top_droppers}
+                />
+              </RankingsSectionErrorBoundary>
             </>
           )}
         </PageTransition>
       </div>
     </PublicLayout>
+  )
+}
+
+function RankingsSectionFallback(props: { title: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className='bg-card rounded-lg border border-dashed px-6 py-10 text-center'>
+      <h2 className='text-foreground text-sm font-semibold'>{props.title}</h2>
+      <p className='text-muted-foreground mt-2 text-sm'>
+        {t('Unable to render this rankings section')}
+      </p>
+    </div>
   )
 }
 

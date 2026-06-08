@@ -7,8 +7,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -119,6 +121,9 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
+	// XPay v3.1 order status polling for automatic top-up confirmation
+	service.StartXPayOrderPollingTask()
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)
@@ -158,7 +163,53 @@ func main() {
 		common.SysError(fmt.Sprintf("start pyroscope error : %v", err))
 	}
 
-	// Initialize HTTP server
+	assets := router.ThemeAssets{
+		DefaultBuildFS:   buildFS,
+		DefaultIndexPage: indexPage,
+		ClassicBuildFS:   classicBuildFS,
+		ClassicIndexPage: classicIndexPage,
+	}
+
+	adminPort := os.Getenv("ADMIN_PORT")
+	if adminPort == "" {
+		adminPort = os.Getenv("PORT")
+	}
+	if adminPort == "" {
+		adminPort = strconv.Itoa(*common.Port)
+	}
+	publicPort := os.Getenv("PUBLIC_PORT")
+	if publicPort == "" {
+		publicPort = "80"
+	}
+
+	adminServer := newHTTPServer(assets, router.ExposureModeAdmin)
+	publicServer := newHTTPServer(assets, router.ExposureModePublic)
+
+	common.LogStartupSuccess(startTime, publicPort)
+	common.SysLog(fmt.Sprintf("public user endpoint listening on :%s", publicPort))
+	common.SysLog(fmt.Sprintf("admin endpoint listening on :%s", adminPort))
+
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- publicServer.Run(":" + publicPort)
+	}()
+	go func() {
+		errCh <- adminServer.Run(":" + adminPort)
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	select {
+	case sig := <-sigCh:
+		common.SysLog("received signal: " + sig.String())
+	case err = <-errCh:
+		if err != nil {
+			common.FatalLog("failed to start HTTP server: " + err.Error())
+		}
+	}
+}
+
+func newHTTPServer(assets router.ThemeAssets, exposure router.ExposureMode) *gin.Engine {
 	server := gin.New()
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
@@ -190,24 +241,8 @@ func main() {
 	InjectGoogleAnalytics()
 
 	// 设置路由
-	router.SetRouter(server, router.ThemeAssets{
-		DefaultBuildFS:   buildFS,
-		DefaultIndexPage: indexPage,
-		ClassicBuildFS:   classicBuildFS,
-		ClassicIndexPage: classicIndexPage,
-	})
-	var port = os.Getenv("PORT")
-	if port == "" {
-		port = strconv.Itoa(*common.Port)
-	}
-
-	// Log startup success message
-	common.LogStartupSuccess(startTime, port)
-
-	err = server.Run(":" + port)
-	if err != nil {
-		common.FatalLog("failed to start HTTP server: " + err.Error())
-	}
+	router.SetRouterWithOptions(server, assets, router.RouterOptions{Exposure: exposure})
+	return server
 }
 
 func InjectUmamiAnalytics() {

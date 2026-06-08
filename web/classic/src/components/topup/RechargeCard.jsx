@@ -450,11 +450,11 @@ const RechargeCard = ({
                       // 根据当前货币类型换算显示金额和数量
                       const { symbol, rate, type } = getCurrencyConfig();
                       const statusStr = localStorage.getItem('status');
-                      let usdRate = 7; // 默认CNY汇率
+                      let usdRate = 7.3; // 默认CNY汇率
                       try {
                         if (statusStr) {
                           const s = JSON.parse(statusStr);
-                          usdRate = s?.usd_exchange_rate || 7;
+                          usdRate = s?.usd_exchange_rate || 7.3;
                         }
                       } catch (e) {}
 

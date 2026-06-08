@@ -43,6 +43,17 @@ type NormalizedRequiredTextPart = RequiredTextPart & {
   inputIndex?: number
 }
 
+const normalizeRequiredTextValue = (value: string) =>
+  value
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const requiredTextValueMatches = (typedValue: string, requiredValue: string) =>
+  normalizeRequiredTextValue(typedValue) ===
+  normalizeRequiredTextValue(requiredValue)
+
 type RiskAcknowledgementDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -108,8 +119,13 @@ export function RiskAcknowledgementDialog({
     [normalizedRequiredTextParts]
   )
   const hasSegmentedRequiredText = requiredTextInputCount > 0
+  const inputRequiredTextParts = useMemo(
+    () =>
+      normalizedRequiredTextParts.filter((part) => part.type === 'input'),
+    [normalizedRequiredTextParts]
+  )
   const requiredTextToDisplay = hasSegmentedRequiredText
-    ? normalizedRequiredTextParts.map((part) => part.text).join('')
+    ? inputRequiredTextParts.map((part) => part.text).join('\n')
     : requiredText
 
   useEffect(() => {
@@ -129,23 +145,26 @@ export function RiskAcknowledgementDialog({
 
   const typedMatched = useMemo(() => {
     if (hasSegmentedRequiredText) {
-      return normalizedRequiredTextParts.every((part) => {
-        if (part.type === 'static') return true
-        return typedTextParts[part.inputIndex ?? 0]?.trim() === part.text.trim()
+      return inputRequiredTextParts.every((part) => {
+        const typedPart = typedTextParts[part.inputIndex ?? 0] ?? ''
+        return requiredTextValueMatches(typedPart, part.text)
       })
     }
     if (!requiredText) return true
-    return typedText.trim() === requiredText.trim()
+    return requiredTextValueMatches(typedText, requiredText)
   }, [
     hasSegmentedRequiredText,
-    normalizedRequiredTextParts,
+    inputRequiredTextParts,
     requiredText,
     typedText,
     typedTextParts,
   ])
   const hasTypedRequiredText = hasSegmentedRequiredText
-    ? typedTextParts.some((part) => part.trim() !== '')
+    ? typedTextParts.some((part) => normalizeRequiredTextValue(part) !== '')
     : typedText.length > 0
+  const shouldShowMismatchHint = hasSegmentedRequiredText
+    ? !typedMatched
+    : hasTypedRequiredText && !typedMatched
 
   const canConfirm = allChecked && typedMatched && !isLoading
 
@@ -225,22 +244,22 @@ export function RiskAcknowledgementDialog({
               <Label className='text-sm font-medium'>
                 {inputPrompt ?? t('Please type the following text to confirm:')}
               </Label>
-              <div className='bg-background border-border rounded-md border px-3 py-2 font-mono text-sm break-all'>
-                {requiredTextToDisplay}
-              </div>
+              {!hasSegmentedRequiredText ? (
+                <div className='bg-background border-border rounded-md border px-3 py-2 font-mono text-sm break-all'>
+                  {requiredTextToDisplay}
+                </div>
+              ) : null}
               {hasSegmentedRequiredText ? (
-                <div className='flex flex-wrap items-center gap-2'>
-                  {normalizedRequiredTextParts.map((part, index) =>
-                    part.type === 'static' ? (
-                      <span
-                        key={`static-${index}`}
-                        className='text-muted-foreground bg-background/70 border-border rounded-md border px-2 py-1.5 font-mono text-sm select-none'
-                      >
+                <div className='grid gap-3 sm:grid-cols-2'>
+                  {inputRequiredTextParts.map((part, index) => (
+                    <div
+                      key={`input-${part.inputIndex ?? index}`}
+                      className='space-y-1'
+                    >
+                      <div className='bg-background border-border rounded-md border px-3 py-2 font-mono text-sm break-all'>
                         {part.text}
-                      </span>
-                    ) : (
+                      </div>
                       <Input
-                        key={`input-${index}`}
                         value={typedTextParts[part.inputIndex ?? 0] ?? ''}
                         onChange={(event) =>
                           handleTextPartChange(
@@ -259,11 +278,19 @@ export function RiskAcknowledgementDialog({
                         onCut={(event) => event.preventDefault()}
                         onPaste={(event) => event.preventDefault()}
                         onDrop={(event) => event.preventDefault()}
-                        aria-invalid={hasTypedRequiredText && !typedMatched}
-                        className='w-full font-mono sm:w-64'
+                        aria-invalid={
+                          normalizeRequiredTextValue(
+                            typedTextParts[part.inputIndex ?? 0] ?? ''
+                          ) !== '' &&
+                          !requiredTextValueMatches(
+                            typedTextParts[part.inputIndex ?? 0] ?? '',
+                            part.text
+                          )
+                        }
+                        className='font-mono'
                       />
-                    )
-                  )}
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <Input
@@ -277,10 +304,10 @@ export function RiskAcknowledgementDialog({
                   onCut={(event) => event.preventDefault()}
                   onPaste={(event) => event.preventDefault()}
                   onDrop={(event) => event.preventDefault()}
-                  aria-invalid={hasTypedRequiredText && !typedMatched}
+                  aria-invalid={shouldShowMismatchHint}
                 />
               )}
-              {hasTypedRequiredText && !typedMatched ? (
+              {shouldShowMismatchHint ? (
                 <p className='text-destructive text-xs'>
                   {mismatchHint ??
                     t('The entered text does not match the required text.')}

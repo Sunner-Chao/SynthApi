@@ -81,6 +81,27 @@ func InitOptionMap() {
 	common.OptionMap["EpayPrivateKey"] = ""
 	common.OptionMap["EpayPublicKey"] = ""
 	common.OptionMap["XPayCallbackSecret"] = ""
+	common.OptionMap["XPayEnabled"] = strconv.FormatBool(setting.XPayEnabled)
+	common.OptionMap["XPayApiBase"] = setting.XPayApiBase
+	common.OptionMap["XPayAppID"] = setting.XPayAppID
+	common.OptionMap["XPayAppSecret"] = setting.XPayAppSecret
+	common.OptionMap["XPayPaymentType"] = setting.XPayPaymentType
+	common.OptionMap["XPayReturnURL"] = setting.XPayReturnURL
+	common.OptionMap["XPayNotifyURL"] = setting.XPayNotifyURL
+	common.OptionMap["XPayUnitPrice"] = strconv.FormatFloat(setting.XPayUnitPrice, 'f', -1, 64)
+	common.OptionMap["XPayMinTopUp"] = strconv.FormatFloat(setting.XPayMinTopUp, 'f', -1, 64)
+	common.OptionMap["XPayGatewayPath"] = setting.XPayGatewayPath
+	common.OptionMap["XPayNotifySuccess"] = setting.XPayNotifySuccess
+	common.OptionMap["MPayEnabled"] = strconv.FormatBool(setting.MPayEnabled)
+	common.OptionMap["MPayApiBase"] = setting.MPayApiBase
+	common.OptionMap["MPayPid"] = setting.MPayPid
+	common.OptionMap["MPayKey"] = setting.MPayKey
+	common.OptionMap["MPayPaymentType"] = setting.MPayPaymentType
+	common.OptionMap["MPayReturnURL"] = setting.MPayReturnURL
+	common.OptionMap["MPayNotifyURL"] = setting.MPayNotifyURL
+	common.OptionMap["MPayUnitPrice"] = strconv.FormatFloat(setting.MPayUnitPrice, 'f', -1, 64)
+	common.OptionMap["MPayMinTopUp"] = strconv.FormatFloat(setting.MPayMinTopUp, 'f', -1, 64)
+	common.OptionMap["MPayNotifySuccess"] = setting.MPayNotifySuccess
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
@@ -190,6 +211,18 @@ func InitOptionMap() {
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	for _, option := range options {
+		if isDisplayQuotaOption(option.Key) {
+			continue
+		}
+		err := updateOptionMap(option.Key, option.Value)
+		if err != nil {
+			common.SysLog("failed to update option map: " + err.Error())
+		}
+	}
+	for _, option := range options {
+		if !isDisplayQuotaOption(option.Key) {
+			continue
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
@@ -252,6 +285,27 @@ func UpdateOptionsBulk(values map[string]string) error {
 		}
 	}
 	return nil
+}
+
+func isDisplayQuotaOption(key string) bool {
+	switch key {
+	case "QuotaForNewUser", "QuotaForInviter", "QuotaForInvitee":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseDisplayQuota(value string) int {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0
+	}
+	amount, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil || amount <= 0 {
+		return 0
+	}
+	return operation_setting.DisplayAmountToQuota(amount)
 }
 
 func updateOptionMap(key string, value string) (err error) {
@@ -401,6 +455,48 @@ func updateOptionMap(key string, value string) (err error) {
 		operation_setting.EpayPublicKey = value
 	case "XPayCallbackSecret":
 		common.XPayCallbackSecret = value
+	case "XPayEnabled":
+		setting.XPayEnabled = value == "true"
+	case "XPayApiBase":
+		setting.XPayApiBase = strings.TrimRight(value, "/")
+	case "XPayAppID":
+		setting.XPayAppID = value
+	case "XPayAppSecret":
+		setting.XPayAppSecret = value
+	case "XPayPaymentType":
+		setting.XPayPaymentType = value
+	case "XPayReturnURL":
+		setting.XPayReturnURL = value
+	case "XPayNotifyURL":
+		setting.XPayNotifyURL = value
+	case "XPayUnitPrice":
+		setting.XPayUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "XPayMinTopUp":
+		setting.XPayMinTopUp, _ = strconv.ParseFloat(value, 64)
+	case "XPayGatewayPath":
+		setting.XPayGatewayPath = value
+	case "XPayNotifySuccess":
+		setting.XPayNotifySuccess = value
+	case "MPayEnabled":
+		setting.MPayEnabled = value == "true"
+	case "MPayApiBase":
+		setting.MPayApiBase = strings.TrimRight(value, "/")
+	case "MPayPid":
+		setting.MPayPid = value
+	case "MPayKey":
+		setting.MPayKey = value
+	case "MPayPaymentType":
+		setting.MPayPaymentType = value
+	case "MPayReturnURL":
+		setting.MPayReturnURL = value
+	case "MPayNotifyURL":
+		setting.MPayNotifyURL = value
+	case "MPayUnitPrice":
+		setting.MPayUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "MPayMinTopUp":
+		setting.MPayMinTopUp, _ = strconv.ParseFloat(value, 64)
+	case "MPayNotifySuccess":
+		setting.MPayNotifySuccess = value
 	case "Price":
 		operation_setting.Price, _ = strconv.ParseFloat(value, 64)
 	case "USDExchangeRate":
@@ -504,11 +600,11 @@ func updateOptionMap(key string, value string) (err error) {
 	case "TurnstileSecretKey":
 		common.TurnstileSecretKey = value
 	case "QuotaForNewUser":
-		common.QuotaForNewUser, _ = strconv.Atoi(value)
+		common.QuotaForNewUser = parseDisplayQuota(value)
 	case "QuotaForInviter":
-		common.QuotaForInviter, _ = strconv.Atoi(value)
+		common.QuotaForInviter = parseDisplayQuota(value)
 	case "QuotaForInvitee":
-		common.QuotaForInvitee, _ = strconv.Atoi(value)
+		common.QuotaForInvitee = parseDisplayQuota(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

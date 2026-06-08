@@ -98,6 +98,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
 				selfRoute.POST("/qrcode/pay", middleware.CriticalRateLimit(), controller.RequestQRCodePayment)
 				selfRoute.POST("/xpay/create", middleware.CriticalRateLimit(), controller.XPayCreateOrder)
+				selfRoute.POST("/mpay/create", middleware.CriticalRateLimit(), controller.MPayCreateOrder)
 				selfRoute.GET("/xpay/status/:trade_no", controller.XPayOrderStatus)
 				selfRoute.GET("/xpay/orders", controller.XPayUserOrders)
 				selfRoute.POST("/amount", controller.RequestAmount)
@@ -182,7 +183,11 @@ func SetApiRouter(router *gin.Engine) {
 
 		// XPay callback and notification (no auth)
 		apiRouter.POST("/xpay/callback", controller.XPayCallback)
+		apiRouter.GET("/xpay/callback", controller.XPayCallback)
 		apiRouter.POST("/xpay/notify", controller.XPaySubmitNotification)
+		apiRouter.GET("/xpay/notify", controller.XPaySubmitNotification)
+		apiRouter.POST("/mpay/notify", controller.MPayCallback)
+		apiRouter.GET("/mpay/notify", controller.MPayCallback)
 
 		// Subscription payment callbacks (no auth)
 		apiRouter.POST("/subscription/epay/notify", controller.SubscriptionEpayNotify)

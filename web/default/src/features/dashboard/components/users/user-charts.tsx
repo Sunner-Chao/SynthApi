@@ -16,17 +16,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import {
+  Component,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+} from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Users, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
+import { formatQuotaWithCurrency } from '@/lib/currency'
+import { formatNumber } from '@/lib/format'
 import { VCHART_OPTION } from '@/lib/vchart'
 import { useThemeCustomization } from '@/context/theme-customization-provider'
 import { useTheme } from '@/context/theme-provider'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
 import {
   TIME_GRANULARITY_OPTIONS,
@@ -38,7 +56,10 @@ import {
   saveGranularity,
   processUserChartData,
 } from '@/features/dashboard/lib'
-import type { ProcessedUserChartData } from '@/features/dashboard/types'
+import type {
+  ProcessedUserChartData,
+  QuotaDataItem,
+} from '@/features/dashboard/types'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -62,6 +83,74 @@ const USER_CHARTS: {
 ]
 
 const TOP_USER_LIMIT_OPTIONS = [5, 10, 20, 50]
+
+type UserDetailRow = {
+  username: string
+  quota: number
+  count: number
+  tokenUsed: number
+  share: number
+}
+
+type UserChartErrorBoundaryProps = {
+  children: ReactNode
+  fallback: ReactNode
+}
+
+type UserChartErrorBoundaryState = {
+  hasError: boolean
+}
+
+class UserChartErrorBoundary extends Component<
+  UserChartErrorBoundaryProps,
+  UserChartErrorBoundaryState
+> {
+  state: UserChartErrorBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): UserChartErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
+    console.error('User chart failed to render', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback
+    return this.props.children
+  }
+}
+
+function buildUserDetailRows(data: QuotaDataItem[], limit: number) {
+  const byUser = new Map<string, Omit<UserDetailRow, 'share'>>()
+
+  data.forEach((item) => {
+    const username = item.username || 'unknown'
+    const current = byUser.get(username) ?? {
+      username,
+      quota: 0,
+      count: 0,
+      tokenUsed: 0,
+    }
+    current.quota += Number(item.quota) || 0
+    current.count += Number(item.count) || 0
+    current.tokenUsed += Number(item.token_used) || 0
+    byUser.set(username, current)
+  })
+
+  const totalQuota = Array.from(byUser.values()).reduce(
+    (sum, item) => sum + item.quota,
+    0
+  )
+
+  return Array.from(byUser.values())
+    .sort((a, b) => b.quota - a.quota)
+    .slice(0, limit)
+    .map((item) => ({
+      ...item,
+      share: totalQuota > 0 ? item.quota / totalQuota : 0,
+    }))
+}
 
 export function UserCharts() {
   const { t } = useTranslation()
@@ -152,6 +241,11 @@ export function UserCharts() {
     ]
   )
 
+  const userRows = useMemo(
+    () => buildUserDetailRows(isLoading ? [] : (userData ?? []), topUserLimit),
+    [userData, isLoading, topUserLimit]
+  )
+
   return (
     <div className='space-y-3'>
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
@@ -234,11 +328,16 @@ export function UserCharts() {
               </div>
 
               <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
-                {isLoading ? (
-                  <Skeleton className='h-full w-full' />
-                ) : (
-                  themeReady &&
-                  spec && (
+                <UserChartErrorBoundary
+                  fallback={
+                    <div className='text-muted-foreground/80 flex h-full items-center justify-center text-xs'>
+                      {t('Unable to render chart')}
+                    </div>
+                  }
+                >
+                  {isLoading ? (
+                    <Skeleton className='h-full w-full' />
+                  ) : themeReady && spec ? (
                     <VChart
                       key={`user-${chart.value}-${topUserLimit}-${resolvedTheme}-${customization.preset}`}
                       spec={{
@@ -248,12 +347,80 @@ export function UserCharts() {
                       }}
                       option={VCHART_OPTION}
                     />
-                  )
-                )}
+                  ) : null}
+                </UserChartErrorBoundary>
               </div>
             </div>
           )
         })}
+
+        <div className='overflow-hidden rounded-lg border'>
+          <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
+            <Users className='text-muted-foreground/60 size-4' />
+            <div className='text-sm font-semibold'>{t('User Details')}</div>
+          </div>
+          <div className='overflow-x-auto'>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className='w-14'>{t('Rank')}</TableHead>
+                  <TableHead>{t('User')}</TableHead>
+                  <TableHead className='text-right'>{t('Usage')}</TableHead>
+                  <TableHead className='text-right'>{t('Requests')}</TableHead>
+                  <TableHead className='text-right'>{t('Tokens')}</TableHead>
+                  <TableHead className='text-right'>{t('Share')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <TableRow key={index}>
+                      {Array.from({ length: 6 }).map((__, cellIndex) => (
+                        <TableCell key={cellIndex}>
+                          <Skeleton className='h-4 w-full' />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : userRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className='text-muted-foreground h-24 text-center'
+                    >
+                      {t('No data available')}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  userRows.map((row, index) => (
+                    <TableRow key={row.username}>
+                      <TableCell className='text-muted-foreground font-mono text-xs'>
+                        #{index + 1}
+                      </TableCell>
+                      <TableCell className='font-medium'>
+                        {row.username}
+                      </TableCell>
+                      <TableCell className='text-right font-mono'>
+                        {formatQuotaWithCurrency(row.quota, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell className='text-right font-mono'>
+                        {formatNumber(row.count)}
+                      </TableCell>
+                      <TableCell className='text-right font-mono'>
+                        {formatNumber(row.tokenUsed)}
+                      </TableCell>
+                      <TableCell className='text-right font-mono'>
+                        {(row.share * 100).toFixed(1)}%
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
       </div>
     </div>
   )

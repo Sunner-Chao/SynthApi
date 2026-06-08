@@ -16,7 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
+import {
+  Component,
+  useState,
+  useCallback,
+  useMemo,
+  lazy,
+  Suspense,
+} from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
@@ -128,6 +136,35 @@ function PerformanceOverviewFallback() {
       </div>
     </div>
   )
+}
+
+type DashboardPanelErrorBoundaryProps = {
+  children: ReactNode
+  fallback: ReactNode
+}
+
+type DashboardPanelErrorBoundaryState = {
+  hasError: boolean
+}
+
+class DashboardPanelErrorBoundary extends Component<
+  DashboardPanelErrorBoundaryProps,
+  DashboardPanelErrorBoundaryState
+> {
+  state: DashboardPanelErrorBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): DashboardPanelErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
+    console.error('Dashboard panel failed to render', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback
+    return this.props.children
+  }
 }
 
 const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
@@ -249,53 +286,69 @@ export function Dashboard() {
           {activeSection === 'models' && (
             <>
               <FadeIn>
-                <Suspense fallback={<LogStatCardsFallback />}>
-                  <LazyLogStatCards
-                    filters={modelFilters}
-                    onDataUpdate={handleDataUpdate}
-                  />
-                </Suspense>
+                <DashboardPanelErrorBoundary
+                  fallback={<LogStatCardsFallback />}
+                >
+                  <Suspense fallback={<LogStatCardsFallback />}>
+                    <LazyLogStatCards
+                      filters={modelFilters}
+                      onDataUpdate={handleDataUpdate}
+                    />
+                  </Suspense>
+                </DashboardPanelErrorBoundary>
               </FadeIn>
               {isAdmin && (
                 <FadeIn delay={0.05}>
-                  <Suspense fallback={<PerformanceOverviewFallback />}>
-                    <LazyPerformanceOverview />
-                  </Suspense>
+                  <DashboardPanelErrorBoundary
+                    fallback={<PerformanceOverviewFallback />}
+                  >
+                    <Suspense fallback={<PerformanceOverviewFallback />}>
+                      <LazyPerformanceOverview />
+                    </Suspense>
+                  </DashboardPanelErrorBoundary>
                 </FadeIn>
               )}
               <FadeIn delay={0.1}>
-                <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyConsumptionDistributionChart
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartType={
-                      chartPreferences.consumptionDistributionChart
-                    }
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
-                  />
-                </Suspense>
+                <DashboardPanelErrorBoundary fallback={<ModelChartsFallback />}>
+                  <Suspense fallback={<ModelChartsFallback />}>
+                    <LazyConsumptionDistributionChart
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartType={
+                        chartPreferences.consumptionDistributionChart
+                      }
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </DashboardPanelErrorBoundary>
               </FadeIn>
               <FadeIn delay={0.15}>
-                <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyModelCharts
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartTab={chartPreferences.modelAnalyticsChart}
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
-                  />
-                </Suspense>
+                <DashboardPanelErrorBoundary fallback={<ModelChartsFallback />}>
+                  <Suspense fallback={<ModelChartsFallback />}>
+                    <LazyModelCharts
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartTab={chartPreferences.modelAnalyticsChart}
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </DashboardPanelErrorBoundary>
               </FadeIn>
             </>
           )}
           {activeSection === 'users' && (
             <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyUserCharts />
-              </Suspense>
+              <DashboardPanelErrorBoundary fallback={<ModelChartsFallback />}>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazyUserCharts />
+                </Suspense>
+              </DashboardPanelErrorBoundary>
             </FadeIn>
           )}
         </div>

@@ -1,6 +1,11 @@
 package operation_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"math"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 // 额度展示类型
 const (
@@ -88,4 +93,43 @@ func GetUsdToCurrencyRate(usdToCny float64) float64 {
 	default:
 		return 1
 	}
+}
+
+func DisplayAmountToUSD(amount float64) float64 {
+	if amount <= 0 {
+		return 0
+	}
+	switch generalSetting.QuotaDisplayType {
+	case QuotaDisplayTypeCNY:
+		if USDExchangeRate <= 0 {
+			return 0
+		}
+		return amount / USDExchangeRate
+	case QuotaDisplayTypeCustom:
+		rate := generalSetting.CustomCurrencyExchangeRate
+		if rate <= 0 {
+			rate = 1
+		}
+		return amount / rate
+	case QuotaDisplayTypeTokens:
+		if common.QuotaPerUnit <= 0 {
+			return 0
+		}
+		return amount / common.QuotaPerUnit
+	default:
+		return amount
+	}
+}
+
+func DisplayAmountToQuota(amount float64) int {
+	if amount <= 0 {
+		return 0
+	}
+	if generalSetting.QuotaDisplayType == QuotaDisplayTypeTokens {
+		return int(math.Round(amount))
+	}
+	if common.QuotaPerUnit <= 0 {
+		return 0
+	}
+	return int(math.Round(DisplayAmountToUSD(amount) * common.QuotaPerUnit))
 }

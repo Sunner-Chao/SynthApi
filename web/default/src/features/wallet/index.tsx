@@ -30,7 +30,7 @@ import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
 import { WalletStatsCard } from './components/wallet-stats-card'
-import { DEFAULT_DISCOUNT_RATE } from './constants'
+import { DEFAULT_DISCOUNT_RATE, PAYMENT_TYPES } from './constants'
 import {
   useTopupInfo,
   usePayment,
@@ -193,9 +193,19 @@ export function Wallet(props: WalletProps) {
     if (!selectedPaymentMethod) return
 
     const isPancake = isWaffoPancakePayment(selectedPaymentMethod.type)
+    const paymentGateway =
+      topupInfo?.enable_mpay_topup &&
+      (selectedPaymentMethod.type === PAYMENT_TYPES.ALIPAY ||
+        selectedPaymentMethod.type === PAYMENT_TYPES.WECHAT)
+        ? 'mpay'
+        : undefined
     const success = isPancake
       ? await processWaffoPancakePayment(topupAmount)
-      : await processPayment(topupAmount, selectedPaymentMethod.type)
+      : await processPayment(
+          topupAmount,
+          selectedPaymentMethod.type,
+          paymentGateway
+        )
 
     if (success) {
       setConfirmDialogOpen(false)

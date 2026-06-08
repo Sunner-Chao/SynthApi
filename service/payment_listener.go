@@ -119,7 +119,7 @@ func (pl *PaymentListener) matchPendingOrder(notification PaymentNotification) b
 			// 检查支付方式是否匹配
 			if pl.paymentMethodMatches(order.PaymentMethod, notification.Platform) {
 				// 自动确认订单
-				if err := ConfirmXPayOrder(order.TradeNo, 0); err != nil {
+				if err := ConfirmXPayOrder(order.TradeNo, notification.Amount, "payment-listener"); err != nil {
 					logger.LogError(context.Background(), fmt.Sprintf(
 						"自动确认订单失败: trade_no=%s error=%v",
 						order.TradeNo, err,
