@@ -17,7 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { formatCurrencyFromUSD } from '@/lib/currency'
-import { QUOTA_TYPE_VALUES, TOKEN_UNIT_DIVISORS } from '../constants'
+import {
+  EXCLUDED_GROUPS,
+  QUOTA_TYPE_VALUES,
+  TOKEN_UNIT_DIVISORS,
+} from '../constants'
 import type { PricingModel, TokenUnit, PriceType } from '../types'
 
 // ----------------------------------------------------------------------------
@@ -77,19 +81,24 @@ export function getMinGroupRatioForModel(
 ): number {
   const validRatio = (ratio: unknown): ratio is number =>
     Number.isFinite(Number(ratio)) && Number(ratio) > 0
-  const ratios = Object.values(groupRatio).filter(validRatio)
+  const publicGroupRatio = Object.fromEntries(
+    Object.entries(groupRatio).filter(
+      ([group]) => !EXCLUDED_GROUPS.includes(group)
+    )
+  )
+  const ratios = Object.values(publicGroupRatio).filter(validRatio)
   const globalMinRatio = ratios.length > 0 ? Math.min(...ratios) : 1
 
   const direction = getModelPricingDirection(modelName)
   const enabledGroupNames =
     enableGroups.length === 0 || enableGroups.includes('all')
-      ? Object.keys(groupRatio)
-      : enableGroups
+      ? Object.keys(publicGroupRatio)
+      : enableGroups.filter((group) => !EXCLUDED_GROUPS.includes(group))
 
   if (direction) {
     const directionalRatios = enabledGroupNames
       .filter((group) => group.toLowerCase().includes(direction))
-      .map((group) => groupRatio[group])
+      .map((group) => publicGroupRatio[group])
       .filter(validRatio)
 
     if (directionalRatios.length > 0) {
@@ -104,7 +113,7 @@ export function getMinGroupRatioForModel(
   let minRatio = Number.POSITIVE_INFINITY
 
   for (const group of enableGroups) {
-    const ratio = groupRatio[group]
+    const ratio = publicGroupRatio[group]
     if (ratio !== undefined && ratio < minRatio) {
       minRatio = ratio
     }
