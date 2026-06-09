@@ -2709,6 +2709,7 @@
     "Only the last {{value}} log files will be retained; the rest will be deleted.": "Будут сохранены только последние {{value}} файлов журналов; остальные будут удалены.",
     "Oops! Page Not Found!": "Ой! Страница не найдена!",
     "Oops! Something went wrong": "Ой! Что-то пошло не так",
+    "Online Chat": "Онлайн-чат",
     "Open": "Открыть",
     "Open a source model first": "Сначала откройте исходную модель",
     "Open authorization page": "Открыть страницу авторизации",
