@@ -96,6 +96,8 @@ export interface CurrencyFormatOptions {
   abbreviate?: boolean
   /** Minimal absolute value to display when rounding would produce zero */
   minimumNonZero?: number
+  /** Allow financial/accounting displays to keep more than the normal UI cap */
+  preservePrecision?: boolean
 }
 
 type DisplayMeta =
@@ -122,6 +124,7 @@ const DEFAULT_FORMAT_OPTIONS: Required<CurrencyFormatOptions> = {
   maximumFractionDigits: 2,
   abbreviate: true,
   minimumNonZero: 0,
+  preservePrecision: false,
 }
 
 const MAX_UI_FRACTION_DIGITS = 2
@@ -220,24 +223,24 @@ function mergeOptions(
   if (!options) return DEFAULT_FORMAT_OPTIONS
   const fallbackDigits =
     options.maximumFractionDigits ?? DEFAULT_FORMAT_OPTIONS.digitsLarge
+  const maxDigits = options.preservePrecision ? 8 : MAX_UI_FRACTION_DIGITS
   return {
-    digitsLarge: Math.min(
-      options.digitsLarge ?? fallbackDigits,
-      MAX_UI_FRACTION_DIGITS
-    ),
+    digitsLarge: Math.min(options.digitsLarge ?? fallbackDigits, maxDigits),
     digitsSmall: Math.min(
       options.digitsSmall ??
         options.maximumFractionDigits ??
         DEFAULT_FORMAT_OPTIONS.digitsSmall,
-      MAX_UI_FRACTION_DIGITS
+      maxDigits
     ),
     maximumFractionDigits: Math.min(
-      options.maximumFractionDigits ?? MAX_UI_FRACTION_DIGITS,
-      MAX_UI_FRACTION_DIGITS
+      options.maximumFractionDigits ?? maxDigits,
+      maxDigits
     ),
     abbreviate: options.abbreviate ?? DEFAULT_FORMAT_OPTIONS.abbreviate,
     minimumNonZero:
       options.minimumNonZero ?? DEFAULT_FORMAT_OPTIONS.minimumNonZero,
+    preservePrecision:
+      options.preservePrecision ?? DEFAULT_FORMAT_OPTIONS.preservePrecision,
   }
 }
 
@@ -477,6 +480,25 @@ export function formatQuotaWithCurrency(
   const { config } = getCurrencyDisplay()
   const amountUSD = quota / config.quotaPerUnit
   return formatCurrencyFromUSD(amountUSD, options)
+}
+
+/**
+ * Format user-facing accounting quota/cost values with high precision.
+ * Use for usage logs, cost breakdowns, balance adjustments, and any place
+ * where rounding to two decimals would hide real consumption.
+ */
+export function formatAccountingQuotaWithCurrency(
+  quota: number | null | undefined,
+  options?: CurrencyFormatOptions
+): string {
+  return formatQuotaWithCurrency(quota, {
+    digitsLarge: 6,
+    digitsSmall: 8,
+    abbreviate: false,
+    minimumNonZero: 0.00000001,
+    ...options,
+    preservePrecision: true,
+  })
 }
 
 /**

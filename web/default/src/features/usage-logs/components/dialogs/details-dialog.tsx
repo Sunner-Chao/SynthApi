@@ -131,7 +131,18 @@ function DetailSection(props: {
 
 function formatRatio(ratio: number | undefined): string {
   if (ratio == null) return '-'
-  return ratio.toFixed(2)
+  if (!Number.isFinite(ratio)) return '-'
+  return ratio % 1 === 0
+    ? String(ratio)
+    : ratio.toFixed(8).replace(/\.?0+$/, '')
+}
+
+function formatDetailQuota(quota: number): string {
+  return formatLogQuota(quota).replace(/([.,]\d{2})\d+/, '$1')
+}
+
+function formatFormulaCount(value: number | null | undefined): string {
+  return Math.max(0, Number(value) || 0).toLocaleString()
 }
 
 function BillingBreakdown(props: {
@@ -142,14 +153,43 @@ function BillingBreakdown(props: {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
-  const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
 
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 2, digitsSmall: 2, abbreviate: false }
+  const formulaPriceOpts = {
+    digitsLarge: 6,
+    digitsSmall: 8,
+    abbreviate: false,
+    minimumNonZero: 0.00000001,
+    preservePrecision: true,
+  }
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
+  const fmtFormulaPrice = (usd: number) =>
+    formatBillingCurrencyFromUSD(usd, formulaPriceOpts)
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
+  const formulaParts: string[] = []
+  const addTokenFormulaPart = (
+    label: string,
+    tokens: number | null | undefined,
+    priceUSDPerM: number | null | undefined
+  ) => {
+    const tokenCount = Number(tokens) || 0
+    const price = Number(priceUSDPerM)
+    if (tokenCount <= 0 || !Number.isFinite(price) || price <= 0) return
+    formulaParts.push(
+      `${t(label)} ${formatFormulaCount(tokenCount)} × ${fmtFormulaPrice(price)} / 1M`
+    )
+  }
+  const addFlatFormulaPart = (
+    label: string,
+    amountUSD: number | null | undefined
+  ) => {
+    const amount = Number(amountUSD)
+    if (!Number.isFinite(amount) || amount <= 0) return
+    formulaParts.push(`${t(label)} ${fmtFormulaPrice(amount)}`)
+  }
 
   if (isTieredExpr) {
     rows.push({
@@ -168,6 +208,23 @@ function BillingBreakdown(props: {
           label: t(entry.shortLabel),
           value: `${fmtPrice(entry.price)}/M`,
         })
+        const tokensByField: Record<string, number | undefined> = {
+          inputPrice: log.prompt_tokens,
+          outputPrice: log.completion_tokens,
+          cacheReadPrice: other.cache_tokens,
+          cacheCreatePrice: other.cache_creation_tokens,
+          cacheCreate1hPrice: other.cache_creation_tokens_1h,
+          imagePrice: other.image_output,
+          imageOutputPrice: undefined,
+          audioInputPrice:
+            other.audio_input_token_count ?? other.audio_input ?? undefined,
+          audioOutputPrice: other.audio_output,
+        }
+        addTokenFormulaPart(
+          entry.shortLabel,
+          tokensByField[entry.field],
+          entry.price
+        )
       }
     } else {
       rows.push({
@@ -182,6 +239,7 @@ function BillingBreakdown(props: {
         label: t('Model Price'),
         value: fmtPrice(other.model_price),
       })
+      addFlatFormulaPart('Per-call', other.model_price)
     }
   } else {
     rows.push({ label: t('Billing Mode'), value: t('Per-token') })
@@ -190,12 +248,18 @@ function BillingBreakdown(props: {
         label: t('Input'),
         value: `${fmtPrice(baseInputUSD)}/M`,
       })
+      addTokenFormulaPart('Input', log.prompt_tokens, baseInputUSD)
     }
     if (other.completion_ratio != null && other.model_ratio != null) {
       rows.push({
         label: t('Output'),
         value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
       })
+      addTokenFormulaPart(
+        'Output',
+        log.completion_tokens,
+        baseInputUSD * other.completion_ratio
+      )
     }
   }
 
@@ -209,12 +273,17 @@ function BillingBreakdown(props: {
     })
   }
 
-  if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
-    if (other.cache_ratio != null && other.cache_ratio !== 1) {
+  if (!isTieredExpr && hasAnyCacheTokens(other) && other.cache_ratio != null) {
+    if (other.cache_ratio != null) {
       rows.push({
         label: t('Cache Read'),
         value: `${fmtPrice(baseInputUSD * other.cache_ratio)}/M`,
       })
+      addTokenFormulaPart(
+        'Cache Read',
+        other.cache_tokens,
+        baseInputUSD * other.cache_ratio
+      )
     }
     if (
       other.cache_creation_ratio != null &&
@@ -224,6 +293,11 @@ function BillingBreakdown(props: {
         label: t('Cache Creation'),
         value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio)}/M`,
       })
+      addTokenFormulaPart(
+        'Cache Creation',
+        other.cache_creation_tokens,
+        baseInputUSD * other.cache_creation_ratio
+      )
     }
     if (
       other.cache_creation_ratio_5m != null &&
@@ -233,6 +307,11 @@ function BillingBreakdown(props: {
         label: t('Cache Creation (5m)'),
         value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_5m)}/M`,
       })
+      addTokenFormulaPart(
+        'Cache Creation (5m)',
+        other.cache_creation_tokens_5m,
+        baseInputUSD * other.cache_creation_ratio_5m
+      )
     }
     if (
       other.cache_creation_ratio_1h != null &&
@@ -242,6 +321,11 @@ function BillingBreakdown(props: {
         label: t('Cache Creation (1h)'),
         value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_1h)}/M`,
       })
+      addTokenFormulaPart(
+        'Cache Creation (1h)',
+        other.cache_creation_tokens_1h,
+        baseInputUSD * other.cache_creation_ratio_1h
+      )
     }
   }
 
@@ -251,6 +335,11 @@ function BillingBreakdown(props: {
         label: t('Audio input'),
         value: `${fmtPrice(baseInputUSD * other.audio_ratio)}/M`,
       })
+      addTokenFormulaPart(
+        'Audio input',
+        other.audio_input,
+        baseInputUSD * other.audio_ratio
+      )
     }
 
     if (
@@ -261,6 +350,11 @@ function BillingBreakdown(props: {
         label: t('Audio output'),
         value: `${fmtPrice(baseInputUSD * other.audio_completion_ratio)}/M`,
       })
+      addTokenFormulaPart(
+        'Audio output',
+        other.audio_output,
+        baseInputUSD * other.audio_completion_ratio
+      )
     }
 
     if (other.image_ratio != null && other.image_ratio !== 1) {
@@ -268,6 +362,11 @@ function BillingBreakdown(props: {
         label: t('Image input'),
         value: `${fmtPrice(baseInputUSD * other.image_ratio)}/M`,
       })
+      addTokenFormulaPart(
+        'Image input',
+        other.image_output,
+        baseInputUSD * other.image_ratio
+      )
     }
   }
 
@@ -276,6 +375,12 @@ function BillingBreakdown(props: {
       label: t('Web Search'),
       value: `${other.web_search_call_count}x${other.web_search_price ? ` (${fmtPrice(other.web_search_price)})` : ''}`,
     })
+    if (other.web_search_price) {
+      const searchPrice = other.web_search_price / 1000
+      formulaParts.push(
+        `${t('Web Search')} ${other.web_search_call_count} × ${fmtFormulaPrice(searchPrice)}`
+      )
+    }
   }
 
   if (other.file_search && other.file_search_call_count) {
@@ -283,6 +388,12 @@ function BillingBreakdown(props: {
       label: t('File Search'),
       value: `${other.file_search_call_count}x${other.file_search_price ? ` (${fmtPrice(other.file_search_price)})` : ''}`,
     })
+    if (other.file_search_price) {
+      const searchPrice = other.file_search_price / 1000
+      formulaParts.push(
+        `${t('File Search')} ${other.file_search_call_count} × ${fmtFormulaPrice(searchPrice)}`
+      )
+    }
   }
 
   if (other.image_generation_call && other.image_generation_call_price) {
@@ -290,6 +401,7 @@ function BillingBreakdown(props: {
       label: t('Image Generation'),
       value: fmtPrice(other.image_generation_call_price),
     })
+    addFlatFormulaPart('Image Generation', other.image_generation_call_price)
   }
 
   if (other.audio_input_seperate_price && other.audio_input_price) {
@@ -297,6 +409,11 @@ function BillingBreakdown(props: {
       label: t('Audio Input Price'),
       value: fmtPrice(other.audio_input_price),
     })
+    addTokenFormulaPart(
+      'Audio Input Price',
+      other.audio_input_token_count,
+      other.audio_input_price
+    )
   }
 
   if (isAdmin && other.admin_info) {
@@ -308,9 +425,18 @@ function BillingBreakdown(props: {
     })
   }
 
+  if (formulaParts.length > 0) {
+    const ratio =
+      effectiveGR != null && Number.isFinite(effectiveGR) ? effectiveGR : 1
+    rows.push({
+      label: t('Total Cost Formula'),
+      value: `(${formulaParts.join(' + ')}) × ${formatRatio(ratio)} = ${formatLogQuota(log.quota)} (${t('For reference only, actual deduction prevails')})`,
+    })
+  }
+
   rows.push({
     label: t('Total Cost'),
-    value: formatLogQuota(log.quota),
+    value: `${formatLogQuota(log.quota)} (${t('For reference only, actual deduction prevails')})`,
   })
 
   if (rows.length === 0) return null
@@ -690,7 +816,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 )}
                 <DetailRow
                   label={t('Fee Amount')}
-                  value={formatLogQuota(other.fee_quota ?? props.log.quota)}
+                  value={formatDetailQuota(other.fee_quota ?? props.log.quota)}
                   mono
                 />
               </DetailSection>
@@ -955,7 +1081,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 {other.subscription_pre_consumed != null && (
                   <DetailRow
                     label={t('Pre-consumed')}
-                    value={formatLogQuota(other.subscription_pre_consumed)}
+                    value={formatDetailQuota(other.subscription_pre_consumed)}
                     mono
                   />
                 )}
@@ -963,21 +1089,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   other.subscription_post_delta !== 0 && (
                     <DetailRow
                       label={t('Post Delta')}
-                      value={formatLogQuota(other.subscription_post_delta)}
+                      value={formatDetailQuota(other.subscription_post_delta)}
                       mono
                     />
                   )}
                 {other.subscription_consumed != null && (
                   <DetailRow
                     label={t('Final Consumed')}
-                    value={formatLogQuota(other.subscription_consumed)}
+                    value={formatDetailQuota(other.subscription_consumed)}
                     mono
                   />
                 )}
                 {other.subscription_remain != null && (
                   <DetailRow
                     label={t('Remaining')}
-                    value={`${formatLogQuota(other.subscription_remain)}${other.subscription_total != null ? ` / ${formatLogQuota(other.subscription_total)}` : ''}`}
+                    value={`${formatDetailQuota(other.subscription_remain)}${other.subscription_total != null ? ` / ${formatDetailQuota(other.subscription_total)}` : ''}`}
                     mono
                   />
                 )}

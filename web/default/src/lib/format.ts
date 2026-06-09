@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import dayjs from '@/lib/dayjs'
 import {
+  formatAccountingQuotaWithCurrency,
   formatCurrencyFromUSD,
   formatQuotaWithCurrency,
   getCurrencyDisplay,
@@ -158,11 +159,7 @@ export function formatTimeStr(date: Date): string {
  * Format quota for usage logs using the same display precision as the UI.
  */
 export function formatLogQuota(quota: number): string {
-  return formatQuotaWithCurrency(quota, {
-    digitsLarge: 2,
-    digitsSmall: 2,
-    abbreviate: false,
-  })
+  return formatAccountingQuotaWithCurrency(quota)
 }
 
 /**

@@ -89,6 +89,24 @@ function getGroupRatioText(other: LogOtherData | null): string | null {
   return null
 }
 
+function getEffectiveGroupRatio(other: LogOtherData | null): number {
+  const userGroupRatio = other?.user_group_ratio
+  if (
+    userGroupRatio != null &&
+    userGroupRatio !== -1 &&
+    Number.isFinite(userGroupRatio)
+  ) {
+    return userGroupRatio
+  }
+
+  const groupRatio = other?.group_ratio
+  if (groupRatio != null && Number.isFinite(groupRatio)) {
+    return groupRatio
+  }
+
+  return 1
+}
+
 function splitQuotaDisplay(value: string): { prefix: string; amount: string } {
   const match = value.match(/^([^0-9+\-.,\s]+)(.+)$/)
   if (!match) return { prefix: '', amount: value }
@@ -100,6 +118,9 @@ function buildDetailSegments(
   other: LogOtherData | null,
   t: (key: string, opts?: Record<string, unknown>) => string
 ): DetailSegment[] {
+  const formatDetailQuota = (quota: number) =>
+    formatLogQuota(quota).replace(/([.,]\d{2})\d+/, '$1')
+
   if (log.type === 6) {
     return [{ text: t('Async task refund') }]
   }
@@ -117,7 +138,7 @@ function buildDetailSegments(
       })
     }
     segments.push({
-      text: `${t('Fee')}: ${formatLogQuota(other?.fee_quota ?? log.quota)}`,
+      text: `${t('Fee')}: ${formatDetailQuota(other?.fee_quota ?? log.quota)}`,
       muted: true,
     })
     return segments
@@ -128,40 +149,30 @@ function buildDetailSegments(
   const segments: DetailSegment[] = []
 
   const priceOpts = { digitsLarge: 2, digitsSmall: 2, abbreviate: false }
+  const effectiveGroupRatio = getEffectiveGroupRatio(other)
+  const formatUnitPrice = (price: number) =>
+    `${formatBillingCurrencyFromUSD(price * effectiveGroupRatio, priceOpts)} / 1M tokens`
   const formatPrice = (price: number) =>
-    `${formatBillingCurrencyFromUSD(price, priceOpts)}/M`
-  const formatPriceCompact = (price: number) =>
-    formatBillingCurrencyFromUSD(price, priceOpts)
-  const formatPriceList = (prices: string[], showUnit: boolean) => {
-    const text = prices.join(' / ')
-    return showUnit ? `${text}/M` : text
-  }
+    `${formatBillingCurrencyFromUSD(price * effectiveGroupRatio, priceOpts)}/M`
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
   if (isTieredExpr) {
     if (tieredSummary) {
-      const baseEntries = tieredSummary.priceEntries
-        .filter((entry) => ['inputPrice', 'outputPrice'].includes(entry.field))
-        .map((entry) => formatPriceCompact(entry.price))
-      if (baseEntries.length > 0) {
-        const tierLabel = tieredSummary.tier.label || t('Default')
+      const inputEntry = tieredSummary.priceEntries.find(
+        (entry) => entry.field === 'inputPrice'
+      )
+      if (inputEntry) {
         segments.push({
-          text: `${tierLabel} · ${formatPriceList(baseEntries, true)}`,
+          text: `${t('Input')} ${formatUnitPrice(inputEntry.price)}`,
         })
       }
 
-      const cacheEntries = tieredSummary.priceEntries
-        .filter((entry) =>
-          ['cacheReadPrice', 'cacheCreatePrice', 'cacheCreate1hPrice'].includes(
-            entry.field
-          )
-        )
-        .map((entry) => {
-          return formatPriceCompact(entry.price)
-        })
-      if (cacheEntries.length > 0) {
+      const cacheReadEntry = tieredSummary.priceEntries.find(
+        (entry) => entry.field === 'cacheReadPrice'
+      )
+      if (cacheReadEntry) {
         segments.push({
-          text: `${t('Cache')} ${formatPriceList(cacheEntries, false)}`,
+          text: `${t('Cache Read')} ${formatUnitPrice(cacheReadEntry.price)}`,
           muted: true,
         })
       }
@@ -174,6 +185,7 @@ function buildDetailSegments(
               'outputPrice',
               'cacheReadPrice',
               'cacheCreatePrice',
+              'cacheCreate5mPrice',
               'cacheCreate1hPrice',
             ].includes(entry.field)
         )
@@ -194,40 +206,19 @@ function buildDetailSegments(
     const isPerCall = isPerCallBilling(other.model_price)
     if (isPerCall) {
       segments.push({
-        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
+        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price! * effectiveGroupRatio, priceOpts)}`,
       })
     } else if (other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0
-      const baseEntries = [formatPriceCompact(inputPriceUSD)]
-      if (other.completion_ratio != null) {
-        baseEntries.push(
-          formatPriceCompact(inputPriceUSD * other.completion_ratio)
-        )
-      }
       segments.push({
-        text: `${t('Standard')} · ${formatPriceList(baseEntries, true)}`,
+        text: `${t('Input')} ${formatUnitPrice(inputPriceUSD)}`,
       })
 
-      if (hasAnyCacheTokens(other)) {
-        const cacheEntries = [
-          other.cache_ratio != null && other.cache_ratio !== 1
-            ? formatPriceCompact(inputPriceUSD * other.cache_ratio)
-            : null,
-          other.cache_creation_ratio != null && other.cache_creation_ratio !== 1
-            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio)
-            : null,
-          other.cache_creation_ratio_1h != null &&
-          other.cache_creation_ratio_1h !== 0
-            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio_1h)
-            : null,
-        ].filter(Boolean) as string[]
-
-        if (cacheEntries.length > 0) {
-          segments.push({
-            text: `${t('Cache')} ${formatPriceList(cacheEntries, false)}`,
-            muted: true,
-          })
-        }
+      if (hasAnyCacheTokens(other) && other.cache_ratio != null) {
+        segments.push({
+          text: `${t('Cache Read')} ${formatUnitPrice(inputPriceUSD * other.cache_ratio)}`,
+          muted: true,
+        })
       }
     } else {
       const userGroupRatio = other.user_group_ratio
@@ -772,35 +763,31 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const other = parseLogOther(log.other)
 
         const segments = buildDetailSegments(log, other, t)
-        const primary = segments[0]
-        const hasMore = segments.length > 1
 
         return (
           <>
             <button
               type='button'
-              className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
+              className='group flex max-w-[220px] flex-col items-start gap-0.5 text-left text-xs'
               onClick={() => setDialogOpen(true)}
               title={t('Click to view full details')}
             >
-              {primary ? (
-                <span
-                  className={cn(
-                    'truncate leading-snug group-hover:underline',
-                    primary.muted
-                      ? 'text-muted-foreground/60'
-                      : primary.danger
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-foreground'
-                  )}
-                >
-                  {primary.text}
-                  {hasMore && (
-                    <span className='text-muted-foreground/40 ml-0.5'>
-                      +{segments.length - 1}
-                    </span>
-                  )}
-                </span>
+              {segments.length > 0 ? (
+                segments.map((segment, index) => (
+                  <span
+                    key={`${segment.text}-${index}`}
+                    className={cn(
+                      'max-w-full truncate leading-snug group-hover:underline',
+                      segment.muted
+                        ? 'text-muted-foreground/60'
+                        : segment.danger
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-foreground'
+                    )}
+                  >
+                    {segment.text}
+                  </span>
+                ))
               ) : log.content ? (
                 <span className='text-muted-foreground truncate group-hover:underline'>
                   {log.content}
