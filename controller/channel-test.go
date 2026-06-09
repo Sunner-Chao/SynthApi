@@ -174,8 +174,13 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
-	group, _ := model.GetUserGroup(testUserID, false)
-	c.Set("group", group)
+	userGroup, _ := model.GetUserGroup(testUserID, false)
+	usingGroup := userGroup
+	if channelGroups := channel.GetGroups(); len(channelGroups) > 0 {
+		usingGroup = channelGroups[0]
+	}
+	c.Set("group", usingGroup)
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
 	if newAPIError != nil {
