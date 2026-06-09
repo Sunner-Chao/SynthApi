@@ -17,12 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { Code2, Copy, Eye, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { getCurrencyDisplay } from '@/lib/currency'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
 import {
   Table,
   TableBody,
@@ -91,6 +98,81 @@ function parseInitialPrices(
   return { ...DEFAULT_PRICES }
 }
 
+function roundToDecimals(value: number, decimals: number): number {
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
+}
+
+function getToolPriceCurrencyMeta() {
+  const { config } = getCurrencyDisplay()
+  switch (config.quotaDisplayType) {
+    case 'CNY':
+      return {
+        label: 'CNY',
+        symbol: '¥',
+        exchangeRate: config.usdExchangeRate || 1,
+      }
+    case 'CUSTOM':
+      return {
+        label: 'CUSTOM',
+        symbol: config.customCurrencySymbol || '¤',
+        exchangeRate: config.customCurrencyExchangeRate || 1,
+      }
+    default:
+      return {
+        label: 'USD',
+        symbol: '$',
+        exchangeRate: 1,
+      }
+  }
+}
+
+function ToolPriceInput(props: {
+  value: number
+  currencySymbol: string
+  exchangeRate: number
+  onChange: (value: number) => void
+}) {
+  const [displayValue, setDisplayValue] = useState('')
+
+  useEffect(() => {
+    setDisplayValue(
+      String(
+        roundToDecimals((Number(props.value) || 0) * props.exchangeRate, 6)
+      )
+    )
+  }, [props.value, props.exchangeRate])
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setDisplayValue(value)
+    }
+  }
+
+  const handleBlur = () => {
+    const displayNumber = Number(displayValue)
+    props.onChange(
+      Number.isFinite(displayNumber)
+        ? roundToDecimals(displayNumber / props.exchangeRate, 8)
+        : 0
+    )
+  }
+
+  return (
+    <InputGroup>
+      <InputGroupAddon>{props.currencySymbol}</InputGroupAddon>
+      <InputGroupInput
+        inputMode='decimal'
+        value={displayValue}
+        onBlur={handleBlur}
+        onChange={handleChange}
+      />
+      <InputGroupAddon align='inline-end'>/1K</InputGroupAddon>
+    </InputGroup>
+  )
+}
+
 type ToolPriceSettingsProps = {
   defaultValue: string
 }
@@ -105,6 +187,7 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState('')
   const [nextRowId, setNextRowId] = useState(1)
+  const currencyMeta = getToolPriceCurrencyMeta()
 
   useEffect(() => {
     const prices = parseInitialPrices(defaultValue)
@@ -204,7 +287,7 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
         <AlertDescription className='space-y-1 text-sm'>
           <div>
             {t(
-              'Configure per-tool unit prices ($/1K calls). Per-request models do not incur additional tool fees.'
+              'Configure per-tool unit prices. Visual mode follows the global currency display; JSON values are stored as USD per 1K calls. Per-request models do not incur additional tool fees.'
             )}
           </div>
           <div>
@@ -267,7 +350,7 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
               <TableRow>
                 <TableHead>{t('Tool identifier')}</TableHead>
                 <TableHead className='w-[200px]'>
-                  {t('Price ($/1K calls)')}
+                  {`${t('Price')} (${currencyMeta.label}/1K)`}
                 </TableHead>
                 <TableHead className='w-[80px] text-right'>
                   {t('Actions')}
@@ -297,18 +380,11 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
-                        type='number'
-                        min={0}
-                        step={0.5}
+                      <ToolPriceInput
                         value={row.price}
-                        onChange={(e) =>
-                          updateRow(
-                            row.id,
-                            'price',
-                            Number(e.target.value) || 0
-                          )
-                        }
+                        currencySymbol={currencyMeta.symbol}
+                        exchangeRate={currencyMeta.exchangeRate}
+                        onChange={(value) => updateRow(row.id, 'price', value)}
                       />
                     </TableCell>
                     <TableCell className='text-right'>

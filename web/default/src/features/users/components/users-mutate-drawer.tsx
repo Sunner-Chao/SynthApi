@@ -372,7 +372,7 @@ export function UsersMutateDrawer({
                               value={
                                 tokensOnly
                                   ? String(field.value || 0)
-                                  : (field.value || 0).toFixed(6)
+                                  : (field.value || 0).toFixed(2)
                               }
                               readOnly
                               className='flex-1'

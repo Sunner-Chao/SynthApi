@@ -34,6 +34,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { PAYMENT_TYPES } from '../constants'
 import {
   formatCurrency,
   getDiscountLabel,
@@ -41,7 +42,6 @@ import {
   getMinTopupAmount,
   calculatePresetPricing,
 } from '../lib'
-import { PAYMENT_TYPES } from '../constants'
 import type {
   PaymentMethod,
   PresetAmount,
@@ -149,8 +149,9 @@ export function RechargeFormCard({
     enableWaffoPancakeTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
   const standardPaymentMethods = (
-    topupInfo?.pay_methods?.filter((method) => method.type !== PAYMENT_TYPES.XPAY) ||
-    []
+    topupInfo?.pay_methods?.filter(
+      (method) => method.type !== PAYMENT_TYPES.XPAY
+    ) || []
   ).concat(
     (topupInfo?.enable_mpay_topup || topupInfo?.enable_xpay_topup) &&
       !topupInfo?.pay_methods?.some(
@@ -170,8 +171,6 @@ export function RechargeFormCard({
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
-  const inputStep =
-    topupInfo?.enable_mpay_topup || topupInfo?.enable_xpay_topup ? 0.1 : 1
   const redemptionEnabled = topupInfo?.enable_redemption !== false
 
   if (loading) {

@@ -135,7 +135,7 @@ export function BalanceQueryDialog({
   const formatBalance = (bal: number) =>
     formatCurrencyFromUSD(bal, {
       digitsLarge: 2,
-      digitsSmall: 4,
+      digitsSmall: 2,
       abbreviate: false,
     })
 

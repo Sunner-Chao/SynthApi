@@ -31,7 +31,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { deleteUser } from '../api'
 import { ERROR_MESSAGES, isUserDeleted } from '../constants'
-import { getUserActionMessage } from '../lib'
 import { useUsers } from './users-provider'
 
 export function UsersDeleteDialog() {

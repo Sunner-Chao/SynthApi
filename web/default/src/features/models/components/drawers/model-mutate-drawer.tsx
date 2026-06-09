@@ -1065,7 +1065,7 @@ export function ModelMutateDrawer({
                           />
                           <p className='text-muted-foreground text-sm'>
                             {promptPrice && !isNaN(parseFloat(promptPrice))
-                              ? `Calculated ratio: ${(parseFloat(promptPrice) / 2).toFixed(4)}`
+                              ? `Calculated ratio: ${(parseFloat(promptPrice) / 2).toFixed(2)}`
                               : t('Enter Input price to calculate ratio')}
                           </p>
                         </div>
@@ -1086,7 +1086,7 @@ export function ModelMutateDrawer({
                             promptPrice &&
                             !isNaN(parseFloat(promptPrice)) &&
                             parseFloat(promptPrice) > 0
-                              ? `Calculated ratio: ${(parseFloat(completionPrice) / parseFloat(promptPrice)).toFixed(4)}`
+                              ? `Calculated ratio: ${(parseFloat(completionPrice) / parseFloat(promptPrice)).toFixed(2)}`
                               : t('Enter Completion price to calculate ratio')}
                           </p>
                         </div>

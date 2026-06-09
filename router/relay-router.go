@@ -165,6 +165,9 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
 	}
 
+	registerAnthropicAliasRouter(router.Group("/anthropic/v1"))
+	registerAnthropicAliasRouter(router.Group("/anthroic/v1"))
+
 	relayMjRouter := router.Group("/mj")
 	relayMjRouter.Use(middleware.RouteTag("relay"))
 	relayMjRouter.Use(middleware.SystemPerformanceCheck())
@@ -198,6 +201,26 @@ func SetRelayRouter(router *gin.Engine) {
 			controller.Relay(c, types.RelayFormatGemini)
 		})
 	}
+}
+
+func registerAnthropicAliasRouter(group *gin.RouterGroup) {
+	group.Use(middleware.RouteTag("relay"))
+	group.Use(middleware.SystemPerformanceCheck())
+	group.Use(middleware.TokenAuth())
+	group.Use(middleware.ModelRequestRateLimit())
+
+	group.GET("/models", func(c *gin.Context) {
+		controller.ListModels(c, constant.ChannelTypeAnthropic)
+	})
+	group.GET("/models/:model", func(c *gin.Context) {
+		controller.RetrieveModel(c, constant.ChannelTypeAnthropic)
+	})
+
+	messagesRouter := group.Group("")
+	messagesRouter.Use(middleware.Distribute())
+	messagesRouter.POST("/messages", func(c *gin.Context) {
+		controller.Relay(c, types.RelayFormatClaude)
+	})
 }
 
 func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
