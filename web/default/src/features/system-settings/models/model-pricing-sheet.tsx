@@ -428,8 +428,6 @@ export function ModelPricingEditorPanel({
   className,
 }: ModelPricingEditorPanelProps) {
   const { t } = useTranslation()
-  const { config } = getCurrencyDisplay()
-  const symbol = config.quotaDisplayType === 'CNY' ? '¥' : '$'
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
   const [promptPrice, setPromptPrice] = useState('')
   const [lanePrices, setLanePrices] = useState<Record<LaneKey, string>>({

@@ -305,7 +305,7 @@ export function formatBalance(balance: number | null | undefined): string {
   if (balance == null || Number.isNaN(balance)) return '-'
   return formatCurrencyFromUSD(balance, {
     digitsLarge: 2,
-    digitsSmall: 4,
+    digitsSmall: 2,
     abbreviate: false,
   })
 }
@@ -394,7 +394,7 @@ export function formatTimestamp(timestamp: number): string {
 export function formatQuota(quota: number): string {
   return formatQuotaWithCurrency(quota, {
     digitsLarge: 2,
-    digitsSmall: 4,
+    digitsSmall: 2,
     abbreviate: true,
   })
 }

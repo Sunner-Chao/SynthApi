@@ -90,6 +90,8 @@ export interface CurrencyFormatOptions {
   digitsLarge?: number
   /** Fraction digits to use when |value| < 1 */
   digitsSmall?: number
+  /** Backward-compatible alias for setting both large and small fraction digits */
+  maximumFractionDigits?: number
   /** Whether to abbreviate thousands with k suffix */
   abbreviate?: boolean
   /** Minimal absolute value to display when rounding would produce zero */
@@ -116,10 +118,13 @@ type DisplayMeta =
 
 const DEFAULT_FORMAT_OPTIONS: Required<CurrencyFormatOptions> = {
   digitsLarge: 2,
-  digitsSmall: 4,
+  digitsSmall: 2,
+  maximumFractionDigits: 2,
   abbreviate: true,
   minimumNonZero: 0,
 }
+
+const MAX_UI_FRACTION_DIGITS = 2
 
 const DISPLAY_TYPE_VALUES = ['USD', 'CNY', 'TOKENS', 'CUSTOM'] as const
 type DisplayTypeLiteral = (typeof DISPLAY_TYPE_VALUES)[number]
@@ -213,9 +218,23 @@ function mergeOptions(
   options?: CurrencyFormatOptions
 ): Required<CurrencyFormatOptions> {
   if (!options) return DEFAULT_FORMAT_OPTIONS
+  const fallbackDigits =
+    options.maximumFractionDigits ?? DEFAULT_FORMAT_OPTIONS.digitsLarge
   return {
-    digitsLarge: options.digitsLarge ?? DEFAULT_FORMAT_OPTIONS.digitsLarge,
-    digitsSmall: options.digitsSmall ?? DEFAULT_FORMAT_OPTIONS.digitsSmall,
+    digitsLarge: Math.min(
+      options.digitsLarge ?? fallbackDigits,
+      MAX_UI_FRACTION_DIGITS
+    ),
+    digitsSmall: Math.min(
+      options.digitsSmall ??
+        options.maximumFractionDigits ??
+        DEFAULT_FORMAT_OPTIONS.digitsSmall,
+      MAX_UI_FRACTION_DIGITS
+    ),
+    maximumFractionDigits: Math.min(
+      options.maximumFractionDigits ?? MAX_UI_FRACTION_DIGITS,
+      MAX_UI_FRACTION_DIGITS
+    ),
     abbreviate: options.abbreviate ?? DEFAULT_FORMAT_OPTIONS.abbreviate,
     minimumNonZero:
       options.minimumNonZero ?? DEFAULT_FORMAT_OPTIONS.minimumNonZero,

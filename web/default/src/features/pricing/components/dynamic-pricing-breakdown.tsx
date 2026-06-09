@@ -296,7 +296,7 @@ export function DynamicPricingBreakdown({
                           </div>
                           <div className='truncate font-mono text-sm font-semibold'>
                             {value > 0
-                              ? `${symbol}${(value * rate).toFixed(4)}`
+                              ? `${symbol}${(value * rate).toFixed(2)}`
                               : '-'}
                           </div>
                         </div>
@@ -373,7 +373,7 @@ export function DynamicPricingBreakdown({
                           >
                             {value > 0 ? (
                               <span className='font-semibold'>
-                                {`${symbol}${(value * rate).toFixed(4)}`}
+                                {`${symbol}${(value * rate).toFixed(2)}`}
                               </span>
                             ) : (
                               '-'

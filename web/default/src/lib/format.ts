@@ -65,7 +65,7 @@ export function formatCurrencyUSD(value: number | null | undefined): string {
 export function formatQuota(quota: number): string {
   return formatQuotaWithCurrency(quota, {
     digitsLarge: 2,
-    digitsSmall: 4,
+    digitsSmall: 2,
     abbreviate: true,
   })
 }
@@ -155,13 +155,12 @@ export function formatTimeStr(date: Date): string {
 }
 
 /**
- * Format quota for usage logs with higher precision
- * Uses 6 decimal places to show very small costs accurately
+ * Format quota for usage logs using the same display precision as the UI.
  */
 export function formatLogQuota(quota: number): string {
   return formatQuotaWithCurrency(quota, {
-    digitsLarge: 4,
-    digitsSmall: 6,
+    digitsLarge: 2,
+    digitsSmall: 2,
     abbreviate: false,
   })
 }

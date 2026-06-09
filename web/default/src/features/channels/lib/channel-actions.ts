@@ -298,7 +298,7 @@ export async function handleUpdateChannelBalance(
         i18next.t('Balance updated: {{balance}}', {
           balance: formatCurrencyFromUSD(balance, {
             digitsLarge: 2,
-            digitsSmall: 4,
+            digitsSmall: 2,
             abbreviate: false,
           }),
         })

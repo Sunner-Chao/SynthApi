@@ -847,7 +847,7 @@
     "Configure model, caching, and group ratios used for billing": "配置用于计费的模型、缓存和分组比例",
     "Configure monitoring status page groups for the dashboard": "配置用于仪表板的监控状态页面分组",
     "Configure per-model ratio for image inputs or outputs.": "配置图像输入或输出的每模型比例。",
-    "Configure per-tool unit prices ($/1K calls). Per-request models do not incur additional tool fees.": "为每个工具配置单价（$/1K 次调用）。按请求计费的模型不额外收取工具费用。",
+    "Configure per-tool unit prices. Visual mode follows the global currency display; JSON values are stored as USD per 1K calls. Per-request models do not incur additional tool fees.": "配置每个工具的单价。可视化模式会跟随全局货币显示；JSON 值仍按 USD/1K 次调用存储。按请求计费的模型不额外收取工具费用。",
     "Configure pricing ratios for a specific model.": "配置特定模型的定价比例。",
     "Configure rate limiting rules for a specific user group.": "配置特定用户分组的速率限制规则。",
     "Configure the ratio for this group.": "配置此分组的比例。",
