@@ -53,16 +53,49 @@ export function stripTrailingZeros(formatted: string): string {
 }
 
 /**
- * Find minimum group ratio from enabled groups
+ * Pick the pricing direction from a model name. Group names configured by
+ * administrators often contain "Claude" or "Codex" to separate billing lanes.
  */
-function getMinGroupRatio(
+function getModelPricingDirection(
+  modelName: string | undefined
+): string | null {
+  const normalized = (modelName || '').toLowerCase()
+  if (normalized.includes('claude')) return 'claude'
+  if (normalized.includes('codex')) return 'codex'
+  return null
+}
+
+/**
+ * Find minimum group ratio from enabled groups. When the model belongs to a
+ * named direction such as Claude or Codex, prefer enabled group names that
+ * contain the same direction marker and take the minimum ratio from them.
+ */
+export function getMinGroupRatioForModel(
+  modelName: string | undefined,
   enableGroups: string[],
   groupRatio: Record<string, number>
 ): number {
-  const ratios = Object.values(groupRatio).filter(
-    (ratio) => Number.isFinite(Number(ratio)) && Number(ratio) > 0
-  )
+  const validRatio = (ratio: unknown): ratio is number =>
+    Number.isFinite(Number(ratio)) && Number(ratio) > 0
+  const ratios = Object.values(groupRatio).filter(validRatio)
   const globalMinRatio = ratios.length > 0 ? Math.min(...ratios) : 1
+
+  const direction = getModelPricingDirection(modelName)
+  const enabledGroupNames =
+    enableGroups.length === 0 || enableGroups.includes('all')
+      ? Object.keys(groupRatio)
+      : enableGroups
+
+  if (direction) {
+    const directionalRatios = enabledGroupNames
+      .filter((group) => group.toLowerCase().includes(direction))
+      .map((group) => groupRatio[group])
+      .filter(validRatio)
+
+    if (directionalRatios.length > 0) {
+      return Math.min(...directionalRatios)
+    }
+  }
 
   if (enableGroups.length === 0 || enableGroups.includes('all')) {
     return globalMinRatio
@@ -183,7 +216,11 @@ export function formatPrice(
     ? model.enable_groups
     : []
   const groupRatio = model.group_ratio || {}
-  const minRatio = getMinGroupRatio(enableGroups, groupRatio)
+  const minRatio = getMinGroupRatioForModel(
+    model.model_name,
+    enableGroups,
+    groupRatio
+  )
 
   let priceInUSD = calculateTokenPrice(model, type, minRatio)
   priceInUSD = applyRechargeRate(
@@ -285,7 +322,11 @@ export function formatRequestPrice(
     ? model.enable_groups
     : []
   const groupRatio = model.group_ratio || {}
-  const minRatio = getMinGroupRatio(enableGroups, groupRatio)
+  const minRatio = getMinGroupRatioForModel(
+    model.model_name,
+    enableGroups,
+    groupRatio
+  )
 
   let priceInUSD = (model.model_price || 0) * minRatio
 
