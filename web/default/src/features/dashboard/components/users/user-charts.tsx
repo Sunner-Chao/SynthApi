@@ -29,7 +29,7 @@ import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Users, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatQuotaWithCurrency } from '@/lib/currency'
+import { formatAccountingQuotaWithCurrency } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
@@ -402,9 +402,7 @@ export function UserCharts() {
                         {row.username}
                       </TableCell>
                       <TableCell className='text-right font-mono'>
-                        {formatQuotaWithCurrency(row.quota, {
-                          maximumFractionDigits: 2,
-                        })}
+                        {formatAccountingQuotaWithCurrency(row.quota)}
                       </TableCell>
                       <TableCell className='text-right font-mono'>
                         {formatNumber(row.count)}

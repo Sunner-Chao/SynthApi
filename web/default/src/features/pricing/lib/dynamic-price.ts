@@ -67,7 +67,15 @@ export function isDynamicPricingModel(model: PricingModel): boolean {
 export function getDynamicDisplayGroupRatio(model: PricingModel): number {
   const groups = Array.isArray(model.enable_groups) ? model.enable_groups : []
   const ratios = model.group_ratio || {}
-  if (groups.length === 0) return 1
+  const availableRatios = Object.values(ratios).filter(
+    (ratio) => Number.isFinite(Number(ratio)) && Number(ratio) > 0
+  )
+  const globalMinRatio =
+    availableRatios.length > 0 ? Math.min(...availableRatios) : 1
+
+  if (groups.length === 0 || groups.includes('all')) {
+    return globalMinRatio
+  }
 
   let minRatio = Number.POSITIVE_INFINITY
   for (const group of groups) {
@@ -77,7 +85,7 @@ export function getDynamicDisplayGroupRatio(model: PricingModel): number {
     }
   }
 
-  return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+  return minRatio === Number.POSITIVE_INFINITY ? globalMinRatio : minRatio
 }
 
 function applyRechargeRate(

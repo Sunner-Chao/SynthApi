@@ -59,7 +59,14 @@ function getMinGroupRatio(
   enableGroups: string[],
   groupRatio: Record<string, number>
 ): number {
-  if (enableGroups.length === 0) return 1
+  const ratios = Object.values(groupRatio).filter(
+    (ratio) => Number.isFinite(Number(ratio)) && Number(ratio) > 0
+  )
+  const globalMinRatio = ratios.length > 0 ? Math.min(...ratios) : 1
+
+  if (enableGroups.length === 0 || enableGroups.includes('all')) {
+    return globalMinRatio
+  }
 
   let minRatio = Number.POSITIVE_INFINITY
 
@@ -70,7 +77,7 @@ function getMinGroupRatio(
     }
   }
 
-  return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+  return minRatio === Number.POSITIVE_INFINITY ? globalMinRatio : minRatio
 }
 
 /**

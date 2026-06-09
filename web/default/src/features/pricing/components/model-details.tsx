@@ -54,6 +54,7 @@ import {
 import { DEFAULT_TOKEN_UNIT, QUOTA_TYPE_VALUES } from '../constants'
 import { usePricingData } from '../hooks/use-pricing-data'
 import {
+  getDynamicDisplayGroupRatio,
   getDynamicPriceEntries,
   getDynamicPricingSummary,
   getDynamicPricingTiers,
@@ -269,9 +270,7 @@ function ModelHeader(props: { model: PricingModel }) {
   const { t } = useTranslation()
   const model = props.model
   const modelIconKey = model.icon || model.vendor_icon
-  const modelIcon = modelIconKey
-    ? getLobeIcon(modelIconKey, 20)
-    : null
+  const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 20) : null
   const description = model.description || model.vendor_description || null
   const tags = parseTags(model.tags)
   const isSpecialExpression =
@@ -351,14 +350,15 @@ function PriceSection(props: {
   const { t } = useTranslation()
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
-  const baseGroupKey = '_base'
-  const baseGroupRatioMap = { [baseGroupKey]: 1 }
+  const displayGroupKey = '_display'
+  const displayGroupRatio = getDynamicDisplayGroupRatio(props.model)
+  const displayGroupRatioMap = { [displayGroupKey]: displayGroupRatio }
   const dynamicSummary = getDynamicPricingSummary(props.model, {
     tokenUnit: props.tokenUnit,
     showRechargePrice: props.showRechargePrice,
     priceRate: props.priceRate,
     usdExchangeRate: props.usdExchangeRate,
-    groupRatioMultiplier: 1,
+    groupRatioMultiplier: displayGroupRatio,
   })
 
   const primaryPriceTypes: { label: string; type: PriceType }[] = [
@@ -426,7 +426,12 @@ function PriceSection(props: {
 
     return (
       <section>
-        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <SectionTitle>
+          {t('Base Price')}
+          <span className='text-muted-foreground ml-2 font-mono text-xs font-normal'>
+            {displayGroupRatio}x
+          </span>
+        </SectionTitle>
         {dynamicSummary.primaryEntries.length > 0 ? (
           <div className='grid grid-cols-2 gap-2'>
             {dynamicSummary.primaryEntries.map((entry) => (
@@ -480,7 +485,12 @@ function PriceSection(props: {
   if (!isTokenBased) {
     return (
       <section>
-        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <SectionTitle>
+          {t('Base Price')}
+          <span className='text-muted-foreground ml-2 font-mono text-xs font-normal'>
+            {displayGroupRatio}x
+          </span>
+        </SectionTitle>
         <div className='flex items-baseline justify-between'>
           <span className='text-muted-foreground text-sm'>
             {t('Per request')}
@@ -488,11 +498,11 @@ function PriceSection(props: {
           <span className='text-foreground font-mono text-sm font-semibold tabular-nums'>
             {formatFixedPrice(
               props.model,
-              baseGroupKey,
+              displayGroupKey,
               props.showRechargePrice,
               props.priceRate,
               props.usdExchangeRate,
-              baseGroupRatioMap
+              displayGroupRatioMap
             )}
           </span>
         </div>
@@ -505,13 +515,13 @@ function PriceSection(props: {
     <>
       {formatGroupPrice(
         props.model,
-        baseGroupKey,
+        displayGroupKey,
         type,
         props.tokenUnit,
         props.showRechargePrice,
         props.priceRate,
         props.usdExchangeRate,
-        baseGroupRatioMap
+        displayGroupRatioMap
       )}
       <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
         / {tokenUnitLabel}
@@ -521,7 +531,12 @@ function PriceSection(props: {
 
   return (
     <section>
-      <SectionTitle>{t('Base Price')}</SectionTitle>
+      <SectionTitle>
+        {t('Base Price')}
+        <span className='text-muted-foreground ml-2 font-mono text-xs font-normal'>
+          {displayGroupRatio}x
+        </span>
+      </SectionTitle>
       <div className='grid grid-cols-2 gap-2'>
         {primaryPriceTypes.map((item) => (
           <div key={item.type} className='bg-muted/20 rounded-lg border p-3'>

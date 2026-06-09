@@ -70,7 +70,7 @@ type SimpleGroup = {
 type GroupPricingRow = {
   _id: string
   name: string
-  ratio: number
+  ratio: string
   selectable: boolean
   description: string
 }
@@ -95,6 +95,21 @@ function normalizeRatio(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 1
 }
 
+function formatRatioDraft(value: unknown): string {
+  return String(normalizeRatio(value))
+}
+
+function isRatioInputDraft(value: string): boolean {
+  return value === '' || /^(?:\d+\.?\d*|\.\d*)$/.test(value)
+}
+
+function parseRatioDraft(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === '.') return null
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function buildGroupPricingRows(
   groupRatio: string,
   userUsableGroups: string
@@ -112,7 +127,7 @@ function buildGroupPricingRows(
   return Array.from(names).map((name) => ({
     _id: createGroupPricingId(),
     name,
-    ratio: normalizeRatio(ratioMap[name]),
+    ratio: formatRatioDraft(ratioMap[name]),
     selectable: Object.prototype.hasOwnProperty.call(usableMap, name),
     description: String(usableMap[name] ?? ''),
   }))
@@ -125,7 +140,7 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
   for (const row of rows) {
     const name = row.name.trim()
     if (!name) continue
-    groupRatio[name] = normalizeRatio(row.ratio)
+    groupRatio[name] = parseRatioDraft(row.ratio) ?? normalizeRatio(row.ratio)
     if (row.selectable) {
       userUsableGroups[name] = row.description
     }
@@ -248,6 +263,8 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
 
   const handleSimpleSave = (name: string, value: string) => {
     if (!simpleDialogType) return
+    const ratio = parseRatioDraft(value)
+    if (ratio === null) return
 
     const fieldName =
       simpleDialogType === 'groupRatio' ? groupRatio : topupGroupRatio
@@ -260,7 +277,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
       delete map[simpleEditData.name]
     }
 
-    map[name] = parseFloat(value)
+    map[name] = ratio
 
     const field =
       simpleDialogType === 'groupRatio' ? 'GroupRatio' : 'TopupGroupRatio'
@@ -815,7 +832,7 @@ function GroupPricingTable({
       {
         _id: createGroupPricingId(),
         name,
-        ratio: 1,
+        ratio: '1',
         selectable: true,
         description: '',
       },
@@ -902,17 +919,22 @@ function GroupPricingTable({
                       </TableCell>
                       <TableCell>
                         <Input
-                          type='number'
-                          min={0}
-                          step={0.1}
-                          value={String(row.ratio)}
-                          onChange={(event) =>
+                          inputMode='decimal'
+                          value={row.ratio}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            if (isRatioInputDraft(value)) {
+                              updateRow(row._id, 'ratio', value)
+                            }
+                          }}
+                          onBlur={() => {
+                            const parsed = parseRatioDraft(row.ratio)
                             updateRow(
                               row._id,
                               'ratio',
-                              normalizeRatio(event.target.value)
+                              parsed === null ? '1' : String(parsed)
                             )
-                          }
+                          }}
                         />
                       </TableCell>
                       <TableCell>
@@ -1010,6 +1032,7 @@ function SimpleGroupDialog({
 
   const handleSave = () => {
     if (!name.trim() || !value.trim()) return
+    if (parseRatioDraft(value) === null) return
     onSave(name.trim(), value.trim())
     setName('')
     setValue('')
@@ -1041,10 +1064,11 @@ function SimpleGroupDialog({
           <div className='space-y-2'>
             <Label>{t('Ratio')}</Label>
             <Input
+              inputMode='decimal'
               value={value}
               onChange={(e) => {
                 const val = e.target.value
-                if (val === '' || !isNaN(parseFloat(val))) {
+                if (isRatioInputDraft(val)) {
                   setValue(val)
                 }
               }}
@@ -1098,8 +1122,8 @@ function GroupOverrideDialog({
 
   const handleSave = () => {
     if (!targetGroup.trim() || !ratio.trim()) return
-    const parsedRatio = parseFloat(ratio)
-    if (isNaN(parsedRatio)) return
+    const parsedRatio = parseRatioDraft(ratio)
+    if (parsedRatio === null) return
 
     onSave(targetGroup.trim(), parsedRatio, editData?.targetGroup)
     setTargetGroup('')
@@ -1140,10 +1164,11 @@ function GroupOverrideDialog({
           <div className='space-y-2'>
             <Label>{t('Ratio')}</Label>
             <Input
+              inputMode='decimal'
               value={ratio}
               onChange={(e) => {
                 const val = e.target.value
-                if (val === '' || !isNaN(parseFloat(val))) {
+                if (isRatioInputDraft(val)) {
                   setRatio(val)
                 }
               }}

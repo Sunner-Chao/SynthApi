@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { formatAccountingQuotaWithCurrency } from '@/lib/currency'
 import { formatQuota, formatCompactNumber } from '@/lib/format'
 import {
   Dialog,
@@ -124,7 +125,7 @@ export function UserInfoDialog({
               />
               <InfoItem
                 label={t('Used Quota')}
-                value={formatQuota(userInfo.used_quota)}
+                value={formatAccountingQuotaWithCurrency(userInfo.used_quota)}
               />
             </div>
 
@@ -162,7 +163,9 @@ export function UserInfoDialog({
                 {userInfo.aff_quota !== undefined && userInfo.aff_quota > 0 && (
                   <InfoItem
                     label={t('Invitation Quota')}
-                    value={formatQuota(userInfo.aff_quota)}
+                    value={formatAccountingQuotaWithCurrency(
+                      userInfo.aff_quota
+                    )}
                   />
                 )}
               </>
