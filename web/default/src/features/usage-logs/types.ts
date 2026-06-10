@@ -212,6 +212,7 @@ export interface LogOtherData {
   subscription_consumed?: number
   subscription_remain?: number
   subscription_total?: number
+  subscription_discount?: number
 }
 
 /**

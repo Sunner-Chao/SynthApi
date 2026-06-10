@@ -481,6 +481,7 @@ export const STATIC_I18N_KEYS = [
   'Cancel',
   'Status',
   'Upgrade Group',
+  'You can select API groups or subscription / top-up discount groups here. Discount-only groups apply subscription billing discounts without changing channel routing.',
   'Regenerate',
   'Untitled',
   'Open in new tab',

@@ -26,6 +26,14 @@ type SubscriptionBalancePayRequest struct {
 	PlanId int `json:"plan_id"`
 }
 
+type SubscriptionCancelRequest struct {
+	SubscriptionId int `json:"subscription_id"`
+}
+
+type SubscriptionDeleteRequest struct {
+	SubscriptionId int `json:"subscription_id"`
+}
+
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
@@ -42,6 +50,11 @@ func GetSubscriptionPlans(c *gin.Context) {
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
 		p.NormalizeDefaults()
+		if strings.TrimSpace(p.UpgradeGroup) != "" &&
+			strings.TrimSpace(p.BillingDiscountGroup) == strings.TrimSpace(p.UpgradeGroup) &&
+			topupGroupExists(p.UpgradeGroup) {
+			p.UpgradeGroup = ""
+		}
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -116,6 +129,35 @@ func SubscriptionRequestBalancePay(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func CancelSubscriptionSelf(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req SubscriptionCancelRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.SubscriptionId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.CancelUserSubscriptionWithRefund(userId, req.SubscriptionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func DeleteSubscriptionSelf(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req SubscriptionDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.SubscriptionId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if err := model.DeleteUserFinishedSubscriptionRecord(userId, req.SubscriptionId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 // ---- Admin APIs ----
 
 func AdminListSubscriptionPlans(c *gin.Context) {
@@ -161,10 +203,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "价格不能超过9999")
 		return
 	}
-	if req.Plan.Currency == "" {
-		req.Plan.Currency = "USD"
-	}
-	req.Plan.Currency = "USD"
+	req.Plan.Currency = operation_setting.GetQuotaDisplayType()
 	if req.Plan.AllowBalancePay == nil {
 		req.Plan.AllowBalancePay = common.GetPointer(true)
 	}
@@ -184,11 +223,22 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
+		if !subscriptionUpgradeGroupExists(req.Plan.UpgradeGroup) {
 			common.ApiErrorMsg(c, "升级分组不存在")
 			return
 		}
 	}
+	req.Plan.BillingDiscountGroup = strings.TrimSpace(req.Plan.BillingDiscountGroup)
+	if req.Plan.BillingDiscountGroup == "" && topupGroupExists(req.Plan.UpgradeGroup) {
+		req.Plan.BillingDiscountGroup = req.Plan.UpgradeGroup
+	}
+	if req.Plan.BillingDiscountGroup != "" {
+		if !topupGroupExists(req.Plan.BillingDiscountGroup) {
+			common.ApiErrorMsg(c, "折扣分组不存在")
+			return
+		}
+	}
+	req.Plan.BillingDiscount = model.ResolveSubscriptionBillingDiscount(req.Plan.BillingDiscountGroup, req.Plan.BillingDiscount)
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -231,10 +281,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = id
-	if req.Plan.Currency == "" {
-		req.Plan.Currency = "USD"
-	}
-	req.Plan.Currency = "USD"
+	req.Plan.Currency = operation_setting.GetQuotaDisplayType()
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -251,11 +298,22 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
+		if !subscriptionUpgradeGroupExists(req.Plan.UpgradeGroup) {
 			common.ApiErrorMsg(c, "升级分组不存在")
 			return
 		}
 	}
+	req.Plan.BillingDiscountGroup = strings.TrimSpace(req.Plan.BillingDiscountGroup)
+	if req.Plan.BillingDiscountGroup == "" && topupGroupExists(req.Plan.UpgradeGroup) {
+		req.Plan.BillingDiscountGroup = req.Plan.UpgradeGroup
+	}
+	if req.Plan.BillingDiscountGroup != "" {
+		if !topupGroupExists(req.Plan.BillingDiscountGroup) {
+			common.ApiErrorMsg(c, "折扣分组不存在")
+			return
+		}
+	}
+	req.Plan.BillingDiscount = model.ResolveSubscriptionBillingDiscount(req.Plan.BillingDiscountGroup, req.Plan.BillingDiscount)
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -269,6 +327,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,
 			"currency":                   req.Plan.Currency,
+			"billing_discount":           req.Plan.BillingDiscount,
+			"billing_discount_group":     req.Plan.BillingDiscountGroup,
 			"duration_unit":              req.Plan.DurationUnit,
 			"duration_value":             req.Plan.DurationValue,
 			"custom_seconds":             req.Plan.CustomSeconds,
@@ -290,6 +350,15 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
 		}
+		if err := tx.Model(&model.UserSubscription{}).
+			Where("plan_id = ? AND status = ?", id, "active").
+			Updates(map[string]interface{}{
+				"billing_discount":       req.Plan.BillingDiscount,
+				"billing_discount_group": req.Plan.BillingDiscountGroup,
+				"updated_at":             common.GetTimestamp(),
+			}).Error; err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -298,6 +367,26 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 	model.InvalidateSubscriptionPlanCache(id)
 	common.ApiSuccess(c, nil)
+}
+
+func topupGroupExists(group string) bool {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return false
+	}
+	_, ok := common.GetTopupGroupRatioCopy()[group]
+	return ok
+}
+
+func subscriptionUpgradeGroupExists(group string) bool {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return true
+	}
+	if _, ok := ratio_setting.GetGroupRatioCopy()[group]; ok {
+		return true
+	}
+	return topupGroupExists(group)
 }
 
 type AdminUpdateSubscriptionPlanStatusRequest struct {

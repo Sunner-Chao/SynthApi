@@ -17,11 +17,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
+import { Crown, RefreshCw, Sparkles, Check, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -47,12 +57,21 @@ import {
   textColorMap,
 } from '@/components/status-badge'
 import {
+  cancelSelfSubscription,
+  deleteSelfSubscription,
   getPublicPlans,
   getSelfSubscriptionFull,
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import {
+  formatSubscriptionDiscountOffPercent,
+  formatSubscriptionDiscountPercent,
+  formatDuration,
+  formatResetPeriod,
+  formatSubscriptionPrice,
+  normalizeSubscriptionBillingDiscount,
+} from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
@@ -116,6 +135,12 @@ export function SubscriptionPlansCard({
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
+  const [cancelTarget, setCancelTarget] =
+    useState<UserSubscriptionRecord | null>(null)
+  const [deleteTarget, setDeleteTarget] =
+    useState<UserSubscriptionRecord | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const enableStripe = !!topupInfo?.enable_stripe_topup
   const enableCreem = !!topupInfo?.enable_creem_topup
@@ -189,6 +214,61 @@ export function SubscriptionPlansCard({
     }
   }
 
+  const handleCancelSubscription = async () => {
+    const subscriptionId = cancelTarget?.subscription?.id
+    if (!subscriptionId) return
+
+    setCancelling(true)
+    try {
+      const res = await cancelSelfSubscription({
+        subscription_id: subscriptionId,
+      })
+      if (res.success) {
+        const refundAmount = formatSubscriptionPrice(
+          res.data?.refund_amount || 0
+        )
+        const refundQuota = formatQuota(res.data?.refund_quota || 0)
+        toast.success(
+          t('Subscription cancelled. Refunded {{amount}} / {{quota}}.', {
+            amount: refundAmount,
+            quota: refundQuota,
+          })
+        )
+        setCancelTarget(null)
+        await Promise.all([fetchSelfSubscription(), onPurchaseSuccess?.()])
+      } else {
+        toast.error(res.message || t('Cancel failed'))
+      }
+    } catch {
+      toast.error(t('Cancel failed'))
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  const handleDeleteSubscription = async () => {
+    const subscriptionId = deleteTarget?.subscription?.id
+    if (!subscriptionId) return
+
+    setDeleting(true)
+    try {
+      const res = await deleteSelfSubscription({
+        subscription_id: subscriptionId,
+      })
+      if (res.success) {
+        toast.success(t('Subscription record deleted'))
+        setDeleteTarget(null)
+        await fetchSelfSubscription()
+      } else {
+        toast.error(res.message || t('Delete failed'))
+      }
+    } catch {
+      toast.error(t('Delete failed'))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
   const isAvailable = loading || plans.length > 0 || hasAny
@@ -218,6 +298,19 @@ export function SubscriptionPlansCard({
     for (const p of plans) {
       if (p?.plan?.id) {
         map.set(p.plan.id, p.plan.title || '')
+      }
+    }
+    return map
+  }, [plans])
+
+  const planDiscountMap = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const p of plans) {
+      if (p?.plan?.id) {
+        map.set(
+          p.plan.id,
+          normalizeSubscriptionBillingDiscount(p.plan.billing_discount)
+        )
       }
     }
     return map
@@ -405,6 +498,12 @@ export function SubscriptionPlansCard({
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
+                  const discount = normalizeSubscriptionBillingDiscount(
+                    subscription?.billing_discount ??
+                      planDiscountMap.get(subscription?.plan_id || 0)
+                  )
+                  const rateLabel = formatSubscriptionDiscountPercent(discount)
+                  const offLabel = formatSubscriptionDiscountOffPercent(discount)
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
                   const now = Date.now() / 1000
@@ -444,6 +543,16 @@ export function SubscriptionPlansCard({
                               copyable={false}
                             />
                           )}
+                          <span
+                            className={cn(
+                              'inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold',
+                              discount < 1
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                : 'border-border bg-muted/40 text-muted-foreground'
+                            )}
+                          >
+                            {t('Discount Rate')}: {rateLabel}
+                          </span>
                         </div>
                         {isActive && (
                           <span className='text-muted-foreground'>
@@ -462,6 +571,12 @@ export function SubscriptionPlansCard({
                         {new Date(
                           (subscription?.end_time || 0) * 1000
                         ).toLocaleString()}
+                      </div>
+                      <div className='mt-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'>
+                        {t('{{rate}} rate ({{off}} off)', {
+                          rate: rateLabel,
+                          off: offLabel,
+                        })}
                       </div>
                       {isActive && (subscription?.next_reset_time ?? 0) > 0 && (
                         <div className='text-muted-foreground mt-1'>
@@ -499,6 +614,33 @@ export function SubscriptionPlansCard({
                       {totalAmount > 0 && isActive && (
                         <Progress value={usagePercent} className='mt-2 h-1.5' />
                       )}
+                      {isActive && subscription?.source !== 'admin' && (
+                        <div className='mt-3 flex justify-end'>
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            onClick={() => setCancelTarget(sub)}
+                            disabled={cancelling}
+                          >
+                            {t('Cancel Subscription')}
+                          </Button>
+                        </div>
+                      )}
+                      {!isActive && (
+                        <div className='mt-3 flex justify-end'>
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            onClick={() => setDeleteTarget(sub)}
+                            disabled={deleting}
+                          >
+                            <Trash2 className='mr-1.5 h-3.5 w-3.5' />
+                            {t('Delete Record')}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -520,7 +662,12 @@ export function SubscriptionPlansCard({
               const plan = p?.plan
               if (!plan) return null
               const totalAmount = Number(plan.total_amount || 0)
-              const price = Number(plan.price_amount || 0).toFixed(2)
+              const price = formatSubscriptionPrice(plan.price_amount)
+              const discount = normalizeSubscriptionBillingDiscount(
+                plan.billing_discount
+              )
+              const rateLabel = formatSubscriptionDiscountPercent(discount)
+              const offLabel = formatSubscriptionDiscountOffPercent(discount)
               const isPopular = index === 0 && plans.length > 1
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
@@ -573,9 +720,32 @@ export function SubscriptionPlansCard({
                     </div>
 
                     <div className='py-2'>
-                      <span className='text-primary text-2xl font-bold'>
-                        ${price}
-                      </span>
+                      <div className='flex items-center justify-between gap-3'>
+                        <span className='text-primary text-2xl font-bold'>
+                          {price}
+                        </span>
+                        <div
+                          className={cn(
+                            'shrink-0 rounded-md border px-2.5 py-1.5 text-right',
+                            discount < 1
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 shadow-sm dark:text-emerald-300'
+                              : 'border-border bg-muted/40 text-muted-foreground'
+                          )}
+                        >
+                          <div className='text-[10px] font-medium uppercase leading-none tracking-normal'>
+                            {t('Discount Rate')}
+                          </div>
+                          <div className='mt-1 text-base font-bold leading-none'>
+                            {rateLabel}
+                          </div>
+                          <div className='mt-1 text-[11px] leading-none'>
+                            {t('{{rate}} rate ({{off}} off)', {
+                              rate: rateLabel,
+                              off: offLabel,
+                            })}
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     <div className='flex-1 space-y-1.5 pb-3'>
@@ -654,6 +824,70 @@ export function SubscriptionPlansCard({
             : undefined
         }
       />
+
+      <AlertDialog
+        open={!!cancelTarget}
+        onOpenChange={(open) => {
+          if (!open && !cancelling) setCancelTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Cancel Subscription?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'The subscription will end immediately. The refundable value will be returned to your wallet balance based on remaining time and unused quota.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleCancelSubscription()
+              }}
+              disabled={cancelling}
+            >
+              {cancelling ? t('Cancelling...') : t('Confirm Cancellation')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Delete Subscription Record?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'This only removes the finished subscription record from your list and will not change wallet balance or usage logs.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDeleteSubscription()
+              }}
+              disabled={deleting}
+            >
+              {deleting ? t('Deleting...') : t('Delete Record')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

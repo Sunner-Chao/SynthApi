@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
@@ -63,6 +63,7 @@ import {
   createPlan,
   updatePlan,
   getGroups,
+  getTopupGroups,
   createWaffoPancakeSubscriptionProduct,
   listWaffoPancakeSubscriptionProductOptions,
 } from '../api'
@@ -93,6 +94,7 @@ export function SubscriptionsMutateDrawer({
   const { triggerRefresh } = useSubscriptions()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [groupOptions, setGroupOptions] = useState<string[]>([])
+  const [topupGroupOptions, setTopupGroupOptions] = useState<string[]>([])
   const [creatingPancakeProduct, setCreatingPancakeProduct] = useState(false)
   const [pancakeProducts, setPancakeProducts] = useState<
     { id: string; name: string; status: string }[]
@@ -114,6 +116,11 @@ export function SubscriptionsMutateDrawer({
       getGroups()
         .then((res) => {
           if (res.success) setGroupOptions(res.data || [])
+        })
+        .catch(() => {})
+      getTopupGroups()
+        .then((res) => {
+          if (res.success) setTopupGroupOptions(res.data || [])
         })
         .catch(() => {})
       // Best-effort — empty list still lets the operator use "+ Create".
@@ -138,6 +145,9 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
+  const upgradeGroupOptions = useMemo(() => {
+    return Array.from(new Set([...groupOptions, ...topupGroupOptions]))
+  }, [groupOptions, topupGroupOptions])
   // Gate "+ Create on Pancake" on the same checks the mint handler runs.
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
@@ -368,7 +378,10 @@ export function SubscriptionsMutateDrawer({
                       <Select
                         items={[
                           { value: '__none__', label: t('No Upgrade') },
-                          ...groupOptions.map((g) => ({ value: g, label: g })),
+                          ...upgradeGroupOptions.map((g) => ({
+                            value: g,
+                            label: g,
+                          })),
                         ]}
                         onValueChange={(v) =>
                           field.onChange(v === '__none__' ? '' : v)
@@ -385,7 +398,7 @@ export function SubscriptionsMutateDrawer({
                             <SelectItem value='__none__'>
                               {t('No Upgrade')}
                             </SelectItem>
-                            {groupOptions.map((g) => (
+                            {upgradeGroupOptions.map((g) => (
                               <SelectItem key={g} value={g}>
                                 {g}
                               </SelectItem>
@@ -393,11 +406,67 @@ export function SubscriptionsMutateDrawer({
                           </SelectGroup>
                         </SelectContent>
                       </Select>
+                      <FormDescription>
+                        {t(
+                          'You can select API groups or subscription / top-up discount groups here. Discount-only groups apply subscription billing discounts without changing channel routing.'
+                        )}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name='billing_discount_group'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Extra Discount Group')}</FormLabel>
+                      <Select
+                        items={[
+                          { value: '__none__', label: t('No Discount Group') },
+                          ...topupGroupOptions.map((g) => ({
+                            value: g,
+                            label: g,
+                          })),
+                        ]}
+                        onValueChange={(v) =>
+                          field.onChange(v === '__none__' ? '' : v)
+                        }
+                        value={field.value || ''}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={t('No Discount Group')}
+                            />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectGroup>
+                            <SelectItem value='__none__'>
+                              {t('No Discount Group')}
+                            </SelectItem>
+                            {topupGroupOptions.map((g) => (
+                              <SelectItem key={g} value={g}>
+                                {g}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        {t(
+                          'Subscription usage will be multiplied by this group ratio after normal pricing.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
                   name='max_purchase_per_user'

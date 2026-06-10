@@ -50,7 +50,6 @@ import { Markdown } from '@/components/ui/markdown'
 import {
   Popover,
   PopoverContent,
-  PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'

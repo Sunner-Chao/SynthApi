@@ -23,6 +23,9 @@ import type {
   PlanPayload,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
+  CancelSubscriptionRequest,
+  CancelSubscriptionResponse,
+  DeleteSubscriptionRequest,
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
@@ -193,6 +196,20 @@ export async function getSelfSubscriptionFull(): Promise<
   return res.data
 }
 
+export async function cancelSelfSubscription(
+  data: CancelSubscriptionRequest
+): Promise<ApiResponse<CancelSubscriptionResponse>> {
+  const res = await api.post('/api/subscription/self/cancel', data)
+  return res.data
+}
+
+export async function deleteSelfSubscription(
+  data: DeleteSubscriptionRequest
+): Promise<ApiResponse> {
+  const res = await api.post('/api/subscription/self/delete', data)
+  return res.data
+}
+
 export async function getPublicPlans(): Promise<ApiResponse<PlanRecord[]>> {
   const res = await api.get('/api/subscription/plans')
   return res.data
@@ -209,5 +226,10 @@ export async function updateBillingPreference(
 
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
+  return res.data
+}
+
+export async function getTopupGroups(): Promise<ApiResponse<string[]>> {
+  const res = await api.get('/api/topup_group')
   return res.data
 }

@@ -46,6 +46,11 @@ import {
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import {
+  formatSubscriptionDiscountOffPercent,
+  formatSubscriptionDiscountPercent,
+  normalizeSubscriptionBillingDiscount,
+} from '@/features/subscriptions/lib'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import {
   parseLogOther,
@@ -536,6 +541,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
+  const subscriptionDiscount = normalizeSubscriptionBillingDiscount(
+    other?.subscription_discount
+  )
+  const subscriptionRateLabel =
+    formatSubscriptionDiscountPercent(subscriptionDiscount)
+  const subscriptionOffLabel =
+    formatSubscriptionDiscountOffPercent(subscriptionDiscount)
+  const subscriptionRawQuota = Math.max(0, Number(props.log.quota || 0))
+  const subscriptionConsumed =
+    other?.subscription_consumed ??
+    Math.round(subscriptionRawQuota * subscriptionDiscount)
   const isTieredBilling =
     isConsume &&
     !isViolation &&
@@ -1078,6 +1094,35 @@ export function DetailsDialog(props: DetailsDialogProps) {
                     mono
                   />
                 )}
+                {typeof other.subscription_discount === 'number' &&
+                  other.subscription_discount > 0 && (
+                    <>
+                      <DetailRow
+                        label={t('Subscription Extra Discount')}
+                        value={t('{{rate}} rate ({{off}} off)', {
+                          rate: subscriptionRateLabel,
+                          off: subscriptionOffLabel,
+                        })}
+                      />
+                      <div
+                        className={cn(
+                          'rounded-md border p-2 text-xs',
+                          subscriptionDiscount < 1
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : 'border-border bg-muted/40 text-muted-foreground'
+                        )}
+                      >
+                        <div className='mb-1 font-semibold'>
+                          {t('Discount Formula')}
+                        </div>
+                        <div className='font-mono break-all'>
+                          {formatDetailQuota(subscriptionRawQuota)} ×{' '}
+                          {subscriptionRateLabel} ={' '}
+                          {formatDetailQuota(subscriptionConsumed)}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 {other.subscription_pre_consumed != null && (
                   <DetailRow
                     label={t('Pre-consumed')}

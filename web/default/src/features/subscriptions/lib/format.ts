@@ -18,7 +18,83 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
 import dayjs from '@/lib/dayjs'
+import { formatLocalCurrencyAmount } from '@/lib/currency'
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  useSystemConfigStore,
+} from '@/stores/system-config-store'
 import type { SubscriptionPlan } from '../types'
+
+export function formatSubscriptionPrice(amount: number | null | undefined) {
+  return formatLocalCurrencyAmount(Number(amount || 0), {
+    digitsLarge: 2,
+    digitsSmall: 2,
+    abbreviate: false,
+  })
+}
+
+export function normalizeSubscriptionBillingDiscount(
+  discount: number | null | undefined
+) {
+  const value = Number(discount ?? 1)
+  if (!Number.isFinite(value) || value <= 0 || value > 1) return 1
+  return value
+}
+
+export function formatSubscriptionDiscountPercent(
+  discount: number | null | undefined
+) {
+  const percent = normalizeSubscriptionBillingDiscount(discount) * 100
+  return `${Number(percent.toFixed(percent < 1 ? 2 : 1))}%`
+}
+
+export function formatSubscriptionDiscountOffPercent(
+  discount: number | null | undefined
+) {
+  const off = (1 - normalizeSubscriptionBillingDiscount(discount)) * 100
+  return `${Number(off.toFixed(off < 1 ? 2 : 1))}%`
+}
+
+export function normalizeSubscriptionDisplayAmount(amount: number) {
+  if (!Number.isFinite(amount)) return 0
+  return Number(amount.toFixed(6))
+}
+
+export function displaySubscriptionAmountToQuota(
+  amount: number | null | undefined
+) {
+  const value = Number(amount || 0)
+  if (!Number.isFinite(value) || value <= 0) return 0
+
+  const currency =
+    useSystemConfigStore.getState().config.currency ?? DEFAULT_CURRENCY_CONFIG
+  const quotaPerUnit =
+    currency.quotaPerUnit && currency.quotaPerUnit > 0
+      ? currency.quotaPerUnit
+      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+
+  if (currency.quotaDisplayType === 'TOKENS') {
+    return Math.round(value)
+  }
+
+  let amountUSD = value
+  if (currency.quotaDisplayType === 'CNY') {
+    const rate =
+      currency.usdExchangeRate && currency.usdExchangeRate > 0
+        ? currency.usdExchangeRate
+        : DEFAULT_CURRENCY_CONFIG.usdExchangeRate
+    amountUSD = value / rate
+  } else if (currency.quotaDisplayType === 'CUSTOM') {
+    const rate =
+      currency.customCurrencyExchangeRate &&
+      currency.customCurrencyExchangeRate > 0
+        ? currency.customCurrencyExchangeRate
+        : DEFAULT_CURRENCY_CONFIG.customCurrencyExchangeRate
+    amountUSD = value / rate
+  }
+
+  return Math.round(amountUSD * quotaPerUnit)
+}
 
 export function formatDuration(
   plan: Partial<SubscriptionPlan>,
