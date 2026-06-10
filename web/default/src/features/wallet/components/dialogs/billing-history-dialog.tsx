@@ -19,8 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { Search, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatCurrencyFromUSD } from '@/lib/currency'
-import { formatNumber } from '@/lib/format'
+import {
+  formatLocalCurrencyAmount,
+  formatQuotaWithCurrency,
+} from '@/lib/currency'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import {
   AlertDialog,
@@ -59,10 +61,56 @@ import {
   getPaymentMethodName,
   formatTimestamp,
 } from '../../lib/billing'
+import type { TopupRecord } from '../../types'
 
 interface BillingHistoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+function formatTopupAmount(record: TopupRecord) {
+  const money = Number(record.money)
+  if (Number.isFinite(money) && money > 0) {
+    return formatLocalCurrencyAmount(money, {
+      digitsLarge: 2,
+      digitsSmall: 2,
+      abbreviate: false,
+    })
+  }
+
+  const displayAmount = Number(record.display_amount)
+  if (Number.isFinite(displayAmount) && displayAmount > 0) {
+    return formatLocalCurrencyAmount(displayAmount, {
+      digitsLarge: 2,
+      digitsSmall: 2,
+      abbreviate: false,
+    })
+  }
+
+  const amount = Number(record.amount)
+  if (!Number.isFinite(amount)) return '-'
+
+  if (Math.abs(amount) >= 10000) {
+    return formatQuotaWithCurrency(amount, {
+      digitsLarge: 2,
+      digitsSmall: 2,
+      abbreviate: false,
+    })
+  }
+
+  return formatLocalCurrencyAmount(amount, {
+    digitsLarge: 2,
+    digitsSmall: 2,
+    abbreviate: false,
+  })
+}
+
+function formatPaymentAmount(amount: number) {
+  return formatLocalCurrencyAmount(amount, {
+    digitsLarge: 2,
+    digitsSmall: 2,
+    abbreviate: false,
+  })
 }
 
 export function BillingHistoryDialog({
@@ -244,11 +292,7 @@ export function BillingHistoryDialog({
                               {t('Amount')}
                             </Label>
                             <div className='text-sm font-semibold'>
-                              {formatCurrencyFromUSD(record.amount, {
-                                digitsLarge: 2,
-                                digitsSmall: 2,
-                                abbreviate: false,
-                              })}
+                              {formatTopupAmount(record)}
                             </div>
                           </div>
                           <div className='space-y-1'>
@@ -256,7 +300,7 @@ export function BillingHistoryDialog({
                               {t('Payment')}
                             </Label>
                             <div className='text-sm font-semibold text-red-600'>
-                              {formatNumber(record.money)}
+                              {formatPaymentAmount(record.money)}
                             </div>
                           </div>
                         </div>

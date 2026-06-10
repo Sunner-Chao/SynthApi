@@ -277,6 +277,8 @@ export interface TopupRecord {
   user_id: number
   /** Topup amount (quota) */
   amount: number
+  /** Display amount entered by the user, when stored separately */
+  display_amount?: number
   /** Payment amount (actual money paid) */
   money: number
   /** Trade/order number */

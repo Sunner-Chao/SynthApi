@@ -27,6 +27,8 @@ import {
 const defaultSiteSettings: SiteSettings = {
   'theme.frontend': 'default',
   Notice: '',
+  'console_setting.announcements': '[]',
+  'console_setting.announcements_enabled': true,
   SystemName: 'New API',
   Logo: '',
   Footer: '',
