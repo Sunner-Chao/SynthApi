@@ -4472,7 +4472,7 @@
     "Window:": "窗口：",
     "Wire encoding for the embedding vectors": "向量传输的编码格式",
     "with conflicts": "有冲突",
-    "with the API key from your token settings.": "替换为令牌设置中的 API Key。",
+    "with the API key from your token settings.": "替换为你的 API 密钥。",
     "Without additional conditions, only the type above is used for pruning.": "未添加附加条件时，仅使用上方 type 进行清理。",
     "Worker Access Key": "Worker 访问密钥",
     "Worker Proxy": "Worker 代理",

@@ -4472,7 +4472,7 @@
     "Window:": "Cửa sổ:",
     "Wire encoding for the embedding vectors": "Định dạng truyền cho vector embedding",
     "with conflicts": "với các xung đột",
-    "with the API key from your token settings.": "bằng API key từ trang Tokens của bạn.",
+    "with the API key from your token settings.": "bằng API key của bạn.",
     "Without additional conditions, only the type above is used for pruning.": "Không có điều kiện bổ sung, chỉ type ở trên được sử dụng để dọn dẹp.",
     "Worker Access Key": "Khóa truy cập nhân viên",
     "Worker Proxy": "Proxy Nhân viên",

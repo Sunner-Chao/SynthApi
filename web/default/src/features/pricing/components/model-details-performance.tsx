@@ -37,6 +37,7 @@ import {
   formatUptimePct,
 } from '@/features/performance-metrics/lib/format'
 import type { PerformanceGroup } from '@/features/performance-metrics/types'
+import { EXCLUDED_GROUPS } from '../constants'
 import { type UptimeDayPoint } from '../lib/mock-stats'
 import type { PricingModel } from '../types'
 import { LatencyTrendChart, UptimeTrendChart } from './model-details-charts'
@@ -162,7 +163,10 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
     staleTime: 60 * 1000,
   })
   const groups = useMemo(
-    () => metricsQuery.data?.data.groups ?? [],
+    () =>
+      (metricsQuery.data?.data.groups ?? []).filter(
+        (group) => !EXCLUDED_GROUPS.includes(group.group)
+      ),
     [metricsQuery.data]
   )
   const performances = useMemo<PerformanceRow[]>(
@@ -185,6 +189,14 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
     }
     return map
   }, [groups])
+
+  if (metricsQuery.isError) {
+    return (
+      <div className='text-muted-foreground rounded-lg border p-6 text-center text-sm'>
+        {t('Performance data is not yet available for this model.')}
+      </div>
+    )
+  }
 
   if (metricsQuery.isLoading || performances.length === 0) {
     return (

@@ -4472,7 +4472,7 @@
     "Window:": "Окно:",
     "Wire encoding for the embedding vectors": "Кодирование векторов в передаче",
     "with conflicts": "с конфликтами",
-    "with the API key from your token settings.": "на API-ключ из настроек токенов.",
+    "with the API key from your token settings.": "на ваш API-ключ.",
     "Without additional conditions, only the type above is used for pruning.": "Без дополнительных условий для очистки используется только тип выше.",
     "Worker Access Key": "Ключ доступа воркера",
     "Worker Proxy": "Прокси воркера",
