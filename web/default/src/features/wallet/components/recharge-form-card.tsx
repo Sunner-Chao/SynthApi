@@ -316,7 +316,7 @@ export function RechargeFormCard({
                 >
                   {t('Custom Amount')}
                 </Label>
-                <div className='grid grid-cols-[minmax(0,1fr)_minmax(110px,0.55fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
+                <div className='grid gap-2 sm:grid-cols-[minmax(10rem,14rem)_minmax(12rem,16rem)] sm:items-center'>
                   <Input
                     id='topup-amount'
                     type='text'
@@ -324,7 +324,7 @@ export function RechargeFormCard({
                     value={localAmount}
                     onChange={(e) => handleAmountChange(e.target.value)}
                     placeholder={`Minimum ${minTopup}`}
-                    className='h-9 text-base sm:h-10 sm:text-lg'
+                    className='h-9 min-w-0 text-base sm:h-10 sm:text-lg'
                   />
                   <div className='bg-muted/30 flex min-h-9 items-center justify-between gap-2 rounded-md border px-3 lg:min-w-52'>
                     <span className='text-muted-foreground truncate text-xs'>

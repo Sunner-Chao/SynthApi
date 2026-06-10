@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNotificationStore } from '@/stores/notification-store'
 import { getNotice } from '@/lib/api'
@@ -118,6 +118,22 @@ export function useNotifications() {
     }
   }, [noticeContent, lastReadNotice, announcements, isAnnouncementRead])
 
+  const unreadAnnouncements = useMemo(
+    () =>
+      announcements.filter((item: Record<string, unknown>) => {
+        const key = getAnnouncementKey(item)
+        return !isAnnouncementRead(key)
+      }),
+    [announcements, isAnnouncementRead]
+  )
+
+  const [announcementDialogOpen, setAnnouncementDialogOpen] = useState(false)
+
+  useEffect(() => {
+    if (statusLoading || unreadAnnouncements.length === 0) return
+    setAnnouncementDialogOpen(true)
+  }, [statusLoading, unreadAnnouncements.length])
+
   const markAnnouncementsAsRead = () => {
     if (announcements.length > 0) {
       const allKeys = announcements.map((item: Record<string, unknown>) =>
@@ -125,6 +141,16 @@ export function useNotifications() {
       )
       markAnnouncementsRead(allKeys)
     }
+  }
+
+  const closeAnnouncementDialog = () => {
+    if (unreadAnnouncements.length > 0) {
+      const unreadKeys = unreadAnnouncements.map(
+        (item: Record<string, unknown>) => getAnnouncementKey(item)
+      )
+      markAnnouncementsRead(unreadKeys)
+    }
+    setAnnouncementDialogOpen(false)
   }
 
   // Handle popover open
@@ -165,6 +191,7 @@ export function useNotifications() {
     // Data
     notice: noticeContent,
     announcements,
+    unreadAnnouncements,
     loading: noticeLoading || statusLoading,
 
     // Unread counts
@@ -177,10 +204,19 @@ export function useNotifications() {
     setPopoverOpen: handlePopoverOpenChange,
     activeTab,
     setActiveTab: handleTabChange,
+    announcementDialogOpen,
+    setAnnouncementDialogOpen: (open: boolean) => {
+      if (open) {
+        setAnnouncementDialogOpen(true)
+      } else {
+        closeAnnouncementDialog()
+      }
+    },
 
     // Actions
     openPopover: handleOpenPopover,
     closePopover: () => setPopoverOpen(false),
+    closeAnnouncementDialog,
     refetchNotice,
   }
 }
