@@ -4472,7 +4472,7 @@
     "Window:": "Fenêtre :",
     "Wire encoding for the embedding vectors": "Encodage filaire pour les vecteurs",
     "with conflicts": "avec des conflits",
-    "with the API key from your token settings.": "par la clé API de votre page de jetons.",
+    "with the API key from your token settings.": "par votre clé API.",
     "Without additional conditions, only the type above is used for pruning.": "Sans conditions supplémentaires, seul le type ci-dessus est utilisé pour le nettoyage.",
     "Worker Access Key": "Clé d'accès du Worker",
     "Worker Proxy": "Proxy Worker",

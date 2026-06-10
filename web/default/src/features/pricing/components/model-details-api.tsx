@@ -88,6 +88,32 @@ type SampleContext = {
   endpointPath: string
 }
 
+function normalizeApiBaseUrl(candidate?: string): string {
+  const cleanCandidate = candidate?.trim().replace(/\/$/, '')
+  const isUsableCandidate =
+    cleanCandidate &&
+    !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(cleanCandidate)
+
+  const raw =
+    isUsableCandidate ||
+    (typeof window === 'undefined' ? '' : window.location.origin)
+
+  if (!raw) return 'https://api.example.com'
+
+  try {
+    const url = new URL(raw)
+    if (!['localhost', '127.0.0.1'].includes(url.hostname)) {
+      url.protocol = 'https:'
+      if (url.port === '13000' || url.port === '18080' || url.port === '3000') {
+        url.port = ''
+      }
+    }
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return raw.replace(/\/$/, '')
+  }
+}
+
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
   const url = `${ctx.baseUrl}${ctx.endpointPath}`
   const isResponses = ctx.endpointType === 'openai-response'
@@ -459,11 +485,7 @@ function CodeSamplesSection(props: {
       (status as Record<string, unknown> | null)?.serverAddress ??
       (status?.data as Record<string, unknown> | undefined)?.server_address ??
       (status?.data as Record<string, unknown> | undefined)?.serverAddress
-    if (candidate && typeof candidate === 'string') {
-      return candidate.replace(/\/$/, '')
-    }
-    if (typeof window !== 'undefined') return window.location.origin
-    return 'https://api.example.com'
+    return normalizeApiBaseUrl(typeof candidate === 'string' ? candidate : '')
   }, [status])
 
   const endpoints = useMemo(() => {

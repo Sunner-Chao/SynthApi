@@ -86,6 +86,7 @@ export function LatencyTrendChart(props: {
       yField: 'ttft',
       seriesField: 'group',
       smooth: true,
+      animation: false,
       point: {
         visible: true,
         style: { size: 5, stroke: '#ffffff', lineWidth: 1.5 },
@@ -186,6 +187,7 @@ export function UptimeTrendChart(props: {
       xField: 'date',
       yField: 'uptime',
       smooth: true,
+      animation: false,
       line: {
         style: { stroke: '#10b981', lineWidth: 2 },
       },
@@ -307,6 +309,7 @@ export function ThroughputBarChart(props: {
       data: [{ id: 'tput', values: filtered.map((r) => ({ ...r })) }],
       xField: 'throughput_tps',
       yField: 'group',
+      animation: false,
       bar: {
         style: {
           fill: '#6366f1',

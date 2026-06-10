@@ -51,7 +51,11 @@ import {
   formatThroughput,
   formatUptimePct,
 } from '@/features/performance-metrics/lib/format'
-import { DEFAULT_TOKEN_UNIT, QUOTA_TYPE_VALUES } from '../constants'
+import {
+  DEFAULT_TOKEN_UNIT,
+  EXCLUDED_GROUPS,
+  QUOTA_TYPE_VALUES,
+} from '../constants'
 import { usePricingData } from '../hooks/use-pricing-data'
 import {
   getDynamicDisplayGroupRatio,
@@ -208,7 +212,9 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
     staleTime: 60 * 1000,
   })
 
-  const groups = metricsQuery.data?.data.groups ?? []
+  const groups = (metricsQuery.data?.data.groups ?? []).filter(
+    (group) => !EXCLUDED_GROUPS.includes(group.group)
+  )
   const successRates = groups
     .map((group) => group.success_rate)
     .filter((rate) => Number.isFinite(rate))
@@ -579,8 +585,8 @@ function AutoGroupChain(props: { model: PricingModel; autoGroups: string[] }) {
   const modelEnableGroups = Array.isArray(props.model.enable_groups)
     ? props.model.enable_groups
     : []
-  const autoChain = props.autoGroups.filter((g) =>
-    modelEnableGroups.includes(g)
+  const autoChain = props.autoGroups.filter(
+    (g) => modelEnableGroups.includes(g) && !EXCLUDED_GROUPS.includes(g)
   )
 
   if (autoChain.length === 0) return null

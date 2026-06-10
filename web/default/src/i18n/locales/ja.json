@@ -4472,7 +4472,7 @@
     "Window:": "ウィンドウ：",
     "Wire encoding for the embedding vectors": "ベクトルの転送エンコーディング",
     "with conflicts": "競合あり",
-    "with the API key from your token settings.": "をトークン設定の API キーに置き換えてください。",
+    "with the API key from your token settings.": "をあなたの API キーに置き換えてください。",
     "Without additional conditions, only the type above is used for pruning.": "追加条件がない場合、上記のtypeのみが削除に使用されます。",
     "Worker Access Key": "Workerアクセスキー",
     "Worker Proxy": "Workerプロキシ",
