@@ -328,6 +328,9 @@ function TimelineItem({
  * Notice card with gradient accent
  */
 function NoticeCard({ notice, t }: { notice: string; t: TFunction }) {
+  const now = new Date()
+  const activeTime = formatDateTimeObject(now)
+
   return (
     <div className='group relative overflow-hidden rounded-xl border border-info/20 bg-info/5'>
       {/* Top gradient accent */}
@@ -350,6 +353,11 @@ function NoticeCard({ notice, t }: { notice: string; t: TFunction }) {
                 <Sparkles className='mr-1 size-2.5' />
                 {t('Platform Notice')}
               </Badge>
+              <TimeBadge
+                relativeTime={t('Active now')}
+                absoluteTime={activeTime}
+                tone='ongoing'
+              />
             </div>
 
             {/* Content */}
