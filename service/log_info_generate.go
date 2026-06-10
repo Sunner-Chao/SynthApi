@@ -144,6 +144,9 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		if relayInfo.SubscriptionPlanTitle != "" {
 			other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
 		}
+		if relayInfo.SubscriptionBillingDiscount > 0 {
+			other["subscription_discount"] = relayInfo.SubscriptionBillingDiscount
+		}
 		// Compute "this request" subscription consumed + remaining
 		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta
 		usedFinal := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta

@@ -25,9 +25,10 @@ import (
 type BillingSession struct {
 	relayInfo        *relaycommon.RelayInfo
 	funding          FundingSource
-	preConsumedQuota int  // 实际预扣额度（信任用户可能为 0）
-	tokenConsumed    int  // 令牌额度实际扣减量
-	extraReserved    int  // 发送前补充预扣的额度（订阅退款时需要单独回滚）
+	preConsumedQuota int // 实际预扣额度（信任用户可能为 0）
+	tokenConsumed    int // 令牌额度实际扣减量
+	extraReserved    int // 发送前补充预扣的额度（订阅退款时需要单独回滚）
+	extraReservedSub int64
 	trusted          bool // 是否命中信任额度旁路
 	fundingSettled   bool // funding.Settle 已成功，资金来源已提交
 	settled          bool // Settle 全部完成（资金 + 令牌）
@@ -71,8 +72,8 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		}
 	}
 	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）
-	if s.funding.Source() == BillingSourceSubscription {
-		s.relayInfo.SubscriptionPostDelta += int64(delta)
+	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		s.relayInfo.SubscriptionPostDelta += sub.lastDelta
 	}
 	s.settled = true
 	return tokenErr
@@ -109,7 +110,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+			if _, err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
@@ -238,7 +239,8 @@ func (s *BillingSession) reserveFunding(delta int) error {
 		funding.consumed += delta
 		return nil
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
+		appliedDelta, err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta))
+		if err != nil {
 			return types.NewErrorWithStatusCode(
 				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
@@ -247,6 +249,7 @@ func (s *BillingSession) reserveFunding(delta int) error {
 				types.ErrOptionWithNoRecordErrorLog(),
 			)
 		}
+		s.extraReservedSub += appliedDelta
 		return nil
 	default:
 		return types.NewError(fmt.Errorf("unsupported funding source: %s", s.funding.Source()), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
@@ -262,7 +265,7 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
+		if _, err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
 	}
@@ -322,15 +325,17 @@ func (s *BillingSession) syncRelayInfo() {
 
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
 		info.SubscriptionId = sub.subscriptionId
-		info.SubscriptionPreConsumed = sub.preConsumed + int64(s.extraReserved)
+		info.SubscriptionPreConsumed = sub.preConsumed + s.extraReservedSub
 		info.SubscriptionPostDelta = 0
 		info.SubscriptionAmountTotal = sub.AmountTotal
-		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
+		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + s.extraReservedSub
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
+		info.SubscriptionBillingDiscount = sub.BillingDiscount
 	} else {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
+		info.SubscriptionBillingDiscount = 0
 	}
 }
 

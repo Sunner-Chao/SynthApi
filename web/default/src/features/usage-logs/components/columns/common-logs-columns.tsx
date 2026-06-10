@@ -37,6 +37,11 @@ import {
 } from '@/components/ui/tooltip'
 import { DataTableColumnHeader } from '@/components/data-table'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import {
+  formatSubscriptionDiscountOffPercent,
+  formatSubscriptionDiscountPercent,
+  normalizeSubscriptionBillingDiscount,
+} from '@/features/subscriptions/lib'
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import {
   formatModelName,
@@ -713,24 +718,47 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const isSubscription = other?.billing_source === 'subscription'
 
         if (isSubscription) {
+          const discount = normalizeSubscriptionBillingDiscount(
+            other?.subscription_discount
+          )
+          const rate = formatSubscriptionDiscountPercent(discount)
+          const off = formatSubscriptionDiscountOffPercent(discount)
+          const consumed = other?.subscription_consumed ?? quota
           return (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <StatusBadge
-                      label={t('Subscription')}
-                      variant='success'
-                      size='sm'
-                      copyable={false}
-                      className='cursor-help'
-                    />
+                    <div className='flex cursor-help flex-col items-start gap-1'>
+                      <StatusBadge
+                        label={t('Subscription')}
+                        variant='success'
+                        size='sm'
+                        copyable={false}
+                      />
+                      <span
+                        className={cn(
+                          'inline-flex rounded-md border px-2 py-0.5 text-[11px] leading-none font-semibold',
+                          discount < 1
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : 'border-border bg-muted/50 text-muted-foreground'
+                        )}
+                      >
+                        {rate} · {formatLogQuota(consumed)}
+                      </span>
+                    </div>
                   }
                 />
                 <TooltipContent>
-                  <span>
-                    {t('Deducted by subscription')}: {formatLogQuota(quota)}
-                  </span>
+                  <div className='space-y-1 text-xs'>
+                    <div>
+                      {t('Deducted by subscription')}:{' '}
+                      {formatLogQuota(consumed)}
+                    </div>
+                    <div>
+                      {t('{{rate}} rate ({{off}} off)', { rate, off })}
+                    </div>
+                  </div>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

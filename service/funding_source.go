@@ -79,6 +79,8 @@ type SubscriptionFunding struct {
 	AmountUsedAfter int64
 	PlanId          int
 	PlanTitle       string
+	BillingDiscount float64
+	lastDelta       int64
 }
 
 func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription }
@@ -91,6 +93,7 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 	}
 	s.subscriptionId = res.UserSubscriptionId
 	s.preConsumed = res.PreConsumed
+	s.BillingDiscount = res.BillingDiscount
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
 	// 获取订阅计划信息
@@ -105,7 +108,12 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 	if delta == 0 {
 		return nil
 	}
-	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	appliedDelta, err := model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	if err != nil {
+		return err
+	}
+	s.lastDelta = appliedDelta
+	return nil
 }
 
 func (s *SubscriptionFunding) Refund() error {

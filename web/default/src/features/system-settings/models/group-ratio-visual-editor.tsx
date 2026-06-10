@@ -433,12 +433,14 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         onChange={onChange}
       />
 
-      {/* Topup Group Ratios */}
+      {/* Subscription / top-up group ratios */}
       <Card className={sectionCardClassName}>
         <CardHeader className={sectionHeaderClassName}>
-          <CardTitle>{t('Top-up group ratios')}</CardTitle>
+          <CardTitle>{t('Subscription / top-up group ratios')}</CardTitle>
           <CardDescription>
-            {t('Multipliers for recharge pricing based on user groups.')}
+            {t(
+              'Multipliers used for subscription discounts and recharge pricing based on user groups.'
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>

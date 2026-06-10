@@ -151,7 +151,7 @@ export function NoticeSection({ defaultValue }: NoticeSectionProps) {
               </div>
               <CardAction>
                 <Badge
-                  variant={trimmedNotice.length > 0 ? 'success' : 'neutral'}
+                  variant={trimmedNotice.length > 0 ? 'default' : 'secondary'}
                   className='whitespace-nowrap'
                 >
                   {statusLabel}

@@ -94,9 +94,11 @@ function normalizeApiBaseUrl(candidate?: string): string {
     cleanCandidate &&
     !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(cleanCandidate)
 
-  const raw =
-    isUsableCandidate ||
-    (typeof window === 'undefined' ? '' : window.location.origin)
+  const raw = isUsableCandidate
+    ? cleanCandidate
+    : typeof window === 'undefined'
+      ? ''
+      : window.location.origin
 
   if (!raw) return 'https://api.example.com'
 

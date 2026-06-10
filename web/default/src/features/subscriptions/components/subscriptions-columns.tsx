@@ -24,7 +24,7 @@ import { DataTableColumnHeader } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatDuration, formatResetPeriod } from '../lib'
+import { formatDuration, formatResetPeriod, formatSubscriptionPrice } from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -74,7 +74,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         ),
         cell: ({ row }) => (
           <span className='font-semibold text-emerald-600'>
-            ${Number(row.original.plan.price_amount || 0).toFixed(2)}
+            {formatSubscriptionPrice(row.original.plan.price_amount)}
           </span>
         ),
         size: 100,
@@ -91,6 +91,24 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           </span>
         ),
         size: 100,
+      },
+      {
+        accessorFn: (row) => row.plan.billing_discount_group || '',
+        id: 'billing_discount_group',
+        meta: { label: t('Extra Discount Group') },
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title={t('Extra Discount Group')}
+          />
+        ),
+        cell: ({ row }) =>
+          row.original.plan.billing_discount_group ? (
+            <GroupBadge group={row.original.plan.billing_discount_group} />
+          ) : (
+            <span className='text-muted-foreground'>-</span>
+          ),
+        size: 150,
       },
       {
         id: 'reset',

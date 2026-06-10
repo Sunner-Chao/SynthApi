@@ -202,13 +202,13 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               name='TopupGroupRatio'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Top-up group ratios')}</FormLabel>
+                  <FormLabel>{t('Subscription / top-up group ratios')}</FormLabel>
                   <FormControl>
                     <Textarea rows={6} {...field} />
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Optional multiplier per user group used when calculating recharge pricing. Provide a JSON object such as'
+                      'Optional multiplier per user group used for subscription discounts and recharge pricing. Provide a JSON object such as'
                     )}
                     {` { "default": 1, "vip": 1.2 }`}.
                   </FormDescription>

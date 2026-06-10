@@ -159,6 +159,8 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.GET("/plans", controller.GetSubscriptionPlans)
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
+			subscriptionRoute.POST("/self/cancel", middleware.CriticalRateLimit(), controller.CancelSubscriptionSelf)
+			subscriptionRoute.POST("/self/delete", middleware.CriticalRateLimit(), controller.DeleteSubscriptionSelf)
 			subscriptionRoute.POST("/balance/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestBalancePay)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
@@ -339,6 +341,12 @@ func SetApiRouter(router *gin.Engine) {
 		groupRoute.Use(middleware.AdminAuth())
 		{
 			groupRoute.GET("/", controller.GetGroups)
+		}
+		topupGroupRoute := apiRouter.Group("/topup_group")
+		topupGroupRoute.Use(middleware.AdminAuth())
+		{
+			topupGroupRoute.GET("/", controller.GetTopupGroups)
+			topupGroupRoute.GET("", controller.GetTopupGroups)
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")

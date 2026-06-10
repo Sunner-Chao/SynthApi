@@ -28,6 +28,8 @@ export const subscriptionPlanSchema = z.object({
   subtitle: z.string().optional(),
   price_amount: z.number(),
   currency: z.string().default('USD'),
+  billing_discount: z.number().optional().default(1),
+  billing_discount_group: z.string().optional(),
   duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
   duration_value: z.number(),
   custom_seconds: z.number().optional(),
@@ -64,6 +66,8 @@ export const userSubscriptionSchema = z.object({
   end_time: z.number(),
   amount_total: z.number(),
   amount_used: z.number(),
+  billing_discount: z.number().optional().default(1),
+  billing_discount_group: z.string().optional(),
   next_reset_time: z.number().optional(),
 })
 
@@ -113,6 +117,21 @@ export interface SubscriptionPayResponse {
 
 export interface CreateUserSubscriptionRequest {
   plan_id: number
+}
+
+export interface CancelSubscriptionRequest {
+  subscription_id: number
+}
+
+export interface DeleteSubscriptionRequest {
+  subscription_id: number
+}
+
+export interface CancelSubscriptionResponse {
+  refund_quota: number
+  refund_amount: number
+  refund_ratio: number
+  message?: string
 }
 
 // ============================================================================

@@ -100,6 +100,7 @@ func isBlockedOnPublicPort(path string) bool {
 		"/api/channel",
 		"/api/redemption",
 		"/api/group",
+		"/api/topup_group",
 		"/api/prefill_group",
 		"/api/vendors",
 		"/api/models",
