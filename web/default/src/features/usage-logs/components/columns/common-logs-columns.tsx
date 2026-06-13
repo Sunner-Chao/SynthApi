@@ -40,7 +40,6 @@ import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import {
   formatSubscriptionDiscountOffPercent,
   formatSubscriptionDiscountPercent,
-  normalizeSubscriptionBillingDiscount,
 } from '@/features/subscriptions/lib'
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import {
@@ -48,6 +47,7 @@ import {
   getFirstResponseTimeColor,
   getResponseTimeColor,
   getTieredBillingSummary,
+  getSubscriptionBillingDisplay,
   hasAnyCacheTokens,
   parseLogOther,
   isViolationFeeLog,
@@ -718,12 +718,14 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const isSubscription = other?.billing_source === 'subscription'
 
         if (isSubscription) {
-          const discount = normalizeSubscriptionBillingDiscount(
-            other?.subscription_discount
+          const subscriptionDisplay = getSubscriptionBillingDisplay(
+            quota,
+            other
           )
+          const discount = subscriptionDisplay.discount
           const rate = formatSubscriptionDiscountPercent(discount)
           const off = formatSubscriptionDiscountOffPercent(discount)
-          const consumed = other?.subscription_consumed ?? quota
+          const consumed = subscriptionDisplay.actualConsumed
           return (
             <TooltipProvider>
               <Tooltip>

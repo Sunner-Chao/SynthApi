@@ -23,6 +23,7 @@ import type {
   MessageVersion,
   ChatCompletionMessage,
   ContentPart,
+  PlaygroundAttachment,
 } from '../types'
 
 /**
@@ -68,6 +69,22 @@ export function createUserMessage(content: string): Message {
 }
 
 /**
+ * Create a user message with attachments
+ */
+export function createUserMessageWithAttachments(
+  content: string,
+  attachments: PlaygroundAttachment[] = []
+): Message {
+  const message = createUserMessage(content)
+  if (attachments.length === 0) return message
+
+  return {
+    ...message,
+    attachments,
+  }
+}
+
+/**
  * Create a loading assistant message
  */
 export function createLoadingAssistantMessage(): Message {
@@ -88,11 +105,13 @@ export function createLoadingAssistantMessage(): Message {
  */
 export function buildMessageContent(
   text: string,
-  imageUrls: string[] = []
+  imageUrls: string[] = [],
+  files: Pick<PlaygroundAttachment, 'name' | 'type' | 'base64'>[] = []
 ): string | ContentPart[] {
   const validImages = imageUrls.filter((url) => url.trim() !== '')
+  const validFiles = files.filter((file) => file.base64.trim() !== '')
 
-  if (validImages.length === 0) {
+  if (validImages.length === 0 && validFiles.length === 0) {
     return text
   }
 
@@ -104,6 +123,14 @@ export function buildMessageContent(
     ...validImages.map((url) => ({
       type: 'image_url' as const,
       image_url: { url: url.trim() },
+    })),
+    ...validFiles.map((file) => ({
+      type: 'file' as const,
+      file: {
+        filename: file.name,
+        file_data: file.base64,
+        mime_type: file.type,
+      },
     })),
   ]
 
@@ -131,9 +158,17 @@ export function getTextContent(content: string | ContentPart[]): string {
  */
 export function formatMessageForAPI(message: Message): ChatCompletionMessage {
   const currentVersion = getCurrentVersion(message)
+  const attachments = message.attachments || []
+  const imageUrls = attachments
+    .filter((item) => item.kind === 'image')
+    .map((item) => item.data)
+  const files = attachments
+    .filter((item) => item.kind === 'file')
+    .map((item) => ({ name: item.name, type: item.type, base64: item.base64 }))
+
   return {
     role: message.from,
-    content: currentVersion.content,
+    content: buildMessageContent(currentVersion.content, imageUrls, files),
   }
 }
 

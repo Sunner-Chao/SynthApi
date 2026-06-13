@@ -44,6 +44,22 @@ export function buildChatCompletionPayload(
     stream: config.stream,
   }
 
+  if (config.web_search) {
+    payload.web_search_options = {
+      search_context_size: 'medium',
+    }
+    payload.search_parameters = {
+      mode: 'on',
+    }
+    payload.enable_search = true
+    payload.web_search = {
+      enable: true,
+      enable_citation: true,
+      enable_trace: true,
+      enable_status: false,
+    }
+  }
+
   // Add enabled parameters
   const parameterKeys: Array<keyof ParameterEnabled> = [
     'temperature',

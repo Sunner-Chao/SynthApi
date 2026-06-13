@@ -236,6 +236,14 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if !common.RegisterEnabled {
 		return nil, &OAuthRegistrationDisabledError{}
 	}
+	registerIP := c.ClientIP()
+	ipUsed, err := model.IsRegisterIPUsed(registerIP)
+	if err != nil {
+		return nil, err
+	}
+	if ipUsed {
+		return nil, fmt.Errorf("当前网络环境已注册过账号，请勿重复注册")
+	}
 
 	// Set up new user
 	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
@@ -261,6 +269,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
+	user.RegisterIP = registerIP
 
 	// Handle affiliate code
 	affCode := session.Get("aff")

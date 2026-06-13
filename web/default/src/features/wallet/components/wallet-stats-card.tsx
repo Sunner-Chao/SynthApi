@@ -53,9 +53,9 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       icon: WalletCards,
     },
     {
-      label: t('Total Usage'),
+      label: t('Cumulative Usage'),
       value: formatQuota(props.user?.used_quota ?? 0),
-      description: t('Total consumed quota'),
+      description: t('Cumulative consumed quota'),
       icon: BarChart3,
     },
     {

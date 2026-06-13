@@ -20,6 +20,32 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useStatus } from '@/hooks/use-status'
 import { getPricing } from '../api'
+import { normalizePricingNumber } from '../lib/number-format'
+import type { PricingModel } from '../types'
+
+const RATIO_FIELDS = [
+  'model_ratio',
+  'completion_ratio',
+  'model_price',
+  'cache_ratio',
+  'create_cache_ratio',
+  'image_ratio',
+  'audio_ratio',
+  'audio_completion_ratio',
+] as const
+
+function normalizePricingModel(model: PricingModel): PricingModel {
+  const normalized: PricingModel = { ...model }
+
+  for (const field of RATIO_FIELDS) {
+    const value = normalized[field]
+    if (value != null) {
+      normalized[field] = normalizePricingNumber(value) as never
+    }
+  }
+
+  return normalized
+}
 
 export function usePricingData() {
   const { status } = useStatus()
@@ -47,7 +73,8 @@ export function usePricingData() {
 
     const vendorMap = new Map(data.vendors.map((v) => [v.id, v]))
 
-    return data.data.map((model) => {
+    return data.data.map((item) => {
+      const model = normalizePricingModel(item)
       const vendor = model.vendor_id
         ? vendorMap.get(model.vendor_id)
         : undefined

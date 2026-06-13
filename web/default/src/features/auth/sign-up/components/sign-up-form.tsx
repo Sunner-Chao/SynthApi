@@ -66,11 +66,10 @@ export function SignUpForm({
   const [isLoading, setIsLoading] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
   const [agreedToLegal, setAgreedToLegal] = useState(false)
+  const [showLegalDialog, setShowLegalDialog] = useState(false)
   const [wechatCode, setWeChatCode] = useState('')
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
-  const legalConsentErrorMessage = t('Please agree to the legal terms first')
-
   const { status } = useStatus()
   const {
     isTurnstileEnabled,
@@ -143,7 +142,7 @@ export function SignUpForm({
 
   async function onSubmit(data: z.infer<typeof registerFormSchema>) {
     if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
+      setShowLegalDialog(true)
       return
     }
 
@@ -191,7 +190,7 @@ export function SignUpForm({
 
   const handleOpenWeChatDialog = () => {
     if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
+      setShowLegalDialog(true)
       return
     }
 
@@ -364,7 +363,6 @@ export function SignUpForm({
           className='mt-2 w-full justify-center gap-2'
           disabled={
             isLoading ||
-            (requiresLegalConsent && !agreedToLegal) ||
             !turnstileReady
           }
         >
@@ -375,7 +373,7 @@ export function SignUpForm({
         {oauthRegisterEnabled && (
           <OAuthProviders
             status={status}
-            disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+            disabled={isLoading}
             onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
             isWeChatLoading={isWeChatSubmitting}
             className='pt-2'
@@ -451,6 +449,35 @@ export function SignUpForm({
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={showLegalDialog} onOpenChange={setShowLegalDialog}>
+        <DialogContent className='max-w-sm'>
+          <DialogHeader className='text-left'>
+            <DialogTitle>{t('Agreement Required')}</DialogTitle>
+            <DialogDescription>
+              {t('You need to read and agree to the User Agreement and Privacy Policy before creating an account. Please check the agreement box below the form.')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setShowLegalDialog(false)}
+            >
+              {t('Cancel')}
+            </Button>
+            <Button
+              type='button'
+              onClick={() => {
+                setShowLegalDialog(false)
+                setAgreedToLegal(true)
+              }}
+            >
+              {t('I have read and agree')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Form>
   )
 }

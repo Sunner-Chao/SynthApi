@@ -60,6 +60,13 @@ export type DynamicPricingSummary = {
 }
 
 const PRIMARY_DYNAMIC_FIELDS = new Set(['inputPrice', 'outputPrice'])
+const DYNAMIC_PRICING_DISPLAY_OPTIONS = {
+  digitsLarge: 8,
+  digitsSmall: 8,
+  abbreviate: false,
+  minimumNonZero: 0.00000001,
+  preservePrecision: true,
+}
 
 export function isDynamicPricingModel(model: PricingModel): boolean {
   return model.billing_mode === 'tiered_expr' && Boolean(model.billing_expr)
@@ -98,11 +105,7 @@ export function formatDynamicUnitPrice(
     usdExchangeRate
   )
 
-  return formatBillingCurrencyFromUSD(displayPrice, {
-    digitsLarge: 2,
-    digitsSmall: 2,
-    abbreviate: false,
-  })
+  return formatBillingCurrencyFromUSD(displayPrice, DYNAMIC_PRICING_DISPLAY_OPTIONS)
 }
 
 export function getDynamicPricingTiers(model: PricingModel): ParsedTier[] {

@@ -23,14 +23,19 @@ import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { StatusBadge } from '@/components/status-badge'
-import { DEFAULT_TOKEN_UNIT, EXCLUDED_GROUPS } from '../constants'
+import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
-import { formatPrice, formatRequestPrice } from '../lib/price'
+import { formatPricingNumber } from '../lib/number-format'
+import {
+  formatPrice,
+  formatRequestPrice,
+  getSortedGroupsByPricingRatioForModel,
+} from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
 
@@ -54,8 +59,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
-  const groups = (props.model.enable_groups || []).filter(
-    (group) => !EXCLUDED_GROUPS.includes(group)
+  const groups = getSortedGroupsByPricingRatioForModel(
+    props.model.model_name,
+    props.model.enable_groups || [],
+    props.model.group_ratio || {}
   )
   const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
@@ -76,6 +83,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     : null
 
   const primaryGroup = groups[0]
+  const primaryGroupRatio =
+    primaryGroup && props.model.group_ratio?.[primaryGroup]
+      ? props.model.group_ratio[primaryGroup]
+      : null
   const bottomTags = [...endpoints.slice(0, 2), ...tags.slice(0, 2)]
   const hiddenCount =
     Math.max(groups.length - 1, 0) +
@@ -232,7 +243,12 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
           {primaryGroup && (
             <span className='text-muted-foreground text-xs font-medium'>
-              {primaryGroup} {t('Groups')}
+              {primaryGroup}
+              {primaryGroupRatio != null && (
+                <span className='text-muted-foreground/60 ml-1 font-mono'>
+                  {formatPricingNumber(primaryGroupRatio)}x
+                </span>
+              )}
             </span>
           )}
           <span className='text-muted-foreground text-xs font-medium'>

@@ -35,6 +35,18 @@ func normalizeChatImageURLToString(v any) any {
 	}
 }
 
+func normalizeResponsesFileData(fileData string, mimeType string) string {
+	fileData = strings.TrimSpace(fileData)
+	if fileData == "" || strings.HasPrefix(fileData, "data:") {
+		return fileData
+	}
+	mimeType = strings.TrimSpace(mimeType)
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	return "data:" + mimeType + ";base64," + fileData
+}
+
 func convertChatResponseFormatToResponsesText(reqFormat *dto.ResponseFormat) json.RawMessage {
 	if reqFormat == nil || strings.TrimSpace(reqFormat.Type) == "" {
 		return nil
@@ -234,10 +246,25 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 					"input_audio": part.InputAudio,
 				})
 			case dto.ContentTypeFile:
-				contentParts = append(contentParts, map[string]any{
+				file := part.GetFile()
+				filePart := map[string]any{
 					"type": "input_file",
-					"file": part.File,
-				})
+				}
+				if file != nil {
+					switch {
+					case strings.TrimSpace(file.FileId) != "":
+						filePart["file_id"] = file.FileId
+					case strings.TrimSpace(file.FileData) != "":
+						filePart["file_data"] = normalizeResponsesFileData(file.FileData, file.MimeType)
+						if strings.TrimSpace(file.FileName) != "" {
+							filePart["filename"] = file.FileName
+						}
+						if strings.TrimSpace(file.MimeType) != "" {
+							filePart["mime_type"] = file.MimeType
+						}
+					}
+				}
+				contentParts = append(contentParts, filePart)
 			case dto.ContentTypeVideoUrl:
 				contentParts = append(contentParts, map[string]any{
 					"type":      "input_video",
@@ -286,8 +313,8 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 	}
 
 	var toolsRaw json.RawMessage
-	if req.Tools != nil {
-		tools := make([]map[string]any, 0, len(req.Tools))
+	if req.Tools != nil || req.WebSearchOptions != nil {
+		tools := make([]map[string]any, 0, len(req.Tools)+1)
 		for _, tool := range req.Tools {
 			switch tool.Type {
 			case "function":
@@ -308,6 +335,22 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 				}
 				tools = append(tools, m)
 			}
+		}
+		if req.WebSearchOptions != nil {
+			webSearchTool := map[string]any{
+				"type": dto.BuildInToolWebSearchPreview,
+			}
+			if req.WebSearchOptions.SearchContextSize != "" {
+				webSearchTool["search_context_size"] =
+					req.WebSearchOptions.SearchContextSize
+			}
+			if len(req.WebSearchOptions.UserLocation) > 0 {
+				var userLocation any
+				if err := common.Unmarshal(req.WebSearchOptions.UserLocation, &userLocation); err == nil {
+					webSearchTool["user_location"] = userLocation
+				}
+			}
+			tools = append(tools, webSearchTool)
 		}
 		toolsRaw, _ = common.Marshal(tools)
 	}

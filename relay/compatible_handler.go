@@ -1,10 +1,12 @@
 package relay
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -37,6 +39,22 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 	if request.WebSearchOptions != nil {
 		c.Set("chat_completion_web_search_context_size", request.WebSearchOptions.SearchContextSize)
+		if info.IsPlayground {
+			searchCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+			enriched, enrichErr := service.EnrichPlaygroundRequestWithWebSearch(searchCtx, request)
+			cancel()
+			if enrichErr != nil {
+				logger.LogWarn(c, "playground web search enrichment failed: "+enrichErr.Error())
+			} else if enriched {
+				c.Set("playground_web_search_enriched", true)
+				if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeAzure {
+					request.WebSearchOptions = nil
+					request.SearchParameters = nil
+					request.EnableSearch = nil
+					request.WebSearch = nil
+				}
+			}
+		}
 	}
 
 	err = helper.ModelMappedHelper(c, info, request)
@@ -71,10 +89,15 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	adaptor.Init(info)
 
 	passThroughGlobal := model_setting.GetGlobalSettings().PassThroughRequestEnabled
+	shouldUseResponsesForWebSearch :=
+		request.WebSearchOptions != nil &&
+			(info.ChannelType == constant.ChannelTypeOpenAI ||
+				info.ChannelType == constant.ChannelTypeAzure)
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
 		!passThroughGlobal &&
 		!info.ChannelSetting.PassThroughBodyEnabled &&
-		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		(shouldUseResponsesForWebSearch ||
+			service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName)) {
 		applySystemPromptIfNeeded(c, info, request)
 		usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, request)
 		if newApiErr != nil {

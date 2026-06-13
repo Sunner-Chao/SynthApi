@@ -70,11 +70,11 @@ export function UserAuthForm({
   const [isLoading, setIsLoading] = useState(false)
   const [wechatCode, setWeChatCode] = useState('')
   const [agreedToLegal, setAgreedToLegal] = useState(false)
+  const [showLegalDialog, setShowLegalDialog] = useState(false)
   const [passkeySupported, setPasskeySupported] = useState(false)
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
-  const legalConsentErrorMessage = t('Please agree to the legal terms first')
   const loginFailedMessage = t('Login failed')
 
   const { status } = useStatus()
@@ -98,9 +98,7 @@ export function UserAuthForm({
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
   const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
   const passkeyButtonDisabled =
-    isPasskeyLoading ||
-    !passkeySupported ||
-    (requiresLegalConsent && !agreedToLegal)
+    isPasskeyLoading || !passkeySupported
   const hasWeChatLogin = Boolean(status?.wechat_login)
   const hasOAuthLogin = Boolean(
     status?.github_oauth ||
@@ -151,7 +149,7 @@ export function UserAuthForm({
 
   async function onSubmit(data: z.infer<typeof loginFormSchema>) {
     if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
+      setShowLegalDialog(true)
       return
     }
 
@@ -183,7 +181,7 @@ export function UserAuthForm({
 
   const handleOpenWeChatDialog = () => {
     if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
+      setShowLegalDialog(true)
       return
     }
 
@@ -223,7 +221,7 @@ export function UserAuthForm({
 
   async function handlePasskeyLogin() {
     if (requiresLegalConsent && !agreedToLegal) {
-      toast.error(legalConsentErrorMessage)
+      setShowLegalDialog(true)
       return
     }
 
@@ -318,7 +316,7 @@ export function UserAuthForm({
       {/* OAuth Providers */}
       <OAuthProviders
         status={status}
-        disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+        disabled={isLoading}
         onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
         isWeChatLoading={isWeChatSubmitting}
       />
@@ -382,7 +380,7 @@ export function UserAuthForm({
             <Button
               type='submit'
               className='mt-2 w-full justify-center gap-2'
-              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+              disabled={isLoading}
             >
               {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
               {t('Sign in')}
@@ -478,6 +476,35 @@ export function UserAuthForm({
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={showLegalDialog} onOpenChange={setShowLegalDialog}>
+        <DialogContent className='max-w-sm'>
+          <DialogHeader className='text-left'>
+            <DialogTitle>{t('Agreement Required')}</DialogTitle>
+            <DialogDescription>
+              {t('You need to read and agree to the User Agreement and Privacy Policy before signing in. Please check the agreement box below the form.')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setShowLegalDialog(false)}
+            >
+              {t('Cancel')}
+            </Button>
+            <Button
+              type='button'
+              onClick={() => {
+                setShowLegalDialog(false)
+                setAgreedToLegal(true)
+              }}
+            >
+              {t('I have read and agree')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Form>
   )
 }

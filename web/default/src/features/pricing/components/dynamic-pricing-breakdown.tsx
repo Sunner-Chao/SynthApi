@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { Tag as TagIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSystemConfigStore } from '@/stores/system-config-store'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -83,6 +83,13 @@ const TIME_FUNC_LABELS: Record<string, string> = {
   weekday: 'Weekday',
   month: 'Month',
   day: 'Day',
+}
+const PRICING_DISPLAY_OPTIONS = {
+  digitsLarge: 8,
+  digitsSmall: 8,
+  abbreviate: false,
+  minimumNonZero: 0.00000001,
+  preservePrecision: true,
 }
 
 function formatTokenHint(value: string | number): string {
@@ -160,20 +167,6 @@ export function DynamicPricingBreakdown({
 }: DynamicPricingBreakdownProps) {
   const { t } = useTranslation()
   const expr = billingExpr || ''
-  const currency = useSystemConfigStore((s) => s.config.currency)
-
-  const { symbol, rate } = useMemo(() => {
-    if (currency.quotaDisplayType === 'CNY') {
-      return { symbol: '¥', rate: currency.usdExchangeRate || 7.3 }
-    }
-    if (currency.quotaDisplayType === 'CUSTOM') {
-      return {
-        symbol: currency.customCurrencySymbol || '¤',
-        rate: currency.customCurrencyExchangeRate || 1,
-      }
-    }
-    return { symbol: '$', rate: 1 }
-  }, [currency])
 
   const { tiers, ruleGroups } = useMemo(() => {
     const split = splitBillingExprAndRequestRules(expr)
@@ -296,7 +289,10 @@ export function DynamicPricingBreakdown({
                           </div>
                           <div className='truncate font-mono text-sm font-semibold'>
                             {value > 0
-                              ? `${symbol}${(value * rate).toFixed(2)}`
+                              ? formatBillingCurrencyFromUSD(
+                                  value,
+                                  PRICING_DISPLAY_OPTIONS
+                                )
                               : '-'}
                           </div>
                         </div>
@@ -373,7 +369,10 @@ export function DynamicPricingBreakdown({
                           >
                             {value > 0 ? (
                               <span className='font-semibold'>
-                                {`${symbol}${(value * rate).toFixed(2)}`}
+                                {formatBillingCurrencyFromUSD(
+                                  value,
+                                  PRICING_DISPLAY_OPTIONS
+                                )}
                               </span>
                             ) : (
                               '-'

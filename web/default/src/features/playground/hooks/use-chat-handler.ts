@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback } from 'react'
 import { toast } from 'sonner'
+import { refreshSelf } from '@/lib/api'
 import { sendChatCompletion } from '../api'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
@@ -79,6 +80,7 @@ export function useChatHandler({
 
   // Handle stream complete
   const handleStreamComplete = useCallback(() => {
+    void refreshSelf()
     onMessageUpdate((prev) =>
       updateLastAssistantMessage(prev, (message) =>
         message.status === MESSAGE_STATUS.COMPLETE ||
@@ -136,6 +138,7 @@ export function useChatHandler({
 
       try {
         const response = await sendChatCompletion(payload)
+        void refreshSelf()
         const choice = response.choices?.[0]
         if (!choice) return
 

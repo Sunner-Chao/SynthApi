@@ -67,6 +67,7 @@ import {
 import { parseTags } from '../lib/filters'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
 import { inferModelMetadata } from '../lib/model-metadata'
+import { formatPricingNumber } from '../lib/number-format'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import type {
   Modality,
@@ -725,7 +726,7 @@ function GroupPricingSection(props: {
                 <div className='bg-muted/20 flex items-center justify-between gap-3 border-b px-3 py-2'>
                   <GroupBadge group={group} size='sm' />
                   <span className='text-muted-foreground font-mono text-xs'>
-                    {ratio}x
+                    {formatPricingNumber(ratio)}x
                   </span>
                 </div>
                 <div className='overflow-x-auto'>
@@ -832,7 +833,7 @@ function GroupPricingSection(props: {
                     <GroupBadge group={group} size='sm' />
                   </TableCell>
                   <TableCell className='text-muted-foreground py-2.5 font-mono'>
-                    {ratio}x
+                    {formatPricingNumber(ratio)}x
                   </TableCell>
                   {isTokenBased ? (
                     <>

@@ -231,9 +231,6 @@ func ConfirmMPayOrder(tradeNo string, callbackMoney float64, callerIP string) er
 		}
 
 		quotaToAdd = int(topUp.Amount)
-		if topUp.DisplayAmount > 0 {
-			quotaToAdd = operation_setting.DisplayAmountToQuota(topUp.DisplayAmount)
-		}
 		if quotaToAdd < 0 {
 			return errors.New("quota cannot be negative")
 		}

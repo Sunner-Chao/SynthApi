@@ -58,17 +58,60 @@ const APP_CONFIGS = {
 
 type AppType = keyof typeof APP_CONFIGS
 
-function getServerAddress(): string {
+function normalizePublicServerAddress(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+
   try {
-    const raw = localStorage.getItem('status')
+    const url = new URL(trimmed)
+    const hostname = url.hostname.toLowerCase()
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1'
+    ) {
+      return ''
+    }
+    return url.origin
+  } catch {
+    return ''
+  }
+}
+
+function getServerAddress(): string {
+  if (typeof window === 'undefined') return ''
+
+  const currentOrigin = normalizePublicServerAddress(window.location.origin)
+
+  try {
+    const raw = window.localStorage.getItem('status')
     if (raw) {
       const status = JSON.parse(raw)
-      if (status.server_address) return status.server_address
+      const configured = normalizePublicServerAddress(
+        status.server_address ?? status.serverAddress ?? status.data?.server_address
+      )
+      if (configured) return configured
     }
   } catch {
     /* empty */
   }
-  return window.location.origin
+
+  if (currentOrigin) {
+    try {
+      const url = new URL(currentOrigin)
+      if (url.port === '13000') {
+        url.port = ''
+        return url.origin
+      }
+    } catch {
+      /* empty */
+    }
+    return currentOrigin
+  }
+
+  return ''
 }
 
 function buildCCSwitchURL(
