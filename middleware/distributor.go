@@ -100,6 +100,14 @@ func Distribute() func(c *gin.Context) {
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 					}
 				}
+				if modelRequest.Group != "" && modelRequest.Group != usingGroup {
+					if !service.GroupInUserUsableGroups(usingGroup, modelRequest.Group) {
+						abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
+						return
+					}
+					usingGroup = modelRequest.Group
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+				}
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
@@ -332,6 +340,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			return nil, false, err
 		}
 		modelRequest.Model = req.Model
+		modelRequest.Group = req.Group
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/realtime") {
 		//wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01

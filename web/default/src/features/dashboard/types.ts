@@ -91,6 +91,41 @@ export interface PingStatus {
 export type PingStatusMap = Record<string, PingStatus>
 
 // ============================================================================
+// Channel Monitor Types
+// ============================================================================
+
+export interface ChannelMonitorItem {
+  id: number
+  name: string
+  type: number
+  type_name: string
+  status: number
+  group: string
+  tag?: string
+  model_count: number
+  response_time: number
+  test_time: number
+}
+
+export interface ChannelMonitorSummary {
+  total: number
+  enabled: number
+  auto_disabled: number
+  manual_disabled: number
+  untested: number
+  slow: number
+}
+
+export interface ChannelMonitorResponse {
+  success: boolean
+  message?: string
+  data?: {
+    summary: ChannelMonitorSummary
+    items: ChannelMonitorItem[]
+  }
+}
+
+// ============================================================================
 // Chart Types
 // ============================================================================
 

@@ -69,6 +69,22 @@ func quotaFromTopUpDisplayAmount(amount int64) int {
 	return operation_setting.DisplayAmountToQuota(float64(amount))
 }
 
+func quotaFromStoredTopUp(topUp *TopUp) int {
+	if topUp == nil {
+		return 0
+	}
+
+	switch topUp.PaymentProvider {
+	case PaymentProviderStripe:
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		return int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
+	case PaymentProviderMPay, PaymentProviderXPay:
+		return int(topUp.Amount)
+	default:
+		return quotaFromTopUpDisplayAmount(topUp.Amount)
+	}
+}
+
 func GetTopUpById(id int) *TopUp {
 	var topUp *TopUp
 	var err error
@@ -365,15 +381,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			return errors.New("订单状态不是待支付，无法补单")
 		}
 
-		// 计算应充值额度：
-		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
-		// - 其他展示金额订单：Amount 代表当前站点展示类型下的金额/点数
-		if topUp.PaymentProvider == PaymentProviderStripe {
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
-		} else {
-			quotaToAdd = quotaFromTopUpDisplayAmount(topUp.Amount)
-		}
+		quotaToAdd = quotaFromStoredTopUp(topUp)
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
 		}

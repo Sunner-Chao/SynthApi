@@ -49,6 +49,22 @@ func addNewRecord(type_ int, id int, value int) {
 	}
 }
 
+func GetPendingUserBatchUpdates(id int) (quotaDelta int, usedQuotaDelta int, requestCountDelta int) {
+	batchUpdateLocks[BatchUpdateTypeUserQuota].Lock()
+	quotaDelta = batchUpdateStores[BatchUpdateTypeUserQuota][id]
+	batchUpdateLocks[BatchUpdateTypeUserQuota].Unlock()
+
+	batchUpdateLocks[BatchUpdateTypeUsedQuota].Lock()
+	usedQuotaDelta = batchUpdateStores[BatchUpdateTypeUsedQuota][id]
+	batchUpdateLocks[BatchUpdateTypeUsedQuota].Unlock()
+
+	batchUpdateLocks[BatchUpdateTypeRequestCount].Lock()
+	requestCountDelta = batchUpdateStores[BatchUpdateTypeRequestCount][id]
+	batchUpdateLocks[BatchUpdateTypeRequestCount].Unlock()
+
+	return quotaDelta, usedQuotaDelta, requestCountDelta
+}
+
 func batchUpdate() {
 	// check if there's any data to update
 	hasData := false

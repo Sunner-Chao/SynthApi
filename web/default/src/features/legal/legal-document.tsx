@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { FileWarning } from 'lucide-react'
+import { FileWarning, Scale } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -134,18 +134,30 @@ export function LegalDocument({
 
   return (
     <PublicLayout>
-      <div className='mx-auto max-w-4xl space-y-6 py-12'>
-        <div className='space-y-2'>
-          <h1 className='text-3xl font-semibold tracking-tight'>{title}</h1>
+      <div className='mx-auto max-w-4xl space-y-6 px-4 py-10 sm:px-6 sm:py-12'>
+        <div className='border-border/70 bg-card rounded-lg border p-5 shadow-sm sm:p-7'>
+          <div className='flex items-start gap-3'>
+            <div className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-md'>
+              <Scale className='size-5' aria-hidden='true' />
+            </div>
+            <div className='min-w-0'>
+              <h1 className='text-2xl font-semibold tracking-tight sm:text-3xl'>
+                {title}
+              </h1>
+              <p className='text-muted-foreground mt-2 text-sm leading-relaxed'>
+                SynthAPI
+              </p>
+            </div>
+          </div>
         </div>
 
         {isHtml ? (
           <div
-            className='prose prose-neutral dark:prose-invert max-w-none'
+            className='prose prose-neutral dark:prose-invert prose-headings:tracking-tight prose-h2:mt-8 prose-h2:border-b prose-h2:pb-2 prose-h2:text-xl prose-h3:text-base prose-p:leading-7 prose-li:leading-7 prose-ul:my-3 prose-ol:my-3 prose-a:text-primary prose-strong:text-foreground prose-table:text-sm max-w-none overflow-hidden rounded-lg border bg-card p-5 shadow-sm sm:p-8 [&_.callout]:border-l-4 [&_.callout]:border-primary [&_.callout]:bg-primary/5 [&_.callout]:p-4 [&_.doc-meta]:text-muted-foreground [&_.doc-meta]:text-sm [&_.doc-title]:mt-0 [&_.doc-title]:text-2xl [&_.section-note]:text-muted-foreground [&_.section-note]:text-sm'
             dangerouslySetInnerHTML={{ __html: rawContent }}
           />
         ) : (
-          <Markdown className='prose-neutral dark:prose-invert max-w-none'>
+          <Markdown className='prose-neutral dark:prose-invert prose-headings:tracking-tight prose-h2:mt-8 prose-h2:border-b prose-h2:pb-2 prose-h2:text-xl prose-p:leading-7 prose-li:leading-7 max-w-none rounded-lg border bg-card p-5 shadow-sm sm:p-8'>
             {rawContent}
           </Markdown>
         )}

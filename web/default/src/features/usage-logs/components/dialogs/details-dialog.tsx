@@ -49,7 +49,6 @@ import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import {
   formatSubscriptionDiscountOffPercent,
   formatSubscriptionDiscountPercent,
-  normalizeSubscriptionBillingDiscount,
 } from '@/features/subscriptions/lib'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import {
@@ -57,6 +56,7 @@ import {
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
+  getSubscriptionBillingDisplay,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   isViolationFeeLog,
@@ -137,17 +137,61 @@ function DetailSection(props: {
 function formatRatio(ratio: number | undefined): string {
   if (ratio == null) return '-'
   if (!Number.isFinite(ratio)) return '-'
-  return ratio % 1 === 0
-    ? String(ratio)
-    : ratio.toFixed(8).replace(/\.?0+$/, '')
+  return cleanupFormulaNumber(ratio, 8)
+}
+
+function cleanupFormulaNumber(value: number, maxDigits = 8): string {
+  if (!Number.isFinite(value)) return '-'
+  const nearestInteger = Math.round(value)
+  if (Math.abs(value - nearestInteger) <= 1e-5) {
+    return String(nearestInteger)
+  }
+
+  const zeroRunTrimmed = value.toFixed(12).match(/^(-?\d+\.\d*?[1-9])0{3,}\d+$/)
+  if (zeroRunTrimmed) {
+    return zeroRunTrimmed[1]
+  }
+
+  const nineRunTrimmed = value.toFixed(12).match(/^(-?\d+\.\d*?[0-8])9{3,}\d*$/)
+  if (nineRunTrimmed) {
+    const roundedUp = Number(nineRunTrimmed[1]) + Math.pow(10, -nineRunTrimmed[1].split('.')[1].length)
+    return cleanupFormulaNumber(roundedUp, maxDigits)
+  }
+
+  const limit = Math.min(Math.max(maxDigits, 0), 8)
+  const tolerance = 3e-7
+
+  for (let digits = 0; digits <= limit; digits++) {
+    const factor = Math.pow(10, digits)
+    const rounded = Math.round((value + Number.EPSILON) * factor) / factor
+    if (Math.abs(value - rounded) <= tolerance) {
+      return rounded.toFixed(digits).replace(/\.?0+$/, '')
+    }
+  }
+
+  return value.toFixed(limit).replace(/\.?0+$/, '')
+}
+
+function formatFullNumber(value: number | null | undefined): string {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  return cleanupFormulaNumber(num, 8)
 }
 
 function formatDetailQuota(quota: number): string {
   return formatLogQuota(quota).replace(/([.,]\d{2})\d+/, '$1')
 }
 
+function formatFormulaQuota(quota: number): string {
+  return formatLogQuota(Number(cleanupFormulaNumber(quota, 8)))
+}
+
+function formatSubscriptionFormulaQuota(quota: number): string {
+  return formatLogQuota(Number(cleanupFormulaNumber(quota, 8)))
+}
+
 function formatFormulaCount(value: number | null | undefined): string {
-  return Math.max(0, Number(value) || 0).toLocaleString()
+  return String(Math.max(0, Number(value) || 0))
 }
 
 function BillingBreakdown(props: {
@@ -164,7 +208,7 @@ function BillingBreakdown(props: {
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 2, digitsSmall: 2, abbreviate: false }
   const formulaPriceOpts = {
-    digitsLarge: 6,
+    digitsLarge: 8,
     digitsSmall: 8,
     abbreviate: false,
     minimumNonZero: 0.00000001,
@@ -435,7 +479,7 @@ function BillingBreakdown(props: {
       effectiveGR != null && Number.isFinite(effectiveGR) ? effectiveGR : 1
     rows.push({
       label: t('Total Cost Formula'),
-      value: `(${formulaParts.join(' + ')}) × ${formatRatio(ratio)} = ${formatLogQuota(log.quota)} (${t('For reference only, actual deduction prevails')})`,
+      value: `(${formulaParts.join(' + ')}) × ${formatFullNumber(ratio)} = ${formatFormulaQuota(log.quota)} (${t('For reference only, actual deduction prevails')})`,
     })
   }
 
@@ -541,17 +585,16 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
-  const subscriptionDiscount = normalizeSubscriptionBillingDiscount(
-    other?.subscription_discount
+  const subscriptionDisplay = getSubscriptionBillingDisplay(
+    props.log.quota,
+    other
   )
   const subscriptionRateLabel =
-    formatSubscriptionDiscountPercent(subscriptionDiscount)
+    formatSubscriptionDiscountPercent(subscriptionDisplay.discount)
   const subscriptionOffLabel =
-    formatSubscriptionDiscountOffPercent(subscriptionDiscount)
-  const subscriptionRawQuota = Math.max(0, Number(props.log.quota || 0))
-  const subscriptionConsumed =
-    other?.subscription_consumed ??
-    Math.round(subscriptionRawQuota * subscriptionDiscount)
+    formatSubscriptionDiscountOffPercent(subscriptionDisplay.discount)
+  const subscriptionBaseQuota = props.log.quota
+  const subscriptionActualConsumed = subscriptionDisplay.actualConsumed
   const isTieredBilling =
     isConsume &&
     !isViolation &&
@@ -1107,7 +1150,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                       <div
                         className={cn(
                           'rounded-md border p-2 text-xs',
-                          subscriptionDiscount < 1
+                          subscriptionDisplay.discount < 1
                             ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                             : 'border-border bg-muted/40 text-muted-foreground'
                         )}
@@ -1116,9 +1159,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
                           {t('Discount Formula')}
                         </div>
                         <div className='font-mono break-all'>
-                          {formatDetailQuota(subscriptionRawQuota)} ×{' '}
+                          {formatSubscriptionFormulaQuota(subscriptionBaseQuota)} ×{' '}
                           {subscriptionRateLabel} ={' '}
-                          {formatDetailQuota(subscriptionConsumed)}
+                          {formatSubscriptionFormulaQuota(
+                            subscriptionActualConsumed
+                          )}
                         </div>
                       </div>
                     </>

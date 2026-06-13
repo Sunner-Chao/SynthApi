@@ -16,6 +16,10 @@ type responsesCompatInput struct {
 	Text      string          `json:"text,omitempty"`
 	ImageURL  any             `json:"image_url,omitempty"`
 	FileURL   any             `json:"file_url,omitempty"`
+	FileData  string          `json:"file_data,omitempty"`
+	FileID    string          `json:"file_id,omitempty"`
+	FileName  string          `json:"filename,omitempty"`
+	MimeType  string          `json:"mime_type,omitempty"`
 	CallID    string          `json:"call_id,omitempty"`
 	Output    any             `json:"output,omitempty"`
 	Name      string          `json:"name,omitempty"`
@@ -77,9 +81,23 @@ func responsesCompatContentFromParts(raw json.RawMessage, role string) (any, err
 				ImageUrl: responsesCompatImageURL(part.ImageURL),
 			})
 		case "input_file":
+			file := map[string]any{}
+			if part.FileData != "" {
+				file["file_data"] = part.FileData
+			} else if part.FileID != "" {
+				file["file_id"] = part.FileID
+			} else {
+				file["file_data"] = common.Interface2String(part.FileURL)
+			}
+			if part.FileName != "" {
+				file["filename"] = part.FileName
+			}
+			if part.MimeType != "" {
+				file["mime_type"] = part.MimeType
+			}
 			content = append(content, dto.MediaContent{
 				Type: dto.ContentTypeFile,
-				File: map[string]any{"file_data": common.Interface2String(part.FileURL)},
+				File: file,
 			})
 		default:
 			if part.Text != "" {

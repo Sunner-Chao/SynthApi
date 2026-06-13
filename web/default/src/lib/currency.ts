@@ -280,6 +280,51 @@ function adjustForMinimum(
   return value
 }
 
+function roundToFractionDigits(value: number, digits: number): number {
+  const factor = Math.pow(10, digits)
+  return Math.round((value + Number.EPSILON) * factor) / factor
+}
+
+function trimZeroRunNoise(value: number): number | null {
+  const fixed = value.toFixed(12)
+  const match = fixed.match(/^(-?\d+\.\d*?[1-9])0{3,}\d+$/)
+  if (!match) return null
+  const normalized = Number(match[1])
+  return Number.isFinite(normalized) ? normalized : null
+}
+
+function normalizePrecisionNoise(
+  value: number,
+  options: Required<CurrencyFormatOptions>
+): number {
+  if (!options.preservePrecision || !Number.isFinite(value)) return value
+
+  const nearestInteger = Math.round(value)
+  if (Math.abs(value - nearestInteger) <= 1e-6) {
+    return nearestInteger
+  }
+
+  const zeroRunTrimmed = trimZeroRunNoise(value)
+  if (zeroRunTrimmed != null) {
+    return zeroRunTrimmed
+  }
+
+  const maxDigits = Math.min(
+    Math.max(options.digitsLarge, options.digitsSmall, options.maximumFractionDigits),
+    8
+  )
+  const tolerance = 3e-7
+
+  for (let digits = 0; digits <= maxDigits; digits++) {
+    const rounded = roundToFractionDigits(value, digits)
+    if (Math.abs(value - rounded) <= tolerance) {
+      return rounded
+    }
+  }
+
+  return roundToFractionDigits(value, maxDigits)
+}
+
 function formatCurrencyValue(
   value: number,
   options: Required<CurrencyFormatOptions>,
@@ -296,7 +341,10 @@ function formatCurrencyValue(
 
   const digits =
     Math.abs(value) >= 1 ? options.digitsLarge : options.digitsSmall
-  const adjustedValue = adjustForMinimum(value, digits, options.minimumNonZero)
+  const adjustedValue = normalizePrecisionNoise(
+    adjustForMinimum(value, digits, options.minimumNonZero),
+    options
+  )
 
   if (meta.kind === 'currency') {
     const formatted = new Intl.NumberFormat(undefined, {

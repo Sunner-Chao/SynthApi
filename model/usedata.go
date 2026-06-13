@@ -64,6 +64,15 @@ func LogQuotaData(userId int, username string, modelName string, quota int, crea
 	logQuotaDataCache(userId, username, modelName, quota, createdAt, tokenUsed)
 }
 
+func logHourBucketExpr() string {
+	switch common.LogSqlType {
+	case common.DatabaseTypePostgreSQL:
+		return "(created_at / 3600)::bigint * 3600"
+	default:
+		return "(created_at / 3600) * 3600"
+	}
+}
+
 func SaveQuotaDataCache() {
 	CacheQuotaDataLock.Lock()
 	defer CacheQuotaDataLock.Unlock()
@@ -103,24 +112,42 @@ func increaseQuotaData(userId int, username string, modelName string, count int,
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).Find(&quotaDatas).Error
+	bucketExpr := logHourBucketExpr()
+	query := LOG_DB.Table("logs").
+		Select("user_id, username, model_name, "+bucketExpr+" as created_at, count(*) as count, coalesce(sum(quota), 0) as quota, coalesce(sum(prompt_tokens + completion_tokens), 0) as token_used").
+		Where("type = ? and username = ? and created_at >= ?", LogTypeConsume, username, startTime)
+	if endTime > 0 {
+		query = query.Where("created_at <= ?", endTime)
+	}
+	err = query.Group("user_id, username, model_name, " + bucketExpr).
+		Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
 func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).Find(&quotaDatas).Error
+	bucketExpr := logHourBucketExpr()
+	query := LOG_DB.Table("logs").
+		Select("user_id, username, model_name, "+bucketExpr+" as created_at, count(*) as count, coalesce(sum(quota), 0) as quota, coalesce(sum(prompt_tokens + completion_tokens), 0) as token_used").
+		Where("type = ? and user_id = ? and created_at >= ?", LogTypeConsume, userId, startTime)
+	if endTime > 0 {
+		query = query.Where("created_at <= ?", endTime)
+	}
+	err = query.Group("user_id, username, model_name, " + bucketExpr).
+		Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	err = DB.Table("quota_data").
-		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("created_at >= ? and created_at <= ?", startTime, endTime).
-		Group("username, created_at").
+	bucketExpr := logHourBucketExpr()
+	query := LOG_DB.Table("logs").
+		Select("user_id, username, "+bucketExpr+" as created_at, count(*) as count, coalesce(sum(quota), 0) as quota, coalesce(sum(prompt_tokens + completion_tokens), 0) as token_used").
+		Where("type = ? and created_at >= ?", LogTypeConsume, startTime)
+	if endTime > 0 {
+		query = query.Where("created_at <= ?", endTime)
+	}
+	err = query.Group("user_id, username, " + bucketExpr).
 		Find(&quotaDatas).Error
 	return quotaDatas, err
 }
@@ -130,9 +157,14 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaDat
 		return GetQuotaDataByUsername(username, startTime, endTime)
 	}
 	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	// only select model_name, sum(count) as count, sum(quota) as quota, model_name, created_at from quota_data group by model_name, created_at;
-	//err = DB.Table("quota_data").Where("created_at >= ? and created_at <= ?", startTime, endTime).Find(&quotaDatas).Error
-	err = DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
+	bucketExpr := logHourBucketExpr()
+	query := LOG_DB.Table("logs").
+		Select("model_name, "+bucketExpr+" as created_at, count(*) as count, coalesce(sum(quota), 0) as quota, coalesce(sum(prompt_tokens + completion_tokens), 0) as token_used").
+		Where("type = ? and created_at >= ?", LogTypeConsume, startTime)
+	if endTime > 0 {
+		query = query.Where("created_at <= ?", endTime)
+	}
+	err = query.Group("model_name, " + bucketExpr).
+		Find(&quotaDatas).Error
 	return quotaDatas, err
 }

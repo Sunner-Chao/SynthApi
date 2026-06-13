@@ -17,54 +17,74 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import type { QuotaDataItem, UptimeGroupResult } from './types'
+import type {
+  ChannelMonitorResponse,
+  QuotaDataItem,
+  UptimeGroupResult,
+} from './types'
 
-// ============================================================================
-// Dashboard APIs
-// ============================================================================
+export type DashboardApiResponse<T> = {
+  success: boolean
+  message?: string
+  data?: T
+}
 
-// ----------------------------------------------------------------------------
-// Quota & Usage Data
-// ----------------------------------------------------------------------------
+export type DashboardQuotaParams = {
+  start_timestamp?: number | Date
+  end_timestamp?: number | Date
+  default_time?: string
+  time_granularity?: string
+  username?: string
+}
 
-// Get user quota data within a time range
-// Admin users get all users' data by default (matching classic frontend behavior)
+function normalizeQuotaParams(params: DashboardQuotaParams) {
+  return {
+    ...params,
+    start_timestamp:
+      params.start_timestamp instanceof Date
+        ? Math.floor(params.start_timestamp.getTime() / 1000)
+        : params.start_timestamp,
+    end_timestamp:
+      params.end_timestamp instanceof Date
+        ? Math.floor(params.end_timestamp.getTime() / 1000)
+        : params.end_timestamp,
+  }
+}
+
 export async function getUserQuotaDates(
-  params: {
-    start_timestamp: number
-    end_timestamp: number
-    default_time?: string
-    username?: string
-  },
+  params: DashboardQuotaParams,
   isAdmin = false
-) {
-  const endpoint = isAdmin ? '/api/data' : '/api/data/self'
-  const res = await api.get<{ success: boolean; data: QuotaDataItem[] }>(
-    endpoint,
-    { params }
+): Promise<DashboardApiResponse<QuotaDataItem[]>> {
+  const res = await api.get<DashboardApiResponse<QuotaDataItem[]>>(
+    isAdmin ? '/api/data/' : '/api/data/self',
+    { params: normalizeQuotaParams(params) }
   )
   return res.data
 }
 
-// ----------------------------------------------------------------------------
-// System Monitoring
-// ----------------------------------------------------------------------------
-
-export async function getUserQuotaDataByUsers(params: {
-  start_timestamp: number
-  end_timestamp: number
-}) {
-  const res = await api.get<{ success: boolean; data: QuotaDataItem[] }>(
+export async function getUserQuotaDataByUsers(
+  params: DashboardQuotaParams
+): Promise<DashboardApiResponse<QuotaDataItem[]>> {
+  const res = await api.get<DashboardApiResponse<QuotaDataItem[]>>(
     '/api/data/users',
-    { params }
+    { params: normalizeQuotaParams(params) }
   )
   return res.data
 }
 
-// Get uptime monitoring status for all services
-export async function getUptimeStatus() {
-  const res = await api.get<{ success: boolean; data: UptimeGroupResult[] }>(
-    '/api/uptime/status'
+export async function getUptimeStatus(): Promise<
+  DashboardApiResponse<UptimeGroupResult[]>
+> {
+  const res =
+    await api.get<DashboardApiResponse<UptimeGroupResult[]>>(
+      '/api/uptime/status'
+    )
+  return res.data
+}
+
+export async function getChannelMonitor(): Promise<ChannelMonitorResponse> {
+  const res = await api.get<ChannelMonitorResponse>(
+    '/api/dashboard/channel-monitor'
   )
   return res.data
 }

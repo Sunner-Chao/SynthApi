@@ -164,6 +164,17 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
+	registerIP := c.ClientIP()
+	ipUsed, err := model.IsRegisterIPUsed(registerIP)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		common.SysLog(fmt.Sprintf("IsRegisterIPUsed error: %v", err))
+		return
+	}
+	if ipUsed {
+		common.ApiErrorMsg(c, "当前网络环境已注册过账号，请勿重复注册")
+		return
+	}
 	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -182,6 +193,7 @@ func Register(c *gin.Context) {
 		DisplayName: user.Username,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+		RegisterIP:  registerIP,
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
@@ -408,6 +420,7 @@ func GetSelf(c *gin.Context) {
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
+	quotaDelta, usedQuotaDelta, requestCountDelta := model.GetPendingUserBatchUpdates(user.Id)
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
@@ -423,9 +436,9 @@ func GetSelf(c *gin.Context) {
 		"wechat_id":         user.WeChatId,
 		"telegram_id":       user.TelegramId,
 		"group":             user.Group,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
+		"quota":             user.Quota + quotaDelta,
+		"used_quota":        user.UsedQuota + usedQuotaDelta,
+		"request_count":     user.RequestCount + requestCountDelta,
 		"aff_code":          user.AffCode,
 		"aff_count":         user.AffCount,
 		"aff_quota":         user.AffQuota,

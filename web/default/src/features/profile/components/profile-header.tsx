@@ -85,9 +85,9 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
       icon: WalletCards,
     },
     {
-      label: t('Total Usage'),
+      label: t('Cumulative Usage'),
       value: formatQuota(profile.used_quota),
-      description: t('Total consumed quota'),
+      description: t('Cumulative consumed quota'),
       icon: BarChart3,
     },
     {

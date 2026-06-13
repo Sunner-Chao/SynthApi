@@ -22,13 +22,16 @@ import { Link } from '@tanstack/react-router'
 import {
   ArrowRight,
   BookOpen,
+  CalendarClock,
   Check,
   ChevronDown,
   ChevronUp,
   Circle,
   Copy,
   CreditCard,
+  Crown,
   FileText,
+  Gauge,
   KeyRound,
   ListChecks,
   RadioTower,
@@ -42,17 +45,32 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { getUserModels } from '@/lib/api'
+import { formatQuota } from '@/lib/format'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import {
   CardStaggerContainer,
   CardStaggerItem,
 } from '@/components/page-transition'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
+import {
+  getPublicPlans,
+  getSelfSubscriptionFull,
+} from '@/features/subscriptions/api'
+import {
+  formatSubscriptionDiscountPercent,
+  formatTimestamp,
+  normalizeSubscriptionBillingDiscount,
+} from '@/features/subscriptions/lib'
+import type {
+  PlanRecord,
+  UserSubscriptionRecord,
+} from '@/features/subscriptions/types'
 import {
   useApiInfo,
   useDashboardContentVisibility,
@@ -115,6 +133,16 @@ interface HeroSignal {
   label: string
   value: string
   icon: LucideIcon
+}
+
+interface SubscriptionOverviewInfo {
+  activeCount: number
+  current: UserSubscriptionRecord | null
+  planTitle: string
+  remainingQuota: number
+  usagePercent: number
+  discountLabel: string
+  discountGroup: string
 }
 
 function getSavedSetupGuideExpanded(): boolean | null {
@@ -452,6 +480,288 @@ function CompactQuickAction(props: { action: QuickAction }) {
   )
 }
 
+function getBillingPreferenceLabel(
+  preference: string,
+  t: (key: string) => string
+): string {
+  switch (preference) {
+    case 'subscription_first':
+      return t('Subscription First')
+    case 'wallet_first':
+      return t('Wallet First')
+    case 'subscription_only':
+      return t('Subscription Only')
+    case 'wallet_only':
+      return t('Wallet Only')
+    default:
+      return preference
+  }
+}
+
+function getSubscriptionUsagePercent(record: UserSubscriptionRecord | null) {
+  const total = Number(record?.subscription?.amount_total || 0)
+  const used = Number(record?.subscription?.amount_used || 0)
+  if (!Number.isFinite(total) || total <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round((used / total) * 100)))
+}
+
+function getSubscriptionRemainingQuota(record: UserSubscriptionRecord | null) {
+  const total = Number(record?.subscription?.amount_total || 0)
+  const used = Number(record?.subscription?.amount_used || 0)
+  if (!Number.isFinite(total) || total <= 0) return 0
+  if (!Number.isFinite(used)) return total
+  return Math.max(0, total - used)
+}
+
+function formatSubscriptionTimeLeft(endTime: number, t: (key: string, opts?: Record<string, unknown>) => string) {
+  const secondsLeft = Math.max(0, Number(endTime || 0) - Date.now() / 1000)
+  const days = Math.floor(secondsLeft / 86400)
+  const hours = Math.floor((secondsLeft % 86400) / 3600)
+  if (days > 0) return t('{{count}} days left', { count: days })
+  if (hours > 0) return t('{{count}} hours left', { count: hours })
+  return t('Expires soon')
+}
+
+function buildPlanTitleMap(records: PlanRecord[] = []) {
+  return new Map(
+    records.map((record) => [record.plan.id, record.plan.title] as const)
+  )
+}
+
+function SubscriptionOverviewCard(props: {
+  info: SubscriptionOverviewInfo
+  billingPreference: string
+  loading: boolean
+  embedded?: boolean
+}) {
+  const { t } = useTranslation()
+  const subscription = props.info.current?.subscription
+  const hasActive = props.info.activeCount > 0 && Boolean(subscription)
+  const totalQuota = Number(subscription?.amount_total || 0)
+  const isUnlimited = hasActive && totalQuota <= 0
+  const endTime = Number(subscription?.end_time || 0)
+  const nextResetTime = Number(subscription?.next_reset_time || 0)
+  const content = (
+    <div
+      className={cn(
+        'grid',
+        props.embedded
+          ? 'grid-cols-1 gap-3'
+          : 'gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_20rem]'
+      )}
+    >
+      <div
+        className={cn(
+          'flex min-w-0 flex-col',
+          props.embedded ? 'gap-2.5' : 'gap-3'
+        )}
+      >
+        <div className='flex flex-wrap items-center gap-2'>
+          <span
+            className={cn(
+              'bg-primary/10 text-primary flex shrink-0 items-center justify-center rounded-xl',
+              props.embedded ? 'size-8' : 'size-10'
+            )}
+          >
+            {hasActive ? (
+              <Crown
+                className={cn(props.embedded ? 'size-4' : 'size-4.5')}
+                aria-hidden='true'
+              />
+            ) : (
+              <CreditCard
+                className={cn(props.embedded ? 'size-4' : 'size-4.5')}
+                aria-hidden='true'
+              />
+            )}
+          </span>
+          <div className='min-w-0'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <h3
+                className={cn(
+                  'truncate font-semibold',
+                  props.embedded ? 'text-sm' : 'text-base'
+                )}
+              >
+                {hasActive ? props.info.planTitle : t('Current plan')}
+              </h3>
+              <span
+                className={cn(
+                  'inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-xs font-medium',
+                  hasActive
+                    ? 'border-success/30 bg-success/10 text-success'
+                    : 'bg-muted/50 text-muted-foreground'
+                )}
+              >
+                {hasActive
+                  ? t('{{count}} active', {
+                      count: props.info.activeCount,
+                    })
+                  : props.loading
+                    ? t('Loading')
+                    : t('No Active')}
+              </span>
+            </div>
+            {!props.embedded && (
+              <p className='text-muted-foreground mt-0.5 text-xs'>
+                {hasActive
+                  ? t('Your subscription benefits are currently applied to API usage.')
+                  : t('Subscribe to a plan for model access')}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {hasActive ? (
+          <div className='space-y-2.5'>
+            <div className='flex items-end justify-between gap-3'>
+              <div className='min-w-0'>
+                <div className='text-muted-foreground text-xs'>
+                  {isUnlimited ? t('Total Quota') : t('Remaining')}
+                </div>
+                <div
+                  className={cn(
+                    'truncate font-semibold tabular-nums',
+                    props.embedded ? 'text-2xl' : 'text-3xl'
+                  )}
+                >
+                  {isUnlimited
+                    ? t('Unlimited')
+                    : formatQuota(props.info.remainingQuota)}
+                </div>
+                {hasActive && (
+                  <div className='text-muted-foreground mt-1 text-xs'>
+                    {formatSubscriptionTimeLeft(endTime, t)}
+                  </div>
+                )}
+              </div>
+              {!isUnlimited && (
+                <div className='text-muted-foreground shrink-0 text-right text-xs'>
+                  <div>
+                    {t('Used')} {props.info.usagePercent}%
+                  </div>
+                  <div>
+                    {formatQuota(Number(subscription?.amount_used || 0))}/
+                    {formatQuota(totalQuota)}
+                  </div>
+                </div>
+              )}
+            </div>
+            {!isUnlimited && (
+              <Progress value={props.info.usagePercent} className='h-2' />
+            )}
+          </div>
+        ) : (
+          <Button
+            variant='outline'
+            className='w-fit'
+            render={<Link to='/wallet' />}
+          >
+            <ArrowRight data-icon='inline-start' />
+            {t('View plans')}
+          </Button>
+        )}
+      </div>
+
+      <div
+        className={cn(
+          'grid gap-2 text-sm',
+          props.embedded && 'grid-cols-1'
+        )}
+      >
+        <div
+          className={cn(
+            'bg-muted/40 flex items-center justify-between gap-3 rounded-xl px-3',
+            props.embedded ? 'py-2' : 'py-2.5'
+          )}
+        >
+          <span className='text-muted-foreground flex items-center gap-2 text-xs'>
+            <Gauge className='size-3.5' aria-hidden='true' />
+            {t('Billing preference')}
+          </span>
+          <span className='min-w-0 text-right text-xs font-medium break-words'>
+            {getBillingPreferenceLabel(props.billingPreference, t)}
+          </span>
+        </div>
+        <div
+          className={cn(
+            'bg-muted/40 flex items-center justify-between gap-3 rounded-xl px-3',
+            props.embedded ? 'py-2' : 'py-2.5'
+          )}
+        >
+          <span className='text-muted-foreground flex items-center gap-2 text-xs'>
+            <ShieldCheck className='size-3.5' aria-hidden='true' />
+            {t('Discount Rate')}
+          </span>
+          <span className='min-w-0 text-right text-xs font-medium break-words'>
+            {hasActive ? props.info.discountLabel : '-'}
+          </span>
+        </div>
+        <div
+          className={cn(
+            'bg-muted/40 flex items-center justify-between gap-3 rounded-xl px-3',
+            props.embedded ? 'py-2' : 'py-2.5'
+          )}
+        >
+          <span className='text-muted-foreground flex items-center gap-2 text-xs'>
+            <Crown className='size-3.5' aria-hidden='true' />
+            {t('Discount Group')}
+          </span>
+          <span className='min-w-0 text-right text-xs font-medium break-words'>
+            {hasActive ? props.info.discountGroup || '-' : '-'}
+          </span>
+        </div>
+        <div
+          className={cn(
+            'bg-muted/40 flex items-center justify-between gap-3 rounded-xl px-3',
+            props.embedded ? 'py-2' : 'py-2.5'
+          )}
+        >
+          <span className='text-muted-foreground flex items-center gap-2 text-xs'>
+            <CalendarClock className='size-3.5' aria-hidden='true' />
+            {t('Until')}
+          </span>
+          <span className='min-w-0 text-right text-xs font-medium break-words'>
+            {hasActive ? formatTimestamp(subscription?.end_time || 0) : '-'}
+          </span>
+        </div>
+        {hasActive && nextResetTime > 0 && (
+          <div
+            className={cn(
+              'bg-muted/40 flex items-center justify-between gap-3 rounded-xl px-3',
+              props.embedded ? 'py-2' : 'py-2.5'
+            )}
+          >
+            <span className='text-muted-foreground flex items-center gap-2 text-xs'>
+              <Timer className='size-3.5' aria-hidden='true' />
+              {t('Next reset')}
+            </span>
+            <span className='min-w-0 text-right text-xs font-medium break-words'>
+              {formatTimestamp(nextResetTime)}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  if (props.embedded) return content
+
+  return (
+    <CardStaggerContainer>
+      <CardStaggerItem
+        className={cn(
+          'bg-card overflow-hidden rounded-2xl border shadow-xs',
+          hasActive &&
+            'border-primary/25 bg-linear-to-br from-primary/8 via-card to-success/8'
+        )}
+      >
+        {content}
+      </CardStaggerItem>
+    </CardStaggerContainer>
+  )
+}
+
 export function OverviewDashboard() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
@@ -484,6 +794,24 @@ export function OverviewDashboard() {
     queryKey: ['dashboard', 'overview', 'user-models'],
     queryFn: async () => {
       const result = await getUserModels()
+      return result.success ? (result.data ?? []) : []
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const subscriptionsQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'subscriptions'],
+    queryFn: async () => {
+      const result = await getSelfSubscriptionFull()
+      return result.success ? result.data : null
+    },
+    staleTime: 60 * 1000,
+  })
+
+  const publicPlansQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'subscription-plans'],
+    queryFn: async () => {
+      const result = await getPublicPlans()
       return result.success ? (result.data ?? []) : []
     },
     staleTime: 5 * 60 * 1000,
@@ -594,12 +922,64 @@ export function OverviewDashboard() {
     }
   }, [apiInfoItems, modelsQuery.data, preferredKey, t])
 
+  const subscriptionOverview = useMemo<SubscriptionOverviewInfo>(() => {
+    const now = Date.now() / 1000
+    const activeSubscriptions =
+      subscriptionsQuery.data?.subscriptions?.filter((record) => {
+        const subscription = record.subscription
+        return (
+          subscription?.status === 'active' &&
+          Number(subscription.end_time || 0) > now
+        )
+      }) ?? []
+    const current =
+      activeSubscriptions
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(a.subscription.end_time || 0) -
+            Number(b.subscription.end_time || 0)
+        )[0] ?? null
+    const planTitleMap = buildPlanTitleMap(publicPlansQuery.data ?? [])
+    const planTitle = current
+      ? planTitleMap.get(current.subscription.plan_id) ||
+        `${t('Subscription')} #${current.subscription.id}`
+      : t('No Active')
+    const discount = normalizeSubscriptionBillingDiscount(
+      current?.subscription?.billing_discount
+    )
+
+    return {
+      activeCount: activeSubscriptions.length,
+      current,
+      planTitle,
+      remainingQuota: getSubscriptionRemainingQuota(current),
+      usagePercent: getSubscriptionUsagePercent(current),
+      discountLabel: current ? formatSubscriptionDiscountPercent(discount) : '-',
+      discountGroup: current?.subscription?.billing_discount_group || '',
+    }
+  }, [publicPlansQuery.data, subscriptionsQuery.data, t])
+
+  const hasActiveSubscription = subscriptionOverview.activeCount > 0
   const completedStepCount = startSteps.filter((step) => step.completed).length
   const setupComplete = completedStepCount === startSteps.length
   const setupGuideExpanded = manualSetupGuideExpanded ?? !setupComplete
-  const showLeftContentPanels =
-    isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
-  const showContentPanels = showLeftContentPanels || showUptimePanel
+  const showContentPanels =
+    isAdmin ||
+    showApiInfoPanel ||
+    showAnnouncementsPanel ||
+    showFAQPanel ||
+    showUptimePanel
+  const subscriptionPanel = hasActiveSubscription ? (
+    <SubscriptionOverviewCard
+      info={subscriptionOverview}
+      billingPreference={
+        subscriptionsQuery.data?.billing_preference || 'subscription_first'
+      }
+      loading={subscriptionsQuery.isLoading}
+      embedded
+    />
+  ) : undefined
 
   const handleSetupGuideToggle = () => {
     const nextExpanded = !setupGuideExpanded
@@ -739,46 +1119,32 @@ export function OverviewDashboard() {
         </CardStaggerContainer>
       )}
 
-      <SummaryCards />
+      <SummaryCards
+        subscriptionPanel={subscriptionPanel}
+        defaultPanel={hasActiveSubscription ? 'subscription' : 'wallet'}
+      />
 
       {showContentPanels && (
-        <CardStaggerContainer
-          className={cn(
-            'grid grid-cols-1 gap-4',
-            showLeftContentPanels &&
-              showUptimePanel &&
-              'xl:grid-cols-[minmax(0,1fr)_22rem]'
+        <CardStaggerContainer className='grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2'>
+          {isAdmin && (
+            <CardStaggerItem className='lg:col-span-2'>
+              <PerformanceHealthPanel />
+            </CardStaggerItem>
           )}
-        >
-          {showLeftContentPanels && (
-            <div
-              className={cn(
-                'grid min-w-0 grid-cols-1 gap-4',
-                (showApiInfoPanel || showAnnouncementsPanel || showFAQPanel) &&
-                  'lg:grid-cols-2'
-              )}
-            >
-              {isAdmin && (
-                <CardStaggerItem className='lg:col-span-2'>
-                  <PerformanceHealthPanel />
-                </CardStaggerItem>
-              )}
-              {showApiInfoPanel && (
-                <CardStaggerItem>
-                  <ApiInfoPanel />
-                </CardStaggerItem>
-              )}
-              {showAnnouncementsPanel && (
-                <CardStaggerItem>
-                  <AnnouncementsPanel />
-                </CardStaggerItem>
-              )}
-              {showFAQPanel && (
-                <CardStaggerItem>
-                  <FAQPanel />
-                </CardStaggerItem>
-              )}
-            </div>
+          {showApiInfoPanel && (
+            <CardStaggerItem>
+              <ApiInfoPanel />
+            </CardStaggerItem>
+          )}
+          {showAnnouncementsPanel && (
+            <CardStaggerItem>
+              <AnnouncementsPanel />
+            </CardStaggerItem>
+          )}
+          {showFAQPanel && (
+            <CardStaggerItem>
+              <FAQPanel />
+            </CardStaggerItem>
           )}
           {showUptimePanel && (
             <CardStaggerItem>

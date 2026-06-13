@@ -18,9 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getSelf } from '@/lib/api'
+import { Crown, WalletCards } from 'lucide-react'
+import { refreshSelf } from '@/lib/api'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { cn } from '@/lib/utils'
 import { SectionPageLayout } from '@/components/layout'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
@@ -56,8 +58,16 @@ interface WalletProps {
   initialShowHistory?: boolean
 }
 
+const TABS = [
+  { id: 'add-funds', icon: WalletCards, labelKey: 'Add Funds' },
+  { id: 'subscription', icon: Crown, labelKey: 'Subscription Plans' },
+] as const
+
+type TabId = (typeof TABS)[number]['id']
+
 export function Wallet(props: WalletProps) {
   const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState<TabId>('add-funds')
   const [user, setUser] = useState<UserWalletData | null>(null)
   const [userLoading, setUserLoading] = useState(true)
   const [topupAmount, setTopupAmount] = useState(0)
@@ -78,9 +88,6 @@ export function Wallet(props: WalletProps) {
   const { currency } = useSystemConfig()
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
 
-  // Calculate effective exchange rate
-  // When display is CNY: use rate of 1 (no conversion needed)
-  // When display is USD: use the actual exchange rate (7.3) to convert CNY presets to pay amount
   const effectiveUsdExchangeRate = useMemo(() => {
     return currency?.quotaDisplayType === 'CNY'
       ? 1
@@ -110,11 +117,10 @@ export function Wallet(props: WalletProps) {
   const { processing: pancakeProcessing, processWaffoPancakePayment } =
     useWaffoPancakePayment()
 
-  // Fetch and refresh user data
   const fetchUser = useCallback(async () => {
     try {
       setUserLoading(true)
-      const response = await getSelf()
+      const response = await refreshSelf()
       if (response.success && response.data) {
         setUser(response.data as UserWalletData)
       }
@@ -137,50 +143,40 @@ export function Wallet(props: WalletProps) {
     }
   }, [props.initialShowHistory])
 
-  // Initialize topup amount when topup info is loaded
   useEffect(() => {
     if (topupInfo && topupAmount === 0) {
       const minTopup = getMinTopupAmount(topupInfo)
       setTopupAmount(minTopup)
-
-      // Calculate initial payment amount with default payment type
       const defaultPaymentType = getDefaultPaymentType(topupInfo)
       calculatePaymentAmount(minTopup, defaultPaymentType)
     }
   }, [topupInfo, topupAmount, calculatePaymentAmount])
 
-  // Get current payment type (selected or default)
   const getCurrentPaymentType = useCallback(() => {
     return selectedPaymentMethod?.type || getDefaultPaymentType(topupInfo)
   }, [selectedPaymentMethod, topupInfo])
 
-  // Handle preset selection
   const handleSelectPreset = (preset: PresetAmount) => {
     setTopupAmount(preset.value)
     setSelectedPreset(preset.value)
     calculatePaymentAmount(preset.value, getCurrentPaymentType())
   }
 
-  // Handle topup amount change
   const handleTopupAmountChange = (amount: number) => {
     setTopupAmount(amount)
     setSelectedPreset(null)
     calculatePaymentAmount(amount, getCurrentPaymentType())
   }
 
-  // Handle payment method selection
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
     setSelectedPaymentMethod(method)
     setPaymentLoading(method.type)
 
     try {
-      // Validate minimum topup
       const minTopup = getMinTopupAmount(topupInfo)
       if (topupAmount < minTopup) {
         return
       }
-
-      // Calculate payment amount and show confirmation dialog
       await calculatePaymentAmount(topupAmount, method.type)
       setConfirmDialogOpen(true)
     } finally {
@@ -188,7 +184,6 @@ export function Wallet(props: WalletProps) {
     }
   }
 
-  // Handle payment confirmation
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
 
@@ -213,10 +208,8 @@ export function Wallet(props: WalletProps) {
     }
   }
 
-  // Handle redemption
   const handleRedeem = async () => {
     if (!redemptionCode) return
-
     const success = await redeemCode(redemptionCode)
     if (success) {
       setRedemptionCode('')
@@ -224,7 +217,6 @@ export function Wallet(props: WalletProps) {
     }
   }
 
-  // Handle transfer
   const handleTransfer = async (amount: number) => {
     const success = await transferQuota(amount)
     if (success) {
@@ -233,13 +225,11 @@ export function Wallet(props: WalletProps) {
     return success
   }
 
-  // Handle Creem product selection
   const handleCreemProductSelect = (product: CreemProduct) => {
     setSelectedCreemProduct(product)
     setCreemDialogOpen(true)
   }
 
-  // Handle Creem payment confirmation
   const handleCreemConfirm = async () => {
     if (!selectedCreemProduct) return
 
@@ -254,7 +244,6 @@ export function Wallet(props: WalletProps) {
   const handleWaffoMethodSelect = async (_method: unknown, index: number) => {
     const loadingKey = `waffo-${index}`
     setPaymentLoading(loadingKey)
-
     try {
       await processWaffoPayment(topupAmount, index)
     } finally {
@@ -262,7 +251,6 @@ export function Wallet(props: WalletProps) {
     }
   }
 
-  // Get discount rate for current topup amount
   const getDiscountRate = useCallback(() => {
     return topupInfo?.discount?.[topupAmount] || DEFAULT_DISCOUNT_RATE
   }, [topupInfo, topupAmount])
@@ -279,17 +267,33 @@ export function Wallet(props: WalletProps) {
       <SectionPageLayout>
         <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
-          <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
+          <div className='mx-auto flex w-full max-w-6xl flex-col gap-4'>
+            {/* Stats card */}
             <WalletStatsCard user={user} loading={userLoading} />
 
-            <div
-              className={
-                showSubscriptionPanel
-                  ? 'grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] xl:items-start'
-                  : 'grid gap-4'
-              }
-            >
-              <div id='wallet-add-funds' className='scroll-mt-4'>
+            {/* Tab navigation */}
+            <div className='flex items-center gap-1.5'>
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type='button'
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200',
+                    activeTab === tab.id
+                      ? 'bg-primary/10 text-primary shadow-sm'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  )}
+                >
+                  <tab.icon className='size-4' />
+                  {t(tab.labelKey)}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div className='grid gap-4'>
+              {activeTab === 'add-funds' && (
                 <RechargeFormCard
                   topupInfo={topupInfo}
                   presetAmounts={presetAmounts}
@@ -323,16 +327,25 @@ export function Wallet(props: WalletProps) {
                     topupInfo?.enable_waffo_pancake_topup
                   }
                 />
-              </div>
+              )}
 
-              <SubscriptionPlansCard
-                topupInfo={topupInfo}
-                onAvailabilityChange={handleSubscriptionAvailabilityChange}
-                userQuota={user?.quota}
-                onPurchaseSuccess={fetchUser}
-              />
+              {activeTab === 'subscription' && showSubscriptionPanel && (
+                <SubscriptionPlansCard
+                  topupInfo={topupInfo}
+                  onAvailabilityChange={handleSubscriptionAvailabilityChange}
+                  userQuota={user?.quota}
+                  onPurchaseSuccess={fetchUser}
+                />
+              )}
+
+              {activeTab === 'subscription' && !showSubscriptionPanel && (
+                <div className='text-muted-foreground py-12 text-center text-sm'>
+                  {t('No subscription plans available')}
+                </div>
+              )}
             </div>
 
+            {/* Affiliate rewards */}
             <AffiliateRewardsCard
               user={user}
               affiliateLink={affiliateLink}

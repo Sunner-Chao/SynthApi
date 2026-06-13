@@ -36,16 +36,27 @@ export function filterBySearch(
   models: PricingModel[],
   query: string
 ): PricingModel[] {
-  if (!query) return models
+  const trimmedQuery = query.trim()
+  if (!trimmedQuery) return models
 
-  const lowerQuery = query.toLowerCase()
-  return models.filter(
-    (m) =>
-      m.model_name?.toLowerCase().includes(lowerQuery) ||
-      m.description?.toLowerCase().includes(lowerQuery) ||
-      m.tags?.toLowerCase().includes(lowerQuery) ||
-      m.vendor_name?.toLowerCase().includes(lowerQuery)
-  )
+  const lowerQuery = trimmedQuery.toLowerCase()
+  const normalizedQuery = normalizeSearchText(trimmedQuery)
+
+  return models.filter((m) => {
+    const fields = [m.model_name, m.description, m.tags, m.vendor_name]
+    return fields.some((field) => {
+      if (!field) return false
+      const text = field.toLowerCase()
+      return (
+        text.includes(lowerQuery) ||
+        normalizeSearchText(field).includes(normalizedQuery)
+      )
+    })
+  })
+}
+
+function normalizeSearchText(value: string): string {
+  return value.toLowerCase().replace(/[\s_-]+/g, '')
 }
 
 /**

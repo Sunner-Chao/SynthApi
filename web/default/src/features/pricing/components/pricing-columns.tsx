@@ -30,7 +30,6 @@ import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge, StatusBadgeList } from '@/components/status-badge'
 import {
   DEFAULT_TOKEN_UNIT,
-  EXCLUDED_GROUPS,
   QUOTA_TYPE_VALUES,
 } from '../constants'
 import {
@@ -42,6 +41,7 @@ import { isTokenBasedModel } from '../lib/model-helpers'
 import {
   formatPrice,
   formatRequestPrice,
+  getSortedGroupsByPricingRatioForModel,
   stripTrailingZeros,
 } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
@@ -440,8 +440,11 @@ export function usePricingColumns(
       meta: { label: t('Groups') },
       header: t('Groups'),
       cell: ({ row }) => {
-        const groups = (row.original.enable_groups || []).filter(
-          (group) => !EXCLUDED_GROUPS.includes(group)
+        const model = row.original
+        const groups = getSortedGroupsByPricingRatioForModel(
+          model.model_name,
+          model.enable_groups || [],
+          model.group_ratio || {}
         )
         if (groups.length === 0) {
           return <span className='text-muted-foreground/50 text-xs'>—</span>

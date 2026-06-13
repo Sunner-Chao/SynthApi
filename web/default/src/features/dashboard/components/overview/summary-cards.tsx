@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Flame, ShieldCheck, TrendingDown } from 'lucide-react'
@@ -37,6 +37,12 @@ import { StatCard } from '../ui/stat-card'
 const SUMMARY_SPARKLINE_BUCKETS = 12
 
 type SummarySparklineKey = 'balance' | 'usage' | 'requests'
+type SummarySidePanel = 'wallet' | 'subscription'
+
+interface SummaryCardsProps {
+  subscriptionPanel?: ReactNode
+  defaultPanel?: SummarySidePanel
+}
 
 function getBucketIndex(
   timestamp: number,
@@ -134,10 +140,21 @@ const HEALTH_CONFIG: Record<
   },
 }
 
-export function SummaryCards() {
+export function SummaryCards({
+  subscriptionPanel,
+  defaultPanel = 'wallet',
+}: SummaryCardsProps) {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const { status, loading } = useStatus()
+  const hasSubscriptionPanel = Boolean(subscriptionPanel)
+  const [activePanel, setActivePanel] = useState<SummarySidePanel>(
+    hasSubscriptionPanel ? defaultPanel : 'wallet'
+  )
+
+  useEffect(() => {
+    setActivePanel(hasSubscriptionPanel ? defaultPanel : 'wallet')
+  }, [defaultPanel, hasSubscriptionPanel])
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
   const remainQuota = Number(user?.quota ?? 0)
@@ -268,79 +285,127 @@ export function SummaryCards() {
           </StaggerContainer>
         </div>
 
-        <div className='bg-warning/10 flex flex-col justify-between gap-4 border-t p-4 sm:p-5 xl:border-t-0 xl:border-l'>
-          <div className='flex flex-col gap-3'>
-            <div className='flex items-center justify-between'>
-              <span className='text-muted-foreground text-xs font-medium'>
-                {t('Credit remaining')}
-              </span>
-              <span className='flex items-center gap-1.5'>
-                <span
-                  className={cn('size-1.5 rounded-full', healthCfg.dotClass)}
-                  aria-hidden='true'
-                />
-                <span className='text-muted-foreground text-[11px] font-medium'>
-                  {t(healthCfg.labelKey)}
-                </span>
-              </span>
-            </div>
-
-            <div className='font-mono text-2xl font-semibold tracking-tight'>
-              {formatQuota(remainQuota)}
-            </div>
-
-            <div className='grid grid-cols-2 gap-2'>
-              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
-                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
-                  <Flame className='size-3 shrink-0' aria-hidden='true' />
-                  <span className='truncate'>{t('Last 24h usage')}</span>
-                </div>
-                <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
-                  {formatLogQuota(recentUsage)}
-                </div>
-              </div>
-              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
-                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
-                  {runwayDays !== null && runwayDays < 3 ? (
-                    <TrendingDown
-                      className='size-3 shrink-0'
-                      aria-hidden='true'
-                    />
-                  ) : (
-                    <ShieldCheck
-                      className='size-3 shrink-0'
-                      aria-hidden='true'
-                    />
-                  )}
-                  <span className='truncate'>{t('Runway')}</span>
-                </div>
-                <div
+        <div className='bg-warning/10 flex min-h-[21rem] flex-col gap-4 border-t p-4 sm:p-5 xl:h-[22rem] xl:border-t-0 xl:border-l'>
+          {hasSubscriptionPanel && (
+            <div className='bg-background/70 grid grid-cols-2 gap-1 rounded-lg border p-1'>
+              {([
+                ['subscription', t('Subscription')],
+                ['wallet', t('Wallet')],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type='button'
+                  onClick={() => setActivePanel(value)}
                   className={cn(
-                    'mt-1.5 truncate text-xs font-semibold tabular-nums',
-                    healthLevel === 'critical' && 'text-destructive',
-                    healthLevel === 'caution' && 'text-warning'
+                    'h-8 rounded-md px-2 text-xs font-medium transition-colors',
+                    activePanel === value
+                      ? 'bg-foreground text-background shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   )}
                 >
-                  {runwayDays !== null
-                    ? runwayDays < 1
-                      ? t('Less than 1 day left')
-                      : runwayDays > 999
-                        ? `999+ ${t('days')}`
-                        : `~${formatNumber(Math.floor(runwayDays))} ${t('days')}`
-                    : remainQuota <= 0
-                      ? t('Balance depleted')
-                      : t('No recent usage')}
-                </div>
-              </div>
+                  {label}
+                </button>
+              ))}
             </div>
-          </div>
+          )}
 
-          <Button className='justify-between' render={<Link to='/wallet' />}>
-            <span>{t('Wallet')}</span>
-            <ArrowRight data-icon='inline-end' />
-          </Button>
+          <div className='min-h-0 flex-1 overflow-visible'>
+            {activePanel === 'subscription' && subscriptionPanel ? (
+              <div className='h-full overflow-y-auto pr-1 overscroll-contain'>
+                {subscriptionPanel}
+              </div>
+            ) : (
+              <WalletSummaryPanel
+                remainQuota={remainQuota}
+                recentUsage={recentUsage}
+                runwayDays={runwayDays}
+                healthLevel={healthLevel}
+                healthCfg={healthCfg}
+              />
+            )}
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function WalletSummaryPanel(props: {
+  remainQuota: number
+  recentUsage: number
+  runwayDays: number | null
+  healthLevel: HealthLevel
+  healthCfg: (typeof HEALTH_CONFIG)[HealthLevel]
+}) {
+  const { t } = useTranslation()
+  const { remainQuota, recentUsage, runwayDays, healthLevel, healthCfg } = props
+
+  return (
+    <div className='flex h-full flex-col justify-between gap-4'>
+      <div className='flex flex-col gap-3'>
+        <div className='flex items-center justify-between'>
+          <span className='text-muted-foreground text-xs font-medium'>
+            {t('Credit remaining')}
+          </span>
+          <span className='flex items-center gap-1.5'>
+            <span
+              className={cn('size-1.5 rounded-full', healthCfg.dotClass)}
+              aria-hidden='true'
+            />
+            <span className='text-muted-foreground text-[11px] font-medium'>
+              {t(healthCfg.labelKey)}
+            </span>
+          </span>
+        </div>
+
+        <div className='font-mono text-2xl font-semibold tracking-tight'>
+          {formatQuota(remainQuota)}
+        </div>
+
+        <div className='grid grid-cols-2 gap-2'>
+          <div className='bg-background/60 rounded-lg px-2.5 py-2'>
+            <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
+              <Flame className='size-3 shrink-0' aria-hidden='true' />
+              <span className='truncate'>{t('Last 24h usage')}</span>
+            </div>
+            <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
+              {formatLogQuota(recentUsage)}
+            </div>
+          </div>
+          <div className='bg-background/60 rounded-lg px-2.5 py-2'>
+            <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
+              {runwayDays !== null && runwayDays < 3 ? (
+                <TrendingDown className='size-3 shrink-0' aria-hidden='true' />
+              ) : (
+                <ShieldCheck className='size-3 shrink-0' aria-hidden='true' />
+              )}
+              <span className='truncate'>{t('Runway')}</span>
+            </div>
+            <div
+              className={cn(
+                'mt-1.5 truncate text-xs font-semibold tabular-nums',
+                healthLevel === 'critical' && 'text-destructive',
+                healthLevel === 'caution' && 'text-warning'
+              )}
+            >
+              {runwayDays !== null
+                ? runwayDays < 1
+                  ? t('Less than 1 day left')
+                  : runwayDays > 999
+                    ? `999+ ${t('days')}`
+                    : `~${formatNumber(Math.floor(runwayDays))} ${t('days')}`
+                : remainQuota <= 0
+                  ? t('Balance depleted')
+                  : t('No recent usage')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Button className='justify-between' render={<Link to='/wallet' />}>
+        <span>{t('Wallet')}</span>
+        <ArrowRight data-icon='inline-end' />
+      </Button>
     </div>
   )
 }

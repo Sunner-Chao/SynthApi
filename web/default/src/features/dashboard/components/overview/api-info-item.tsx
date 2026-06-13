@@ -109,10 +109,11 @@ export function ApiInfoItemComponent(props: ApiInfoItemProps) {
             variant='ghost'
             size='sm'
             onClick={() => openExternalSpeedTest(item.url)}
-            className='hidden size-7 p-0 sm:inline-flex'
+            className='hidden h-7 gap-1 px-2 text-xs sm:inline-flex'
             title={t('External Speed Test')}
           >
             <Gauge className='size-3.5' />
+            <span>{t('Speed Test')}</span>
           </Button>
 
           <CopyButton

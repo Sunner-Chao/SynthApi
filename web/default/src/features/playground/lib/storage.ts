@@ -111,7 +111,14 @@ export function loadMessages(): Message[] | null {
  */
 export function saveMessages(messages: Message[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages))
+    const persistedMessages = messages.map(({ attachments, ...message }) => {
+      void attachments
+      return message
+    })
+    localStorage.setItem(
+      STORAGE_KEYS.MESSAGES,
+      JSON.stringify(persistedMessages)
+    )
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)

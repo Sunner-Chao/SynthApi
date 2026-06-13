@@ -23,6 +23,7 @@ import {
   parseTiersFromExpr,
   type ParsedTier,
 } from '@/features/pricing/lib/billing-expr'
+import { normalizeSubscriptionBillingDiscount } from '@/features/subscriptions/lib'
 import type { LogOtherData, UsageLog } from '../types'
 
 export { normalizeTierLabel }
@@ -88,6 +89,36 @@ export function isViolationFeeLog(other: LogOtherData | null): boolean {
     Boolean(other.violation_fee_code) ||
     Boolean(other.violation_fee_marker)
   )
+}
+
+export interface SubscriptionBillingDisplay {
+  discount: number
+  rawQuota: number
+  formulaConsumed: number
+  actualConsumed: number
+  hasActualOverride: boolean
+}
+
+export function getSubscriptionBillingDisplay(
+  quota: number,
+  other: LogOtherData | null | undefined
+): SubscriptionBillingDisplay {
+  const rawQuota = Math.max(0, Number(quota || 0))
+  const discount = normalizeSubscriptionBillingDiscount(
+    other?.subscription_discount
+  )
+  const formulaConsumed = rawQuota * discount
+  const recordedConsumed = Number(other?.subscription_consumed)
+  const hasActualOverride =
+    other?.subscription_consumed != null && Number.isFinite(recordedConsumed)
+
+  return {
+    discount,
+    rawQuota,
+    formulaConsumed,
+    actualConsumed: hasActualOverride ? recordedConsumed : formulaConsumed,
+    hasActualOverride,
+  }
 }
 
 /**

@@ -24,8 +24,12 @@ import { getUserModels, getUserGroups } from './api'
 import { PlaygroundChat } from './components/playground-chat'
 import { PlaygroundInput } from './components/playground-input'
 import { usePlaygroundState, useChatHandler } from './hooks'
-import { createUserMessage, createLoadingAssistantMessage } from './lib'
-import type { Message as MessageType } from './types'
+import {
+  createUserMessage,
+  createUserMessageWithAttachments,
+  createLoadingAssistantMessage,
+} from './lib'
+import type { Message as MessageType, PlaygroundAttachment } from './types'
 
 export function Playground() {
   const { t } = useTranslation()
@@ -114,8 +118,14 @@ export function Playground() {
     }
   }, [groupsData, setGroups, config.group, updateConfig])
 
-  const handleSendMessage = (text: string) => {
-    const userMessage = createUserMessage(text)
+  const handleSendMessage = (
+    text: string,
+    attachments: PlaygroundAttachment[] = []
+  ) => {
+    const userMessage =
+      attachments.length > 0
+        ? createUserMessageWithAttachments(text, attachments)
+        : createUserMessage(text)
     const assistantMessage = createLoadingAssistantMessage()
 
     const newMessages = [...messages, userMessage, assistantMessage]
@@ -220,6 +230,8 @@ export function Playground() {
           onModelChange={(value) => updateConfig('model', value)}
           onStop={stopGeneration}
           onSubmit={handleSendMessage}
+          webSearchEnabled={config.web_search}
+          onWebSearchChange={(value) => updateConfig('web_search', value)}
         />
       </div>
     </div>

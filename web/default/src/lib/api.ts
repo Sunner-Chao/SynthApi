@@ -185,6 +185,14 @@ export async function getSelf() {
   return res.data
 }
 
+export async function refreshSelf() {
+  const data = await getSelf()
+  if (data?.success && data.data) {
+    useAuthStore.getState().auth.setUser(data.data)
+  }
+  return data
+}
+
 // Get user available models
 export async function getUserModels(): Promise<{
   success: boolean

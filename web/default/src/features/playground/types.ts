@@ -30,6 +30,7 @@ export interface Message {
   key: string
   from: MessageRole
   versions: MessageVersion[]
+  attachments?: PlaygroundAttachment[]
   sources?: { href: string; title: string }[]
   reasoning?: {
     content: string
@@ -49,10 +50,15 @@ export interface ChatCompletionMessage {
 }
 
 export interface ContentPart {
-  type: 'text' | 'image_url'
+  type: 'text' | 'image_url' | 'file'
   text?: string
   image_url?: {
     url: string
+  }
+  file?: {
+    filename?: string
+    file_data?: string
+    mime_type?: string
   }
 }
 
@@ -67,6 +73,19 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
+  web_search_options?: {
+    search_context_size: 'low' | 'medium' | 'high'
+  }
+  search_parameters?: {
+    mode: 'on'
+  }
+  enable_search?: boolean
+  web_search?: {
+    enable: boolean
+    enable_citation?: boolean
+    enable_trace?: boolean
+    enable_status?: boolean
+  }
 }
 
 export interface ChatCompletionChunk {
@@ -117,6 +136,17 @@ export interface PlaygroundConfig {
   presence_penalty: number
   seed: number | null
   stream: boolean
+  web_search: boolean
+}
+
+export interface PlaygroundAttachment {
+  id: string
+  name: string
+  type: string
+  size: number
+  data: string
+  base64: string
+  kind: 'image' | 'file'
 }
 
 export interface ParameterEnabled {

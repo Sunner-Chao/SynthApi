@@ -28,6 +28,14 @@ import type { PricingModel, TokenUnit, PriceType } from '../types'
 // Price Calculation Utilities
 // ----------------------------------------------------------------------------
 
+const PRICING_DISPLAY_OPTIONS = {
+  digitsLarge: 8,
+  digitsSmall: 8,
+  abbreviate: false,
+  minimumNonZero: 0.00000001,
+  preservePrecision: true,
+}
+
 /**
  * Strip trailing zeros from formatted price string while preserving currency symbols
  */
@@ -69,6 +77,96 @@ function getModelPricingDirection(
   return null
 }
 
+function validGroupRatio(ratio: unknown): ratio is number {
+  return Number.isFinite(Number(ratio)) && Number(ratio) > 0
+}
+
+function getPublicGroupRatio(
+  groupRatio: Record<string, number>
+): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(groupRatio).filter(
+      ([group]) => !EXCLUDED_GROUPS.includes(group)
+    )
+  )
+}
+
+function getCandidateGroupsForModel(
+  modelName: string | undefined,
+  enableGroups: string[],
+  publicGroupRatio: Record<string, number>
+): string[] {
+  const direction = getModelPricingDirection(modelName)
+  const enabledGroupNames =
+    enableGroups.length === 0 || enableGroups.includes('all')
+      ? Object.keys(publicGroupRatio)
+      : enableGroups.filter((group) => !EXCLUDED_GROUPS.includes(group))
+
+  if (direction) {
+    const directionalGroups = enabledGroupNames.filter((group) =>
+      group.toLowerCase().includes(direction)
+    )
+
+    if (directionalGroups.some((group) => validGroupRatio(publicGroupRatio[group]))) {
+      return directionalGroups
+    }
+  }
+
+  return enabledGroupNames
+}
+
+export function getMinGroupNameForModel(
+  modelName: string | undefined,
+  enableGroups: string[],
+  groupRatio: Record<string, number>
+): string | null {
+  const publicGroupRatio = getPublicGroupRatio(groupRatio)
+  const candidates = getCandidateGroupsForModel(
+    modelName,
+    enableGroups,
+    publicGroupRatio
+  )
+
+  const findMinGroup = (groups: string[]) => {
+    let minGroup: string | null = null
+    let minRatio = Number.POSITIVE_INFINITY
+
+    for (const group of groups) {
+      const ratio = publicGroupRatio[group]
+      if (validGroupRatio(ratio) && Number(ratio) < minRatio) {
+        minRatio = Number(ratio)
+        minGroup = group
+      }
+    }
+
+    return minGroup
+  }
+
+  return findMinGroup(candidates) ?? findMinGroup(Object.keys(publicGroupRatio))
+}
+
+export function getSortedGroupsByPricingRatioForModel(
+  modelName: string | undefined,
+  enableGroups: string[],
+  groupRatio: Record<string, number>
+): string[] {
+  const publicGroupRatio = getPublicGroupRatio(groupRatio)
+  const minGroup = getMinGroupNameForModel(modelName, enableGroups, groupRatio)
+  const groups = enableGroups.filter((group) => !EXCLUDED_GROUPS.includes(group))
+
+  return [...groups].sort((a, b) => {
+    if (a === minGroup) return -1
+    if (b === minGroup) return 1
+    const ratioA = validGroupRatio(publicGroupRatio[a])
+      ? Number(publicGroupRatio[a])
+      : Number.POSITIVE_INFINITY
+    const ratioB = validGroupRatio(publicGroupRatio[b])
+      ? Number(publicGroupRatio[b])
+      : Number.POSITIVE_INFINITY
+    return ratioA - ratioB
+  })
+}
+
 /**
  * Find minimum group ratio from enabled groups. When the model belongs to a
  * named direction such as Claude or Codex, prefer enabled group names that
@@ -79,47 +177,15 @@ export function getMinGroupRatioForModel(
   enableGroups: string[],
   groupRatio: Record<string, number>
 ): number {
-  const validRatio = (ratio: unknown): ratio is number =>
-    Number.isFinite(Number(ratio)) && Number(ratio) > 0
-  const publicGroupRatio = Object.fromEntries(
-    Object.entries(groupRatio).filter(
-      ([group]) => !EXCLUDED_GROUPS.includes(group)
-    )
-  )
-  const ratios = Object.values(publicGroupRatio).filter(validRatio)
+  const publicGroupRatio = getPublicGroupRatio(groupRatio)
+  const minGroup = getMinGroupNameForModel(modelName, enableGroups, groupRatio)
+  if (minGroup && validGroupRatio(publicGroupRatio[minGroup])) {
+    return Number(publicGroupRatio[minGroup])
+  }
+
+  const ratios = Object.values(publicGroupRatio).filter(validGroupRatio)
   const globalMinRatio = ratios.length > 0 ? Math.min(...ratios) : 1
-
-  const direction = getModelPricingDirection(modelName)
-  const enabledGroupNames =
-    enableGroups.length === 0 || enableGroups.includes('all')
-      ? Object.keys(publicGroupRatio)
-      : enableGroups.filter((group) => !EXCLUDED_GROUPS.includes(group))
-
-  if (direction) {
-    const directionalRatios = enabledGroupNames
-      .filter((group) => group.toLowerCase().includes(direction))
-      .map((group) => publicGroupRatio[group])
-      .filter(validRatio)
-
-    if (directionalRatios.length > 0) {
-      return Math.min(...directionalRatios)
-    }
-  }
-
-  if (enableGroups.length === 0 || enableGroups.includes('all')) {
-    return globalMinRatio
-  }
-
-  let minRatio = Number.POSITIVE_INFINITY
-
-  for (const group of enableGroups) {
-    const ratio = publicGroupRatio[group]
-    if (ratio !== undefined && ratio < minRatio) {
-      minRatio = ratio
-    }
-  }
-
-  return minRatio === Number.POSITIVE_INFINITY ? globalMinRatio : minRatio
+  return globalMinRatio
 }
 
 /**
@@ -240,11 +306,7 @@ export function formatPrice(
   )
 
   const price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
-  return formatCurrencyFromUSD(price, {
-    digitsLarge: 2,
-    digitsSmall: 2,
-    abbreviate: false,
-  })
+  return formatCurrencyFromUSD(price, PRICING_DISPLAY_OPTIONS)
 }
 
 /**
@@ -275,11 +337,7 @@ export function formatGroupPrice(
   )
 
   const price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
-  return formatCurrencyFromUSD(price, {
-    digitsLarge: 2,
-    digitsSmall: 2,
-    abbreviate: false,
-  })
+  return formatCurrencyFromUSD(price, PRICING_DISPLAY_OPTIONS)
 }
 
 /**
@@ -307,11 +365,7 @@ export function formatFixedPrice(
     usdExchangeRate
   )
 
-  return formatCurrencyFromUSD(priceInUSD, {
-    digitsLarge: 2,
-    digitsSmall: 2,
-    abbreviate: false,
-  })
+  return formatCurrencyFromUSD(priceInUSD, PRICING_DISPLAY_OPTIONS)
 }
 
 /**
@@ -346,9 +400,5 @@ export function formatRequestPrice(
     usdExchangeRate
   )
 
-  return formatCurrencyFromUSD(priceInUSD, {
-    digitsLarge: 2,
-    digitsSmall: 2,
-    abbreviate: false,
-  })
+  return formatCurrencyFromUSD(priceInUSD, PRICING_DISPLAY_OPTIONS)
 }
