@@ -12,6 +12,7 @@ import (
 
 var (
 	urlRegex       = regexp.MustCompile(`^https?://(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?:\:[0-9]{1,5})?(?:/.*)?$`)
+	imageURLRegex  = regexp.MustCompile(`^(https?://|/|data:image/(png|jpeg|jpg|webp|gif);base64,)[A-Za-z0-9+/=._~:?#@!$&'()*+,;/%-]+$`)
 	dangerousChars = []string{"<script", "<iframe", "javascript:", "onload=", "onerror=", "onclick="}
 	validColors    = map[string]bool{
 		"blue": true, "green": true, "cyan": true, "purple": true, "pink": true,
@@ -178,6 +179,21 @@ func validateAnnouncements(announcementsStr string) error {
 		if extra, exists := ann["extra"]; exists {
 			if extraStr, ok := extra.(string); ok && len(extraStr) > 200 {
 				return fmt.Errorf("第%d个公告的说明长度不能超过200字符", i+1)
+			}
+		}
+		if imageURL, exists := ann["imageUrl"]; exists {
+			imageURLStr, ok := imageURL.(string)
+			if !ok {
+				return fmt.Errorf("第%d个公告的图片地址格式不正确", i+1)
+			}
+			if len(imageURLStr) > 2800000 {
+				return fmt.Errorf("第%d个公告的图片数据不能超过2.8MB", i+1)
+			}
+			if imageURLStr != "" && !imageURLRegex.MatchString(imageURLStr) {
+				return fmt.Errorf("第%d个公告的图片地址格式不正确", i+1)
+			}
+			if err := checkDangerousContent(imageURLStr, i+1, "公告图片"); err != nil {
+				return err
 			}
 		}
 	}

@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels } from '@/lib/api'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import {
@@ -58,6 +59,20 @@ const APP_CONFIGS = {
 
 type AppType = keyof typeof APP_CONFIGS
 
+const SYNTHAPI_USAGE_QUERY_SCRIPT =
+  '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){return r&&r.data?r.data:r}})'
+
+function base64EncodeUtf8(value: string): string {
+  if (typeof window === 'undefined') return ''
+
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
+  })
+  return window.btoa(binary)
+}
+
 function normalizePublicServerAddress(value: unknown): string {
   if (typeof value !== 'string') return ''
   const trimmed = value.trim().replace(/\/+$/, '')
@@ -78,6 +93,28 @@ function normalizePublicServerAddress(value: unknown): string {
   } catch {
     return ''
   }
+}
+
+function normalizeLocalServerAddress(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+
+  try {
+    const url = new URL(trimmed)
+    const hostname = url.hostname.toLowerCase()
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1'
+    ) {
+      return url.origin
+    }
+  } catch {
+    /* empty */
+  }
+
+  return ''
 }
 
 function getServerAddress(): string {
@@ -114,6 +151,15 @@ function getServerAddress(): string {
   return ''
 }
 
+function getCCSwitchUsageBaseUrl(serverAddress: string): string {
+  if (typeof window === 'undefined') return serverAddress
+
+  const localOrigin = normalizeLocalServerAddress(window.location.origin)
+  if (localOrigin) return localOrigin
+
+  return serverAddress
+}
+
 function buildCCSwitchURL(
   app: string,
   name: string,
@@ -133,7 +179,24 @@ function buildCCSwitchURL(
   }
   params.set('homepage', serverAddress)
   params.set('enabled', 'true')
+
+  const usageBaseUrl = getCCSwitchUsageBaseUrl(serverAddress)
+  if (usageBaseUrl) {
+    params.set('usageEnabled', 'true')
+    params.set('usageScript', base64EncodeUtf8(SYNTHAPI_USAGE_QUERY_SCRIPT))
+    params.set('usageApiKey', apiKey)
+    params.set('usageBaseUrl', usageBaseUrl)
+    params.set('usageAutoInterval', '10')
+  }
+
   return `ccswitch://v1/import?${params.toString()}`
+}
+
+function openCustomProtocol(url: string): void {
+  const opened = window.open(url, '_blank')
+  if (!opened) {
+    window.location.href = url
+  }
 }
 
 interface Props {
@@ -180,16 +243,36 @@ export function CCSwitchDialog(props: Props) {
     setModels({})
   }
 
-  const handleSubmit = () => {
+  const buildImportURL = (): string | null => {
     if (!models.model) {
       toast.warning(t('Please select a primary model'))
-      return
+      return null
     }
     const key = props.tokenKey.startsWith('sk-')
       ? props.tokenKey
       : `sk-${props.tokenKey}`
-    const url = buildCCSwitchURL(app, name, models, key)
-    window.open(url, '_blank')
+    return buildCCSwitchURL(app, name, models, key)
+  }
+
+  const handleCopy = async () => {
+    const url = buildImportURL()
+    if (!url) return
+
+    const copied = await copyToClipboard(url)
+    if (copied) {
+      toast.success(t('CC Switch import link copied'))
+    } else {
+      toast.error(t('Failed to copy CC Switch import link'))
+    }
+  }
+
+  const handleSubmit = async () => {
+    const url = buildImportURL()
+    if (!url) return
+
+    openCustomProtocol(url)
+    void copyToClipboard(url)
+    toast.info(t('Opening CC Switch. If nothing happens, use the copied import link.'))
     props.onOpenChange(false)
   }
 
@@ -260,6 +343,9 @@ export function CCSwitchDialog(props: Props) {
         <DialogFooter>
           <Button variant='outline' onClick={() => props.onOpenChange(false)}>
             {t('Cancel')}
+          </Button>
+          <Button variant='outline' onClick={handleCopy}>
+            {t('Copy Link')}
           </Button>
           <Button onClick={handleSubmit}>{t('Open CC Switch')}</Button>
         </DialogFooter>

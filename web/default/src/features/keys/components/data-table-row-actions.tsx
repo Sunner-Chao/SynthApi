@@ -28,6 +28,7 @@ import {
   Copy,
   Link,
   Loader2,
+  Activity,
   MoreHorizontal as DotsHorizontalIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -53,7 +54,7 @@ import {
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
 import { resolveChatUrl, type ChatPreset } from '@/features/chat/lib/chat-links'
 import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
-import { updateApiKeyStatus } from '../api'
+import { testApiKeyConnection, updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import { apiKeySchema } from '../types'
 import { useApiKeys } from './api-keys-provider'
@@ -79,6 +80,38 @@ function encodeConnectionString(key: string, url: string): string {
   })
 }
 
+function isConcreteModelName(model: string): boolean {
+  const value = model.trim()
+  return (
+    Boolean(value) &&
+    !value.startsWith('regex:') &&
+    !/[.*^$()[\]{}|\\]/.test(value)
+  )
+}
+
+function selectApiKeyChatTestModel(models: string[]): string {
+  const nonChatPattern =
+    /(embedding|embed|rerank|image|gpt-image|sora|video|audio|tts|whisper|midjourney|kling|jimeng|seedream)/i
+  const chatModels = models.filter(
+    (model) => isConcreteModelName(model) && !nonChatPattern.test(model)
+  )
+  const priorities = [
+    /^claude/i,
+    /^gpt/i,
+    /^doubao/i,
+    /^deepseek/i,
+    /^qwen/i,
+    /^gemini/i,
+    /^kimi/i,
+    /^glm/i,
+  ]
+  for (const pattern of priorities) {
+    const found = chatModels.find((model) => pattern.test(model))
+    if (found) return found
+  }
+  return chatModels[0] || ''
+}
+
 type DataTableRowActionsProps<TData> = {
   row: Row<TData>
 }
@@ -100,6 +133,8 @@ export function DataTableRowActions<TData>({
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
   const { chatPresets, serverAddress } = useChatPresets()
   const [isTogglingStatus, setIsTogglingStatus] = useState(false)
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
+  const [testResponseTime, setTestResponseTime] = useState<number | null>(null)
   const resolvedRealKey = resolvedKeys[apiKey.id]
   const isRealKeyLoading = Boolean(loadingKeys[apiKey.id])
 
@@ -189,8 +224,89 @@ export function DataTableRowActions<TData>({
     }
   }
 
+  const getTestModel = useCallback(() => {
+    if (apiKey.model_limits_enabled && apiKey.model_limits) {
+      return selectApiKeyChatTestModel(
+        apiKey.model_limits
+          .split(',')
+          .map((model) => model.trim())
+          .filter(Boolean)
+      )
+    }
+    return ''
+  }, [apiKey.model_limits, apiKey.model_limits_enabled])
+
+  const handleTestConnection = useCallback(async () => {
+    if (isTestingConnection) return
+    setIsTestingConnection(true)
+    try {
+      const realKey = await resolveRealKey(apiKey.id)
+      if (!realKey) {
+        toast.error(t('Unable to load API key for testing'))
+        return
+      }
+      const model = getTestModel()
+      const result = await testApiKeyConnection({
+        apiKey: realKey,
+        serverAddress,
+        model,
+      })
+      if (result.success) {
+        setTestResponseTime(result.time ?? null)
+        toast.success(
+          t('API key test completed in {{time}}s', {
+            time: result.time?.toFixed(2) ?? '-',
+          })
+        )
+      } else {
+        if (typeof result.time === 'number') {
+          setTestResponseTime(result.time)
+        }
+        toast.error(result.message || t('API key test failed'))
+      }
+    } finally {
+      setIsTestingConnection(false)
+    }
+  }, [
+    apiKey.id,
+    getTestModel,
+    isTestingConnection,
+    resolveRealKey,
+    serverAddress,
+    t,
+  ])
+
   return (
     <div className='flex items-center justify-end gap-1'>
+      {testResponseTime !== null && (
+        <span className='bg-muted text-muted-foreground inline-flex h-7 items-center rounded-md border px-2 font-mono text-[11px] tabular-nums'>
+          {testResponseTime.toFixed(2)}s
+        </span>
+      )}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              onClick={(event) => {
+                event.stopPropagation()
+                void handleTestConnection()
+              }}
+              disabled={isTestingConnection || !isEnabled}
+              aria-label={t('Test Connection')}
+            />
+          }
+        >
+          {isTestingConnection ? (
+            <Loader2 className='size-4 animate-spin' />
+          ) : (
+            <Activity className='size-4' />
+          )}
+        </TooltipTrigger>
+        <TooltipContent>{t('Test Connection')}</TooltipContent>
+      </Tooltip>
+
       <Tooltip>
         <TooltipTrigger
           render={

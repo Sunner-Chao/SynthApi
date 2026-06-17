@@ -20,7 +20,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Edit, Trash2, Save } from 'lucide-react'
+import { Plus, Edit, Trash2, Save, Image, Upload, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import dayjs from '@/lib/dayjs'
@@ -83,6 +83,7 @@ type Announcement = {
   publishDate: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  imageUrl?: string
 }
 
 type AnnouncementsSectionProps = {
@@ -101,6 +102,7 @@ const announcementSchema = z.object({
     .string()
     .max(100, 'Extra must be less than 100 characters')
     .optional(),
+  imageUrl: z.string().max(2800000, 'Image data is too large').optional(),
 })
 
 type AnnouncementFormValues = z.infer<typeof announcementSchema>
@@ -161,8 +163,11 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      imageUrl: '',
     },
   })
+
+  const selectedImageUrl = form.watch('imageUrl') ?? ''
 
   useEffect(() => {
     try {
@@ -204,6 +209,7 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      imageUrl: '',
     })
     setShowDialog(true)
   }
@@ -215,8 +221,45 @@ export function AnnouncementsSection({
       publishDate: announcement.publishDate,
       type: announcement.type,
       extra: announcement.extra || '',
+      imageUrl: announcement.imageUrl || '',
     })
     setShowDialog(true)
+  }
+
+  const handleImageFileChange = (file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error(t('Please select an image file'))
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error(t('Image must be smaller than 2MB'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      form.setValue('imageUrl', String(reader.result || ''), {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+    }
+    reader.onerror = () => toast.error(t('Failed to read image'))
+    reader.readAsDataURL(file)
+  }
+
+  const useWechatQrImage = () => {
+    form.setValue('imageUrl', '/wechat-group-qr.png', {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+    toast.success(t('WeChat group QR code attached'))
+  }
+
+  const clearAnnouncementImage = () => {
+    form.setValue('imageUrl', '', {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
   }
 
   const handleDelete = (announcement: Announcement) => {
@@ -369,6 +412,7 @@ export function AnnouncementsSection({
                   />
                 </TableHead>
                 <TableHead>{t('Content')}</TableHead>
+                <TableHead>{t('Image')}</TableHead>
                 <TableHead>{t('Publish Date')}</TableHead>
                 <TableHead>{t('Type')}</TableHead>
                 <TableHead>{t('Extra')}</TableHead>
@@ -378,7 +422,7 @@ export function AnnouncementsSection({
             <TableBody>
               {sortedAnnouncements.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className='h-24 text-center'>
+                  <TableCell colSpan={7} className='h-24 text-center'>
                     {t(
                       'No announcements yet. Click "Add Announcement" to create one.'
                     )}
@@ -400,6 +444,18 @@ export function AnnouncementsSection({
                       title={announcement.content}
                     >
                       {announcement.content}
+                    </TableCell>
+                    <TableCell>
+                      {announcement.imageUrl ? (
+                        <img
+                          src={announcement.imageUrl}
+                          alt={t('Announcement image')}
+                          className='h-12 w-12 rounded-md border object-cover'
+                          loading='lazy'
+                        />
+                      ) : (
+                        <span className='text-muted-foreground'>-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className='flex flex-col gap-1'>
@@ -587,6 +643,81 @@ export function AnnouncementsSection({
                     <FormDescription>
                       {t(
                         'Optional supplementary information (max 100 characters)'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='imageUrl'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Announcement Image (Optional)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('Image URL or uploaded image data')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <div className='flex flex-wrap gap-2'>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={useWechatQrImage}
+                      >
+                        <Image className='mr-2 h-4 w-4' />
+                        {t('Use WeChat QR Code')}
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={() =>
+                          document
+                            .getElementById('announcement-image-upload')
+                            ?.click()
+                        }
+                      >
+                        <Upload className='mr-2 h-4 w-4' />
+                        {t('Upload Image')}
+                      </Button>
+                      <input
+                        id='announcement-image-upload'
+                        type='file'
+                        accept='image/*'
+                        className='hidden'
+                        onChange={(event) => {
+                          handleImageFileChange(event.target.files?.[0])
+                          event.currentTarget.value = ''
+                        }}
+                      />
+                      {selectedImageUrl && (
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          onClick={clearAnnouncementImage}
+                        >
+                          <X className='mr-2 h-4 w-4' />
+                          {t('Remove Image')}
+                        </Button>
+                      )}
+                    </div>
+                    {selectedImageUrl && (
+                      <div className='bg-muted/20 rounded-md border p-3'>
+                        <img
+                          src={selectedImageUrl}
+                          alt={t('Announcement image preview')}
+                          className='max-h-56 max-w-full rounded-md object-contain'
+                        />
+                      </div>
+                    )}
+                    <FormDescription>
+                      {t(
+                        'Upload an image or attach the built-in WeChat group QR code.'
                       )}
                     </FormDescription>
                     <FormMessage />

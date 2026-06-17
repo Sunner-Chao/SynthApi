@@ -70,6 +70,7 @@ const NoticeModal = ({
         time: absoluteTime,
         content: item.content,
         extra: item.extra,
+        imageUrl: item.imageUrl,
         relative: getRelativeTime(item.publishDate),
         isUnread: unreadSet.has(getKeyForItem(item)),
       };
@@ -192,6 +193,14 @@ const NoticeModal = ({
                     className={item.isUnread ? 'shine-text' : ''}
                     dangerouslySetInnerHTML={{ __html: htmlContent }}
                   />
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={t('公告图片')}
+                      className='mt-3 max-h-80 max-w-full rounded border object-contain'
+                      loading='lazy'
+                    />
+                  ) : null}
                 </div>
               </Timeline.Item>
             );

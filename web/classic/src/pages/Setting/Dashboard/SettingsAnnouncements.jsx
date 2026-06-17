@@ -36,7 +36,17 @@ import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { Plus, Edit, Trash2, Save, Bell, Maximize2 } from 'lucide-react';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Save,
+  Bell,
+  Maximize2,
+  Image,
+  Upload,
+  X,
+} from 'lucide-react';
 import {
   API,
   showError,
@@ -65,6 +75,7 @@ const SettingsAnnouncements = ({ options, refresh }) => {
     publishDate: new Date(),
     type: 'default',
     extra: '',
+    imageUrl: '',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -113,6 +124,29 @@ const SettingsAnnouncements = ({ options, refresh }) => {
           </div>
         </Tooltip>
       ),
+    },
+    {
+      title: t('图片'),
+      dataIndex: 'imageUrl',
+      key: 'imageUrl',
+      width: 90,
+      render: (imageUrl) =>
+        imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={t('公告图片')}
+            style={{
+              width: 48,
+              height: 48,
+              objectFit: 'cover',
+              borderRadius: 6,
+              border: '1px solid var(--semi-color-border)',
+            }}
+            loading='lazy'
+          />
+        ) : (
+          '-'
+        ),
     },
     {
       title: t('发布时间'),
@@ -232,6 +266,7 @@ const SettingsAnnouncements = ({ options, refresh }) => {
       publishDate: new Date(),
       type: 'default',
       extra: '',
+      imageUrl: '',
     });
     setShowAnnouncementModal(true);
   };
@@ -245,8 +280,32 @@ const SettingsAnnouncements = ({ options, refresh }) => {
         : new Date(),
       type: announcement.type || 'default',
       extra: announcement.extra || '',
+      imageUrl: announcement.imageUrl || '',
     });
     setShowAnnouncementModal(true);
+  };
+
+  const setAnnouncementImageUrl = (imageUrl) => {
+    setAnnouncementForm({ ...announcementForm, imageUrl });
+    if (formApiRef.current) {
+      formApiRef.current.setValue('imageUrl', imageUrl);
+    }
+  };
+
+  const handleImageFileChange = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showError(t('请选择图片文件'));
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showError(t('图片不能超过 2MB'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setAnnouncementImageUrl(String(reader.result || ''));
+    reader.onerror = () => showError(t('读取图片失败'));
+    reader.readAsDataURL(file);
   };
 
   const handleDeleteAnnouncement = (announcement) => {
@@ -578,6 +637,70 @@ const SettingsAnnouncements = ({ options, refresh }) => {
               setAnnouncementForm({ ...announcementForm, extra: value })
             }
           />
+          <Form.Input
+            field='imageUrl'
+            label={t('公告图片')}
+            placeholder={t('图片 URL 或上传后的图片数据')}
+            onChange={(value) => setAnnouncementImageUrl(value)}
+          />
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Button
+              theme='light'
+              type='tertiary'
+              size='small'
+              icon={<Image size={14} />}
+              onClick={() => setAnnouncementImageUrl('/wechat-group-qr.png')}
+            >
+              {t('插入微信群二维码')}
+            </Button>
+            <Button
+              theme='light'
+              type='tertiary'
+              size='small'
+              icon={<Upload size={14} />}
+              onClick={() =>
+                document.getElementById('announcement-image-upload')?.click()
+              }
+            >
+              {t('上传图片')}
+            </Button>
+            {announcementForm.imageUrl ? (
+              <Button
+                theme='borderless'
+                type='tertiary'
+                size='small'
+                icon={<X size={14} />}
+                onClick={() => setAnnouncementImageUrl('')}
+              >
+                {t('移除图片')}
+              </Button>
+            ) : null}
+          </Space>
+          <input
+            id='announcement-image-upload'
+            type='file'
+            accept='image/*'
+            style={{ display: 'none' }}
+            onChange={(event) => {
+              handleImageFileChange(event.target.files?.[0]);
+              event.currentTarget.value = '';
+            }}
+          />
+          {announcementForm.imageUrl ? (
+            <img
+              src={announcementForm.imageUrl}
+              alt={t('公告图片预览')}
+              style={{
+                maxWidth: '100%',
+                maxHeight: 260,
+                objectFit: 'contain',
+                borderRadius: 8,
+                border: '1px solid var(--semi-color-border)',
+                marginBottom: 12,
+              }}
+              loading='lazy'
+            />
+          ) : null}
         </Form>
       </Modal>
 

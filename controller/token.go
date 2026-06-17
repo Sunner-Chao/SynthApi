@@ -164,6 +164,113 @@ func GetTokenUsage(c *gin.Context) {
 	})
 }
 
+func quotaToDisplayAmount(quota int) float64 {
+	amount := float64(quota)
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
+		if common.QuotaPerUnit <= 0 {
+			return 0
+		}
+		return amount / common.QuotaPerUnit * operation_setting.USDExchangeRate
+	case operation_setting.QuotaDisplayTypeCustom:
+		if common.QuotaPerUnit <= 0 {
+			return 0
+		}
+		rate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+		if rate <= 0 {
+			rate = 1
+		}
+		return amount / common.QuotaPerUnit * rate
+	case operation_setting.QuotaDisplayTypeTokens:
+		return amount
+	default:
+		if common.QuotaPerUnit <= 0 {
+			return 0
+		}
+		return amount / common.QuotaPerUnit
+	}
+}
+
+func ccswitchUsageUnit() string {
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
+		return "CNY"
+	case operation_setting.QuotaDisplayTypeCustom:
+		symbol := operation_setting.GetGeneralSetting().CustomCurrencySymbol
+		if symbol != "" {
+			return symbol
+		}
+		return "CUSTOM"
+	case operation_setting.QuotaDisplayTypeTokens:
+		return "tokens"
+	default:
+		return "USD"
+	}
+}
+
+func GetCCSwitchTokenUsage(c *gin.Context) {
+	tokenId := c.GetInt("token_id")
+	userId := c.GetInt("id")
+	token, err := model.GetTokenByIds(tokenId, userId)
+	if err != nil {
+		common.SysError("failed to get token by id for ccswitch usage: " + err.Error())
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"isValid":        false,
+			"invalidMessage": "Failed to query SynthAPI key usage",
+		})
+		return
+	}
+
+	userQuota, err := model.GetUserQuota(userId, false)
+	if err != nil {
+		common.SysError("failed to get user quota for ccswitch usage: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"isValid":        false,
+			"invalidMessage": "Failed to query SynthAPI wallet balance",
+		})
+		return
+	}
+	userUsedQuota, err := model.GetUserUsedQuota(userId)
+	if err != nil {
+		common.SysError("failed to get user used quota for ccswitch usage: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"isValid":        false,
+			"invalidMessage": "Failed to query SynthAPI wallet usage",
+		})
+		return
+	}
+
+	availableQuota := userQuota
+	usedQuota := userUsedQuota
+	totalQuota := userQuota + userUsedQuota
+	source := "wallet_balance"
+	if token.UnlimitedQuota {
+		source = "wallet_unlimited_key"
+	} else if token.RemainQuota < availableQuota {
+		source = "api_key_limit"
+		availableQuota = token.RemainQuota
+		usedQuota = token.UsedQuota
+		totalQuota = token.RemainQuota + token.UsedQuota
+	}
+
+	response := gin.H{
+		"isValid":      true,
+		"planName":     token.Name,
+		"remaining":    quotaToDisplayAmount(availableQuota),
+		"used":         quotaToDisplayAmount(usedQuota),
+		"total":        quotaToDisplayAmount(totalQuota),
+		"unit":         ccswitchUsageUnit(),
+		"quotaSource":  source,
+		"rawRemaining": availableQuota,
+		"rawUsed":      usedQuota,
+		"rawTotal":     totalQuota,
+	}
+	if token.UnlimitedQuota {
+		response["extra"] = "Unlimited API key; showing wallet balance"
+	}
+	c.JSON(http.StatusOK, response)
+}
+
 func AddToken(c *gin.Context) {
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)

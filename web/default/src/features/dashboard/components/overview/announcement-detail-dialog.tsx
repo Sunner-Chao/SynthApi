@@ -37,6 +37,7 @@ interface AnnouncementDetailModalProps {
     tag?: string
     publishDate?: string
     extra?: string
+    imageUrl?: string
   } | null
 }
 
@@ -64,6 +65,17 @@ export function AnnouncementDetailModal({
               <div>
                 <h4 className='mb-2 font-medium'>{t('Content')}</h4>
                 <Markdown>{announcement.content}</Markdown>
+              </div>
+            )}
+            {announcement?.imageUrl && (
+              <div>
+                <h4 className='mb-2 font-medium'>{t('Image')}</h4>
+                <img
+                  src={announcement.imageUrl}
+                  alt={t('Announcement image')}
+                  className='max-h-[50vh] max-w-full rounded-md border object-contain'
+                  loading='lazy'
+                />
               </div>
             )}
             {announcement?.extra && (

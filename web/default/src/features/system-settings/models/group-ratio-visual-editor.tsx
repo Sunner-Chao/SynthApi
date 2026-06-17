@@ -59,6 +59,7 @@ type GroupRatioVisualEditorProps = {
   userUsableGroups: string
   groupGroupRatio: string
   autoGroups: string
+  smartGroupRules: string
   onChange: (field: string, value: string) => void
 }
 
@@ -185,6 +186,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
   userUsableGroups,
   groupGroupRatio,
   autoGroups,
+  smartGroupRules,
   onChange,
 }: GroupRatioVisualEditorProps) {
   const { t } = useTranslation()
@@ -430,6 +432,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
       <GroupPricingTable
         groupRatio={groupRatio}
         userUsableGroups={userUsableGroups}
+        smartGroupRules={smartGroupRules}
         onChange={onChange}
       />
 
@@ -772,17 +775,30 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
 type GroupPricingTableProps = {
   groupRatio: string
   userUsableGroups: string
+  smartGroupRules: string
   onChange: (field: string, value: string) => void
 }
 
 function GroupPricingTable({
   groupRatio,
   userUsableGroups,
+  smartGroupRules,
   onChange,
 }: GroupPricingTableProps) {
   const { t } = useTranslation()
   const [rows, setRows] = useState<GroupPricingRow[]>(() =>
     buildGroupPricingRows(groupRatio, userUsableGroups)
+  )
+  const [smartGroupName, setSmartGroupName] = useState('smart')
+  const [smartSourceIds, setSmartSourceIds] = useState<string[]>([])
+
+  const smartRuleMap = useMemo(
+    () =>
+      safeJsonParse<Record<string, string[]>>(smartGroupRules, {
+        fallback: {},
+        silent: true,
+      }),
+    [smartGroupRules]
   )
 
   useEffect(() => {
@@ -807,6 +823,12 @@ function GroupPricingTable({
     },
     [onChange]
   )
+
+  useEffect(() => {
+    setSmartSourceIds((currentIds) =>
+      currentIds.filter((id) => rows.some((row) => row._id === id))
+    )
+  }, [rows])
 
   const updateRow = useCallback(
     (
@@ -840,6 +862,77 @@ function GroupPricingTable({
       },
     ])
   }, [emitRows, rows])
+
+  const smartSources = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          smartSourceIds.includes(row._id) &&
+          row.name.trim() &&
+          row.name.trim() !== smartGroupName.trim()
+      ),
+    [smartGroupName, smartSourceIds, rows]
+  )
+
+  const toggleSmartSource = useCallback((id: string, checked: boolean) => {
+    setSmartSourceIds((currentIds) => {
+      if (checked) {
+        return currentIds.includes(id) ? currentIds : [...currentIds, id]
+      }
+      return currentIds.filter((item) => item !== id)
+    })
+  }, [])
+
+  const applySmartGroup = useCallback(() => {
+    const name = smartGroupName.trim()
+    if (!name || smartSources.length === 0) {
+      return
+    }
+
+    const sourceNames = smartSources.map((row) => row.name.trim())
+    const description = `Smart rotation: ${sourceNames.join(', ')}`
+    const nextRules = {
+      ...smartRuleMap,
+      [name]: sourceNames,
+    }
+    const existing = rows.find((row) => row.name.trim() === name)
+
+    onChange('SmartGroupRules', JSON.stringify(nextRules, null, 2))
+
+    if (existing) {
+      emitRows(
+        rows.map((row) =>
+          row._id === existing._id
+            ? {
+                ...row,
+                ratio: row.ratio || '1',
+                selectable: true,
+                description: row.description || description,
+              }
+            : row
+        )
+      )
+      return
+    }
+
+    emitRows([
+      ...rows,
+      {
+        _id: createGroupPricingId(),
+        name,
+        ratio: '1',
+        selectable: true,
+        description,
+      },
+    ])
+  }, [
+    emitRows,
+    onChange,
+    rows,
+    smartGroupName,
+    smartRuleMap,
+    smartSources,
+  ])
 
   const removeRow = useCallback(
     (id: string) => {
@@ -880,6 +973,89 @@ function GroupPricingTable({
       </CardHeader>
       <CardContent>
         <div className='space-y-3'>
+          <div className='bg-muted/20 rounded-lg border p-3'>
+            <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
+              <div className='min-w-0 flex-1 space-y-2'>
+                <div>
+                  <div className='text-sm font-medium'>
+                    {t('Smart rotation group')}
+                  </div>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Bind one logical group to multiple source groups. Requests rotate through source group channels and use the successful source group ratio.'
+                    )}
+                  </p>
+                </div>
+                <div className='grid gap-2 sm:grid-cols-[minmax(0,12rem)_1fr]'>
+                  <Input
+                    value={smartGroupName}
+                    onChange={(event) =>
+                      setSmartGroupName(event.target.value)
+                    }
+                    placeholder={t('Smart group name')}
+                  />
+                  <div className='flex min-h-9 flex-wrap items-center gap-2'>
+                    {rows.length === 0 ? (
+                      <span className='text-muted-foreground text-xs'>
+                        {t('No source groups available')}
+                      </span>
+                    ) : (
+                      rows.map((row) => {
+                        const name = row.name.trim()
+                        const checked = smartSourceIds.includes(row._id)
+                        const isSelf = Boolean(
+                          name && name === smartGroupName.trim()
+                        )
+                        return (
+                          <label
+                            key={row._id}
+                            className='bg-background hover:bg-muted/50 flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs transition-colors'
+                          >
+                            <Checkbox
+                              checked={checked}
+                              disabled={!name || isSelf}
+                              onCheckedChange={(value) =>
+                                toggleSmartSource(row._id, value === true)
+                              }
+                              aria-label={t('Select {{group}}', {
+                                group: name || t('Unnamed group'),
+                              })}
+                            />
+                            <span className='font-medium'>
+                              {name || t('Unnamed group')}
+                            </span>
+                            <span className='text-muted-foreground'>
+                              {row.ratio || '-'}
+                            </span>
+                          </label>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className='flex shrink-0 items-center gap-2'>
+                <div className='bg-background rounded-md border px-3 py-2 text-right'>
+                  <div className='text-muted-foreground text-[11px]'>
+                    {t('Source groups')}
+                  </div>
+                  <div className='font-mono text-sm font-semibold'>
+                    {smartSources.length || '-'}
+                  </div>
+                </div>
+                <Button
+                  size='sm'
+                  onClick={applySmartGroup}
+                  disabled={
+                    !smartGroupName.trim() || smartSources.length === 0
+                  }
+                >
+                  {t('Apply smart group')}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className='overflow-hidden rounded-md border'>
             <Table>
               <TableHeader>

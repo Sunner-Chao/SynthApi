@@ -25,6 +25,7 @@ ORG=""
 NO_SET_REMOTE=false
 NO_PUSH=false
 NO_CONFIG=false
+VISIBILITY_SET=false
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
@@ -39,10 +40,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--private)
             PRIVATE=true
+            VISIBILITY_SET=true
             shift
             ;;
         --public)
             PRIVATE=false
+            VISIBILITY_SET=true
             shift
             ;;
         --protocol)
@@ -647,7 +650,7 @@ ask_interactive() {
     fi
 
     # 询问可见性
-    if [[ "$PRIVATE" != "true" ]] && [[ -z "$PS_PRIVATE" ]]; then
+    if [[ "$VISIBILITY_SET" != "true" ]]; then
         show_menu "选择仓库可见性" \
             "public - 公开" \
             "private - 私有" \

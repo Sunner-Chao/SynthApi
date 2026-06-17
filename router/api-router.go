@@ -81,6 +81,7 @@ func SetApiRouter(router *gin.Engine) {
 			selfRoute.Use(middleware.UserAuth())
 			{
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
+				selfRoute.GET("/self/group_channel_status", controller.GetUserGroupChannelStatus)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", controller.UpdateSelf)
@@ -305,6 +306,11 @@ func SetApiRouter(router *gin.Engine) {
 			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{
 				tokenUsageRoute.GET("/", controller.GetTokenUsage)
+			}
+			ccswitchUsageRoute := usageRoute.Group("/ccswitch")
+			ccswitchUsageRoute.Use(middleware.TokenAuthReadOnly())
+			{
+				ccswitchUsageRoute.GET("/", controller.GetCCSwitchTokenUsage)
 			}
 		}
 

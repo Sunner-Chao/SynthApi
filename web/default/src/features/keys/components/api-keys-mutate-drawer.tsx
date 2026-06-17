@@ -65,7 +65,12 @@ import {
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
 import { MultiSelect } from '@/components/multi-select'
-import { createApiKey, updateApiKey, getApiKey } from '../api'
+import {
+  createApiKey,
+  updateApiKey,
+  getApiKey,
+  getGroupChannelStatus,
+} from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   getApiKeyFormSchema,
@@ -74,7 +79,7 @@ import {
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from '../lib'
-import { type ApiKey } from '../types'
+import { type ApiKey, type GroupChannelStatusSummary } from '../types'
 import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
@@ -87,6 +92,8 @@ type ApiKeyMutateDrawerProps = {
   currentRow?: ApiKey
 }
 
+const GROUP_CHANNEL_STATUS_REFRESH_INTERVAL_MS = 5 * 60 * 1000
+
 export function ApiKeysMutateDrawer({
   open,
   onOpenChange,
@@ -98,6 +105,10 @@ export function ApiKeysMutateDrawer({
   const { status } = useStatus()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [groupChannelStatus, setGroupChannelStatus] = useState<
+    Record<string, GroupChannelStatusSummary>
+  >({})
+  const [testingGroups, setTestingGroups] = useState<Set<string>>(new Set())
   const defaultUseAutoGroup = status?.default_use_auto_group === true
 
   // Fetch models
@@ -114,6 +125,17 @@ export function ApiKeysMutateDrawer({
     staleTime: 5 * 60 * 1000,
   })
 
+  const {
+    data: groupChannelStatusData,
+    isFetching: isFetchingGroupChannelStatus,
+  } = useQuery({
+    queryKey: ['user-group-channel-status'],
+    queryFn: () => getGroupChannelStatus({ refresh: false }),
+    enabled: open,
+    staleTime: GROUP_CHANNEL_STATUS_REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: false,
+  })
+
   const models = modelsData?.data || []
   const groupsRaw = groupsData?.data || {}
   const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
@@ -122,10 +144,41 @@ export function ApiKeysMutateDrawer({
       label: key,
       desc: info.desc || key,
       ratio: info.ratio,
+      channelStatus: groupChannelStatus[key],
     })
   )
   const backendHasAuto = groups.some((g) => g.value === 'auto')
   const schema = getApiKeyFormSchema(t)
+
+  useEffect(() => {
+    if (groupChannelStatusData?.data) {
+      setGroupChannelStatus(groupChannelStatusData.data)
+    }
+  }, [groupChannelStatusData])
+
+  const handleTestGroupChannelStatus = (group: string) => {
+    if (!group || testingGroups.has(group)) return
+    setTestingGroups((prev) => new Set(prev).add(group))
+    getGroupChannelStatus({ refresh: true, group })
+      .then((result) => {
+        if (result.success && result.data) {
+          setGroupChannelStatus((prev) => ({
+            ...prev,
+            ...result.data,
+          }))
+        }
+      })
+      .catch(() => {
+        toast.error(t('Failed to refresh channel connectivity status'))
+      })
+      .finally(() => {
+        setTestingGroups((prev) => {
+          const next = new Set(prev)
+          next.delete(group)
+          return next
+        })
+      })
+  }
 
   const form = useForm<ApiKeyFormValues>({
     resolver: zodResolver(schema),
@@ -306,7 +359,13 @@ export function ApiKeysMutateDrawer({
                         options={groups}
                         value={field.value}
                         onValueChange={field.onChange}
+                        onTestGroup={handleTestGroupChannelStatus}
                         placeholder={t('Select a group')}
+                        statusLoading={
+                          isFetchingGroupChannelStatus &&
+                          Object.keys(groupChannelStatus).length === 0
+                        }
+                        testingGroups={testingGroups}
                       />
                     </FormControl>
                     <FormMessage />

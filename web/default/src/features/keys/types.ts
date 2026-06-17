@@ -94,6 +94,19 @@ export interface ApiKeyFormData {
   cross_group_retry: boolean
 }
 
+export interface GroupChannelStatusSummary {
+  total: number
+  enabled: number
+  reachable: number
+  tested: number
+  auto_disabled: number
+  manually_disabled: number
+  unknown: number
+  best_response_time: number
+  last_test_time: number
+  has_current_channel: boolean
+}
+
 // ============================================================================
 // Dialog Types
 // ============================================================================

@@ -16,8 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useState } from 'react'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { useMemo, useState, type MouseEvent } from 'react'
+import {
+  Check,
+  ChevronsUpDown,
+  CircleAlert,
+  CircleCheck,
+  CircleSlash,
+  RefreshCw,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -35,20 +42,26 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import type { GroupChannelStatusSummary } from '../types'
 
 export type ApiKeyGroupOption = {
   value: string
   label: string
   desc?: string
   ratio?: number | string
+  channelStatus?: GroupChannelStatusSummary
 }
 
 type ApiKeyGroupComboboxProps = {
   options: ApiKeyGroupOption[]
   value?: string
   onValueChange: (value: string) => void
+  onOpenChange?: (open: boolean) => void
+  onTestGroup?: (group: string) => void
   placeholder?: string
   disabled?: boolean
+  statusLoading?: boolean
+  testingGroups?: Set<string>
 }
 
 function formatGroupRatio(
@@ -95,12 +108,140 @@ function GroupRatioBadge({ ratio }: { ratio: ApiKeyGroupOption['ratio'] }) {
   )
 }
 
+function getChannelStatusView(
+  status?: GroupChannelStatusSummary,
+  loading = false
+) {
+  if (loading) {
+    return {
+      label: 'Testing',
+      detail: '',
+      icon: CircleSlash,
+      className:
+        'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300',
+    }
+  }
+
+  if (!status) {
+    return {
+      label: 'Not tested',
+      detail: '',
+      icon: CircleSlash,
+      className:
+        'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300',
+    }
+  }
+
+  if (status.total <= 0) {
+    return {
+      label: 'No channels',
+      detail: '',
+      icon: CircleSlash,
+      className:
+        'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300',
+    }
+  }
+
+  const reachable = status.tested > 0 ? status.reachable : status.enabled
+  if (reachable > 0) {
+    return {
+      label: `${reachable}/${status.total}`,
+      detail:
+        status.best_response_time > 0
+          ? `${status.best_response_time}ms`
+          : 'available',
+      icon: CircleCheck,
+      className:
+        'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300',
+    }
+  }
+
+  return {
+    label: `0/${status.total}`,
+    detail:
+      status.auto_disabled > 0
+        ? 'auto disabled'
+        : status.manually_disabled > 0
+          ? 'disabled'
+          : 'unavailable',
+    icon: CircleAlert,
+    className:
+      'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300',
+  }
+}
+
+function ChannelStatusBadge({
+  status,
+  compact = false,
+  loading = false,
+}: {
+  status?: GroupChannelStatusSummary
+  compact?: boolean
+  loading?: boolean
+}) {
+  const { t } = useTranslation()
+  const view = getChannelStatusView(status, loading)
+  const Icon = view.icon
+  const lastTestTime =
+    status?.last_test_time && status.last_test_time > 0
+      ? new Date(status.last_test_time * 1000).toLocaleString()
+      : ''
+  const title = loading
+    ? t('Testing current channel connectivity')
+    : !status
+      ? t('Not tested yet. Click the test button to check connectivity.')
+      : status && status.total > 0
+        ? [
+            t('Current channels: {{enabled}} available / {{total}} total', {
+              enabled: status.tested > 0 ? status.reachable : status.enabled,
+              total: status.total,
+            }),
+            status.tested > 0
+              ? t('Tested channels: {{tested}}', {
+                  tested: status.tested,
+                })
+              : '',
+            status.best_response_time > 0
+              ? t('Best latency: {{latency}}ms', {
+                  latency: status.best_response_time,
+                })
+              : '',
+            lastTestTime
+              ? t('Last tested: {{time}}', { time: lastTestTime })
+              : '',
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : t('No current channels')
+
+  return (
+    <Badge
+      variant='outline'
+      title={title}
+      className={cn(
+        'shrink-0 gap-1 px-1.5 text-[10px] sm:text-xs',
+        view.className
+      )}
+    >
+      <Icon className='size-3' />
+      <span>{view.label}</span>
+      {!compact && view.detail ? (
+        <span className='hidden opacity-75 sm:inline'>· {t(view.detail)}</span>
+      ) : null}
+    </Badge>
+  )
+}
+
 export function ApiKeyGroupCombobox({
   options,
   value,
   onValueChange,
+  onOpenChange,
+  onTestGroup,
   placeholder,
   disabled,
+  statusLoading,
+  testingGroups,
 }: ApiKeyGroupComboboxProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -125,11 +266,26 @@ export function ApiKeyGroupCombobox({
   const handleSelect = (selectedValue: string) => {
     onValueChange(selectedValue)
     setOpen(false)
+    onOpenChange?.(false)
     setSearchValue('')
   }
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen)
+    onOpenChange?.(nextOpen)
+  }
+
+  const handleTestGroup = (
+    event: MouseEvent<HTMLButtonElement>,
+    group: string
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onTestGroup?.(group)
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
           <Button
@@ -154,7 +310,14 @@ export function ApiKeyGroupCombobox({
             )}
           </span>
           <span className='hidden sm:block'>
-            <GroupRatioBadge ratio={selectedOption?.ratio} />
+            <span className='flex items-center gap-1.5'>
+              <ChannelStatusBadge
+                status={selectedOption?.channelStatus}
+                compact
+                loading={statusLoading}
+              />
+              <GroupRatioBadge ratio={selectedOption?.ratio} />
+            </span>
           </span>
         </span>
         <ChevronsUpDown className='h-4 w-4 shrink-0 opacity-50' />
@@ -197,7 +360,31 @@ export function ApiKeyGroupCombobox({
                       </span>
                     )}
                   </span>
-                  <GroupRatioBadge ratio={option.ratio} />
+                  <span className='flex shrink-0 items-center gap-1.5'>
+                    <ChannelStatusBadge
+                      status={option.channelStatus}
+                      loading={statusLoading || testingGroups?.has(option.value)}
+                    />
+                    <GroupRatioBadge ratio={option.ratio} />
+                    {onTestGroup ? (
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon'
+                        className='size-7 shrink-0'
+                        title={t('Test current group connectivity')}
+                        disabled={testingGroups?.has(option.value)}
+                        onClick={(event) => handleTestGroup(event, option.value)}
+                      >
+                        <RefreshCw
+                          className={cn(
+                            'size-3.5',
+                            testingGroups?.has(option.value) && 'animate-spin'
+                          )}
+                        />
+                      </Button>
+                    ) : null}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

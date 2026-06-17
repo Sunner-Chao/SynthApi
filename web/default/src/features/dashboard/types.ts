@@ -157,6 +157,7 @@ export interface AnnouncementItem {
   publishDate?: string
   type?: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  imageUrl?: string
 }
 
 // ============================================================================

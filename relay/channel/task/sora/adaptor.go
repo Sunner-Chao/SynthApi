@@ -57,6 +57,39 @@ type responseTask struct {
 	} `json:"error,omitempty"`
 }
 
+type responseImageTask struct {
+	ID        string `json:"id"`
+	TaskID    string `json:"task_id,omitempty"`
+	Status    string `json:"status"`
+	Progress  int    `json:"progress"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
+	Data      []struct {
+		URL string `json:"url"`
+		B64 string `json:"b64_json"`
+	} `json:"data,omitempty"`
+	Result struct {
+		Images []struct {
+			URL any `json:"url"`
+		} `json:"images,omitempty"`
+	} `json:"result,omitempty"`
+	Error *struct {
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	} `json:"error,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+type apimartImageTaskResponse struct {
+	Code    int               `json:"code"`
+	Message string            `json:"message,omitempty"`
+	Data    responseImageTask `json:"data"`
+	Error   *struct {
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	} `json:"error,omitempty"`
+}
+
 // ============================
 // Adaptor implementation
 // ============================
@@ -263,7 +296,11 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
+	modelName, _ := body["origin_model"].(string)
 	uri := fmt.Sprintf("%s/v1/videos/%s", baseUrl, taskID)
+	if isOpenAIImageTaskModel(modelName) {
+		uri = fmt.Sprintf("%s/v1/tasks/%s", baseUrl, taskID)
+	}
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -288,6 +325,10 @@ func (a *TaskAdaptor) GetChannelName() string {
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
+	if taskResult, ok := parseOpenAIImageTaskResult(respBody); ok {
+		return taskResult, nil
+	}
+
 	resTask := responseTask{}
 	if err := common.Unmarshal(respBody, &resTask); err != nil {
 		return nil, errors.Wrap(err, "unmarshal task result failed")
@@ -319,6 +360,111 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	}
 
 	return &taskResult, nil
+}
+
+func isOpenAIImageTaskModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return strings.HasPrefix(modelName, "gpt-image-") || strings.HasPrefix(modelName, "chatgpt-image-")
+}
+
+func parseOpenAIImageTaskResult(respBody []byte) (*relaycommon.TaskInfo, bool) {
+	var wrapped apimartImageTaskResponse
+	if err := common.Unmarshal(respBody, &wrapped); err == nil {
+		if wrapped.Code == 200 && strings.TrimSpace(wrapped.Data.Status) != "" {
+			return buildOpenAIImageTaskInfo(wrapped.Data)
+		}
+		if wrapped.Error != nil && strings.TrimSpace(wrapped.Error.Message) != "" {
+			return &relaycommon.TaskInfo{
+				Code:     0,
+				Status:   model.TaskStatusFailure,
+				Progress: "100%",
+				Reason:   strings.TrimSpace(wrapped.Error.Message),
+			}, true
+		}
+	}
+
+	var resTask responseImageTask
+	if err := common.Unmarshal(respBody, &resTask); err != nil {
+		return nil, false
+	}
+	return buildOpenAIImageTaskInfo(resTask)
+}
+
+func buildOpenAIImageTaskInfo(resTask responseImageTask) (*relaycommon.TaskInfo, bool) {
+	status := strings.ToLower(strings.TrimSpace(resTask.Status))
+	if status == "" {
+		return nil, false
+	}
+
+	taskResult := relaycommon.TaskInfo{Code: 0}
+	switch status {
+	case "submitted", "queued", "pending":
+		taskResult.Status = model.TaskStatusQueued
+		taskResult.Progress = "10%"
+	case "processing", "in_progress", "running":
+		taskResult.Status = model.TaskStatusInProgress
+		taskResult.Progress = "50%"
+	case "succeeded", "completed", "success":
+		taskResult.Status = model.TaskStatusSuccess
+		taskResult.Progress = "100%"
+		for _, item := range resTask.Data {
+			if strings.TrimSpace(item.URL) != "" {
+				taskResult.Url = strings.TrimSpace(item.URL)
+				break
+			}
+			if strings.TrimSpace(item.B64) != "" {
+				taskResult.Url = "data:image/png;base64," + strings.TrimSpace(item.B64)
+				break
+			}
+		}
+		if taskResult.Url == "" {
+			taskResult.Url = firstImageResultURL(resTask.Result.Images)
+		}
+	case "failed", "cancelled", "canceled":
+		taskResult.Status = model.TaskStatusFailure
+		taskResult.Progress = "100%"
+		if resTask.Error != nil && strings.TrimSpace(resTask.Error.Message) != "" {
+			taskResult.Reason = strings.TrimSpace(resTask.Error.Message)
+		} else if strings.TrimSpace(resTask.Message) != "" {
+			taskResult.Reason = strings.TrimSpace(resTask.Message)
+		} else {
+			taskResult.Reason = "task failed"
+		}
+	default:
+		return nil, false
+	}
+
+	if resTask.Progress > 0 && resTask.Progress < 100 {
+		taskResult.Progress = fmt.Sprintf("%d%%", resTask.Progress)
+	}
+
+	return &taskResult, true
+}
+
+func firstImageResultURL(images []struct {
+	URL any `json:"url"`
+}) string {
+	for _, image := range images {
+		switch value := image.URL.(type) {
+		case string:
+			if strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		case []any:
+			for _, item := range value {
+				if url, ok := item.(string); ok && strings.TrimSpace(url) != "" {
+					return strings.TrimSpace(url)
+				}
+			}
+		case []string:
+			for _, url := range value {
+				if strings.TrimSpace(url) != "" {
+					return strings.TrimSpace(url)
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {

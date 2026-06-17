@@ -7,8 +7,10 @@ import (
 )
 
 type PageInfo struct {
-	Page     int `json:"page"`      // page num 页码
-	PageSize int `json:"page_size"` // page size 页大小
+	Page     int    `json:"page"`      // page num 页码
+	PageSize int    `json:"page_size"` // page size 页大小
+	SortBy   string `json:"sort_by"`   // 排序字段，如 "quota"
+	SortOrder string `json:"sort_order"` // 排序方向：asc / desc
 
 	Total int `json:"total"` // 总条数，后设置
 	Items any `json:"items"` // 数据，后设置
@@ -77,6 +79,17 @@ func GetPageQuery(c *gin.Context) *PageInfo {
 	if pageInfo.PageSize > 100 {
 		pageInfo.PageSize = 100
 	}
+
+	// 排序参数
+	sortBy := c.Query("sort_by")
+	if sortBy != "" {
+		pageInfo.SortBy = sortBy
+	}
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+	if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder = "desc"
+	}
+	pageInfo.SortOrder = sortOrder
 
 	return pageInfo
 }

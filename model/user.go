@@ -237,7 +237,18 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int) ([]*User, int64, error) {
+// allowedSortFields 白名单：仅允许按这些字段排序，防止 SQL 注入
+var allowedSortFields = map[string]string{
+	"quota":          "quota",
+	"used_quota":     "used_quota",
+	"request_count":  "request_count",
+	"aff_quota":      "aff_quota",
+	"id":             "id",
+	"created_at":     "created_at",
+	"last_login_at":  "last_login_at",
+}
+
+func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -286,8 +297,19 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 		return nil, 0, err
 	}
 
+	// 构建排序子句
+	orderClause := "id desc" // 默认排序
+	if sortBy != "" {
+		if dbCol, ok := allowedSortFields[sortBy]; ok {
+			if sortOrder != "asc" && sortOrder != "desc" {
+				sortOrder = "desc"
+			}
+			orderClause = dbCol + " " + sortOrder + ", id desc"
+		}
+	}
+
 	// 获取分页数据
-	err = query.Omit("password").Order("id desc").Limit(num).Offset(startIdx).Find(&users).Error
+	err = query.Omit("password").Order(orderClause).Limit(num).Offset(startIdx).Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err

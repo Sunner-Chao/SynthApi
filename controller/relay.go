@@ -482,6 +482,88 @@ func RelayTaskFetch(c *gin.Context) {
 	}
 }
 
+func FetchImageGenerationTask(c *gin.Context) {
+	taskID := c.Param("task_id")
+	userID := c.GetInt("id")
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"message": "task_id is required",
+				"type":    "invalid_request_error",
+				"code":    "missing_task_id",
+			},
+		})
+		return
+	}
+
+	task, exist, err := model.GetByTaskId(userID, taskID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": err.Error(),
+				"type":    "server_error",
+				"code":    "get_task_failed",
+			},
+		})
+		return
+	}
+	if !exist {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"message": "task not found",
+				"type":    "invalid_request_error",
+				"code":    "task_not_found",
+			},
+		})
+		return
+	}
+
+	status := strings.ToLower(string(task.Status))
+	switch task.Status {
+	case model.TaskStatusSuccess:
+		imageURL := task.GetResultURL()
+		if imageURL == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"id":       task.TaskID,
+				"status":   "succeeded",
+				"created":  task.CreatedAt,
+				"data":     []gin.H{},
+				"metadata": task.Data,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"id":      task.TaskID,
+			"status":  "succeeded",
+			"created": task.CreatedAt,
+			"data": []gin.H{
+				{"url": imageURL},
+			},
+			"metadata": task.Data,
+		})
+	case model.TaskStatusFailure:
+		c.JSON(http.StatusOK, gin.H{
+			"id":      task.TaskID,
+			"status":  "failed",
+			"message": task.FailReason,
+			"error": gin.H{
+				"message": task.FailReason,
+				"type":    "image_generation_error",
+				"code":    "task_failed",
+			},
+		})
+	default:
+		c.JSON(http.StatusOK, gin.H{
+			"id":       task.TaskID,
+			"task_id":  task.TaskID,
+			"status":   status,
+			"progress": task.Progress,
+			"created":  task.CreatedAt,
+			"updated":  task.UpdatedAt,
+		})
+	}
+}
+
 func RelayTask(c *gin.Context) {
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {

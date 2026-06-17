@@ -59,6 +59,7 @@ interface AnnouncementItem {
   type?: string
   content?: string
   extra?: string
+  imageUrl?: string
   publishDate?: string | Date
 }
 
@@ -178,12 +179,14 @@ function TimeBadge({
 }) {
   if (!absoluteTime) return null
 
-  const parts = absoluteTime.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):?(\d{2})?$/)
+  const parts = absoluteTime.match(
+    /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):?(\d{2})?$/
+  )
   if (!parts) {
     return (
       <time
         dateTime={absoluteTime}
-        className='inline-flex items-center rounded-md border border-border/30 bg-muted/30 px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground'
+        className='border-border/30 bg-muted/30 text-muted-foreground inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] tabular-nums'
       >
         {relativeTime || absoluteTime}
       </time>
@@ -200,33 +203,36 @@ function TimeBadge({
     default: '',
   }
   const accent = accentColors[tone] || ''
-  const timeHighlight = tone !== 'default' ? accent : 'bg-primary/10 text-primary'
+  const timeHighlight =
+    tone !== 'default' ? accent : 'bg-primary/10 text-primary'
 
   return (
     <time
       dateTime={absoluteTime}
       className={cn(
-        'inline-flex items-stretch overflow-hidden rounded-lg border border-border/30 bg-muted/20 text-[11px] shadow-sm transition-all duration-200 hover:border-border/50 hover:shadow-md',
+        'border-border/30 bg-muted/20 hover:border-border/50 inline-flex items-stretch overflow-hidden rounded-lg border text-[11px] shadow-sm transition-all duration-200 hover:shadow-md',
         tone !== 'default' && accent
       )}
     >
       {/* Relative time section */}
-      <span className='flex items-center px-2 py-1 text-[11px] font-semibold tabular-nums text-foreground/80'>
+      <span className='text-foreground/80 flex items-center px-2 py-1 text-[11px] font-semibold tabular-nums'>
         {relativeTime}
       </span>
 
       {/* Date chips section */}
-      <span className='flex items-stretch border-l border-border/20 bg-background/50'>
-        <span className='flex items-center px-1.5 py-1 text-[10px] tabular-nums text-muted-foreground'>
+      <span className='border-border/20 bg-background/50 flex items-stretch border-l'>
+        <span className='text-muted-foreground flex items-center px-1.5 py-1 text-[10px] tabular-nums'>
           {year}
         </span>
-        <span className='flex items-center px-1 py-1 text-[10px] font-medium tabular-nums text-muted-foreground'>
+        <span className='text-muted-foreground flex items-center px-1 py-1 text-[10px] font-medium tabular-nums'>
           {month}/{day}
         </span>
-        <span className={cn(
-          'flex items-center rounded-r-lg px-1.5 py-1 text-[10px] font-bold tabular-nums',
-          timeHighlight
-        )}>
+        <span
+          className={cn(
+            'flex items-center rounded-r-lg px-1.5 py-1 text-[10px] font-bold tabular-nums',
+            timeHighlight
+          )}
+        >
           {hour}:{minute}
         </span>
       </span>
@@ -258,14 +264,12 @@ function TimelineItem({
         {/* Glowing dot */}
         <div
           className={cn(
-            'mt-1.5 flex size-2 shrink-0 items-center justify-center rounded-full ring-2 ring-background',
+            'ring-background mt-1.5 flex size-2 shrink-0 items-center justify-center rounded-full ring-2',
             tone.dot
           )}
         />
         {/* Vertical line */}
-        {!isLast && (
-          <div className='bg-border/30 my-1 w-px flex-1' />
-        )}
+        {!isLast && <div className='bg-border/30 my-1 w-px flex-1' />}
       </div>
 
       {/* Content card */}
@@ -300,7 +304,14 @@ function TimelineItem({
                 <TimeBadge
                   relativeTime={relativeTime}
                   absoluteTime={absoluteTime}
-                  tone={item.type as 'success' | 'warning' | 'error' | 'ongoing' | 'default'}
+                  tone={
+                    item.type as
+                      | 'success'
+                      | 'warning'
+                      | 'error'
+                      | 'ongoing'
+                      | 'default'
+                  }
                 />
               )}
             </div>
@@ -310,9 +321,18 @@ function TimelineItem({
               <Markdown>{item.content || ''}</Markdown>
             </div>
 
+            {item.imageUrl && (
+              <img
+                src={item.imageUrl}
+                alt={t('Announcement image')}
+                className='max-h-64 max-w-full rounded-md border object-contain'
+                loading='lazy'
+              />
+            )}
+
             {/* Extra info */}
             {item.extra && (
-              <div className='rounded-md border border-border/30 bg-background/50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground'>
+              <div className='border-border/30 bg-background/50 text-muted-foreground rounded-md border px-2.5 py-1.5 text-[11px] leading-relaxed'>
                 <Markdown>{item.extra}</Markdown>
               </div>
             )}
@@ -331,9 +351,9 @@ function NoticeCard({ notice, t }: { notice: string; t: TFunction }) {
   const activeTime = formatDateTimeObject(now)
 
   return (
-    <div className='group relative overflow-hidden rounded-xl border border-info/20 bg-info/5'>
+    <div className='group border-info/20 bg-info/5 relative overflow-hidden rounded-xl border'>
       {/* Top gradient accent */}
-      <div className='absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-info/40 via-info/20 to-transparent' />
+      <div className='from-info/40 via-info/20 absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r to-transparent' />
 
       <div className='p-4'>
         <div className='flex items-start gap-3'>
@@ -342,7 +362,7 @@ function NoticeCard({ notice, t }: { notice: string; t: TFunction }) {
             <Bell className='size-5' />
           </div>
 
-         <div className='min-w-0 flex-1 space-y-2.5'>
+          <div className='min-w-0 flex-1 space-y-2.5'>
             {/* Header */}
             <div className='flex flex-wrap items-center gap-2'>
               <Badge
@@ -360,7 +380,7 @@ function NoticeCard({ notice, t }: { notice: string; t: TFunction }) {
             </div>
 
             {/* Content */}
-            <div className='rounded-lg border border-info/10 bg-background/60 px-4 py-3'>
+            <div className='border-info/10 bg-background/60 rounded-lg border px-4 py-3'>
               <div className='text-foreground text-sm leading-relaxed'>
                 <Markdown>{notice}</Markdown>
               </div>
@@ -380,7 +400,7 @@ function LoadingSkeleton({ icon: Icon }: { icon: React.ElementType }) {
     <div className='space-y-3 p-2'>
       <div className='flex items-center gap-3'>
         <div className='bg-muted/50 flex size-10 animate-pulse items-center justify-center rounded-xl'>
-          <Icon className='size-5 text-muted-foreground/40' />
+          <Icon className='text-muted-foreground/40 size-5' />
         </div>
         <div className='space-y-1.5'>
           <div className='bg-muted/50 h-4 w-24 animate-pulse rounded-md' />
@@ -412,7 +432,7 @@ function EmptyState({
       <EmptyHeader>
         <EmptyMedia variant='icon'>
           <div className='bg-muted/40 flex size-12 items-center justify-center rounded-xl'>
-            <Icon className='size-6 text-muted-foreground/50' />
+            <Icon className='text-muted-foreground/50 size-6' />
           </div>
         </EmptyMedia>
         <EmptyTitle className='text-sm'>{title}</EmptyTitle>
@@ -482,9 +502,11 @@ function AnnouncementsContent({
           <div key={i} className='flex gap-3'>
             <div className='flex w-5 flex-col items-center'>
               <div className='bg-muted/50 size-2 animate-pulse rounded-full' />
-              {i < 3 && <div className='bg-muted/30 my-1 w-px flex-1 animate-pulse' />}
+              {i < 3 && (
+                <div className='bg-muted/30 my-1 w-px flex-1 animate-pulse' />
+              )}
             </div>
-            <div className='flex-1 space-y-2 rounded-lg border border-border/30 bg-muted/10 p-3'>
+            <div className='border-border/30 bg-muted/10 flex-1 space-y-2 rounded-lg border p-3'>
               <div className='bg-muted/40 h-3 w-20 animate-pulse rounded-md' />
               <div className='bg-muted/30 h-8 animate-pulse rounded-md' />
             </div>
@@ -560,7 +582,7 @@ function AnnouncementDialog({
             {announcements.map((item, idx) => (
               <div
                 key={idx}
-                className='rounded-lg border border-border/40 bg-card p-3'
+                className='border-border/40 bg-card rounded-lg border p-3'
               >
                 <AnnouncementCard item={item} t={t} />
               </div>
@@ -568,7 +590,7 @@ function AnnouncementDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className='border-t bg-muted/20 px-5 pb-4'>
+        <DialogFooter className='bg-muted/20 border-t px-5 pb-4'>
           <Button onClick={() => onOpenChange(false)}>{t('Close')}</Button>
         </DialogFooter>
       </DialogContent>
@@ -613,15 +635,30 @@ function AnnouncementCard({
             <TimeBadge
               relativeTime={relativeTime}
               absoluteTime={absoluteTime}
-              tone={item.type as 'success' | 'warning' | 'error' | 'ongoing' | 'default'}
+              tone={
+                item.type as
+                  | 'success'
+                  | 'warning'
+                  | 'error'
+                  | 'ongoing'
+                  | 'default'
+              }
             />
           )}
         </div>
         <div className='text-foreground text-[13px] leading-relaxed'>
           <Markdown>{item.content || ''}</Markdown>
         </div>
+        {item.imageUrl && (
+          <img
+            src={item.imageUrl}
+            alt={t('Announcement image')}
+            className='max-h-64 max-w-full rounded-md border object-contain'
+            loading='lazy'
+          />
+        )}
         {item.extra && (
-          <div className='rounded-md border border-border/30 bg-background/50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground'>
+          <div className='border-border/30 bg-background/50 text-muted-foreground rounded-md border px-2.5 py-1.5 text-[11px] leading-relaxed'>
             <Markdown>{item.extra}</Markdown>
           </div>
         )}
@@ -665,7 +702,7 @@ export function NotificationPopover({
               variant='ghost'
               size='icon'
               className={cn(
-                'relative size-9 transition-all duration-200 hover:bg-muted/50',
+                'hover:bg-muted/50 relative size-9 transition-all duration-200',
                 className
               )}
               aria-label={t('Notifications')}
@@ -674,7 +711,7 @@ export function NotificationPopover({
         >
           <Bell className='size-[1.15rem]' />
           {unreadCount > 0 ? (
-            <span className='absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground'>
+            <span className='bg-primary text-primary-foreground absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-semibold'>
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           ) : null}
@@ -686,9 +723,9 @@ export function NotificationPopover({
           className='w-[min(26rem,calc(100vw-1rem))] overflow-hidden p-0'
         >
           {/* Container */}
-          <div className='rounded-xl border border-border/60 bg-background shadow-xl'>
+          <div className='border-border/60 bg-background rounded-xl border shadow-xl'>
             {/* Header */}
-            <div className='border-b border-border/40 px-4 pt-4 pb-3'>
+            <div className='border-border/40 border-b px-4 pt-4 pb-3'>
               <div className='flex items-start justify-between'>
                 <div className='space-y-1'>
                   <PopoverTitle className='text-base font-semibold'>
@@ -704,7 +741,7 @@ export function NotificationPopover({
                     e.stopPropagation()
                     onOpenChange(false)
                   }}
-                  className='inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors'
+                  className='text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 items-center justify-center rounded-md transition-colors'
                 >
                   <X className='size-4' />
                 </button>
@@ -712,15 +749,15 @@ export function NotificationPopover({
             </div>
 
             {/* Tab navigation */}
-            <div className='px-3 pb-3 pt-2'>
+            <div className='px-3 pt-2 pb-3'>
               <div className='bg-muted/40 relative flex rounded-lg p-1'>
                 {/* Sliding indicator */}
                 <div
                   className={cn(
-                    'absolute inset-y-1 rounded-md bg-background shadow-sm transition-all duration-200 ease-out',
+                    'bg-background absolute inset-y-1 rounded-md shadow-sm transition-all duration-200 ease-out',
                     activeTab === 'notice'
-                      ? 'left-1 right-1/2'
-                      : 'left-1/2 right-1'
+                      ? 'right-1/2 left-1'
+                      : 'right-1 left-1/2'
                   )}
                 />
                 <button
@@ -780,7 +817,7 @@ export function NotificationPopover({
             </div>
 
             {/* Footer */}
-            <div className='flex items-center justify-between border-t border-border/40 bg-muted/20 px-4 py-2'>
+            <div className='border-border/40 bg-muted/20 flex items-center justify-between border-t px-4 py-2'>
               <span className='text-muted-foreground text-[11px]'>
                 {activeTab === 'notice'
                   ? t('Platform notice')
@@ -792,7 +829,7 @@ export function NotificationPopover({
                   e.stopPropagation()
                   onOpenChange(false)
                 }}
-                className='inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors'
+                className='text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs transition-colors'
               >
                 {t('Close')}
                 <ChevronRight className='size-3' />

@@ -85,17 +85,24 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	smartGroups, isSmartGroup := setting.GetSmartGroupSources(param.TokenGroup)
 
-	if param.TokenGroup == "auto" {
-		if len(setting.GetAutoGroups()) == 0 {
+	if param.TokenGroup == "auto" || isSmartGroup {
+		if param.TokenGroup == "auto" && len(setting.GetAutoGroups()) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}
-		autoGroups := GetUserAutoGroup(userGroup)
+		autoGroups := smartGroups
+		if param.TokenGroup == "auto" {
+			autoGroups = GetUserAutoGroup(userGroup)
+		}
+		if len(autoGroups) == 0 {
+			return nil, selectGroup, errors.New("smart group has no source groups")
+		}
 
 		// startGroupIndex: the group index to start searching from
 		// startGroupIndex: 开始搜索的分组索引
 		startGroupIndex := 0
-		crossGroupRetry := common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
+		crossGroupRetry := isSmartGroup || common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
 
 		if lastGroupIndex, exists := common.GetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex); exists {
 			if idx, ok := lastGroupIndex.(int); ok {

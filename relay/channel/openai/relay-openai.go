@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 
@@ -568,6 +571,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
+	maybePersistOpenAIImageTask(c, info, responseBody)
 
 	// Once we've written to the client, we should not return errors anymore
 	// because the upstream has already consumed resources and returned content
@@ -585,6 +589,72 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
+}
+
+func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, responseBody []byte) {
+	if info == nil || info.RelayMode != relayconstant.RelayModeImagesGenerations {
+		return
+	}
+
+	var response struct {
+		ID   string `json:"id"`
+		Data []struct {
+			TaskID string `json:"task_id"`
+			Status string `json:"status"`
+			URL    string `json:"url"`
+			B64    string `json:"b64_json"`
+		} `json:"data"`
+	}
+	if err := common.Unmarshal(responseBody, &response); err != nil || len(response.Data) == 0 {
+		return
+	}
+
+	item := response.Data[0]
+	taskID := strings.TrimSpace(item.TaskID)
+	if taskID == "" {
+		taskID = strings.TrimSpace(response.ID)
+	}
+	if taskID == "" || item.URL != "" || item.B64 != "" {
+		return
+	}
+
+	status := strings.ToLower(strings.TrimSpace(item.Status))
+	if status == "" {
+		status = "submitted"
+	}
+	if status != "submitted" && status != "queued" && status != "processing" && status != "in_progress" {
+		return
+	}
+
+	if _, exists, err := model.GetByTaskId(info.UserId, taskID); err != nil {
+		logger.LogWarn(c, fmt.Sprintf("check image task %s failed: %s", taskID, err.Error()))
+		return
+	} else if exists {
+		return
+	}
+
+	task := model.InitTask(constant.TaskPlatform(strconv.Itoa(info.ChannelType)), info)
+	task.TaskID = taskID
+	task.PrivateData.UpstreamTaskID = taskID
+	task.PrivateData.BillingSource = info.BillingSource
+	task.PrivateData.SubscriptionId = info.SubscriptionId
+	task.PrivateData.TokenId = info.TokenId
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelPrice:      info.PriceData.ModelPrice,
+		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
+		ModelRatio:      info.PriceData.ModelRatio,
+		OtherRatios:     info.PriceData.OtherRatios,
+		OriginModelName: info.OriginModelName,
+		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
+	}
+	task.Quota = 0
+	task.Data = responseBody
+	task.Action = constant.TaskActionGenerate
+	task.Status = model.TaskStatusSubmitted
+	task.Progress = "10%"
+	if err := task.Insert(); err != nil {
+		logger.LogWarn(c, fmt.Sprintf("insert image task %s failed: %s", taskID, err.Error()))
+	}
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {

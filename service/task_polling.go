@@ -360,8 +360,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		key = privateData.Key
 	}
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
-		"task_id": task.GetUpstreamTaskID(),
-		"action":  task.Action,
+		"task_id":      task.GetUpstreamTaskID(),
+		"action":       task.Action,
+		"origin_model": task.Properties.OriginModelName,
 	}, proxy)
 	if err != nil {
 		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)
@@ -410,7 +411,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 				}
 
 				// 其他错误认为是任务失败，记录错误信息并更新任务状态
-				taskResult = relaycommon.FailTaskInfo("upstream returned error")
+				taskResult = relaycommon.FailTaskInfo(safeTaskErrorMessage(openaiError.Message))
 			} else {
 				// unknown error format, log original response
 				logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", taskId, string(responseBody)))
@@ -499,6 +500,19 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	return nil
+}
+
+func safeTaskErrorMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "upstream returned error"
+	}
+	message = strings.ReplaceAll(message, "\n", " ")
+	message = strings.ReplaceAll(message, "\r", " ")
+	if len(message) > 180 {
+		message = message[:180]
+	}
+	return message
 }
 
 func redactVideoResponseBody(body []byte) []byte {
