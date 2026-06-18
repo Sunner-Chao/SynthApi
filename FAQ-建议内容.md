@@ -250,7 +250,7 @@ Token 是如何计算的？
 
 ## 操作步骤
 
-1. 访问 `https://118.25.43.185/system-settings/content/faq`
+1. 访问 `https://synthapi.asia/system-settings/content/faq`
 2. 确认右上角 **Enabled** 开关已启用
 3. 点击 **Add FAQ**，逐条粘贴上方的 Question 和 Answer
 4. Markdown 表格和格式会自动渲染

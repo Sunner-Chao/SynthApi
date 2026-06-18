@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/card'
 import { PublicLayout } from '@/components/layout'
 
-const siteBaseUrl = 'https://118.25.43.185'
+const siteBaseUrl = 'https://synthapi.asia'
 const openAiBaseUrl = `${siteBaseUrl}/v1`
 const anthropicBaseUrl = siteBaseUrl
 const anthropicCompatBaseUrl = `${siteBaseUrl}/anthropic/v1`

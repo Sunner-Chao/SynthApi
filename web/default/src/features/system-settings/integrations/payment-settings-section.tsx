@@ -1564,7 +1564,7 @@ export function PaymentSettingsSection({
                     <FormLabel>{t('XPay notify URL')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='https://118.25.43.185:3000/api/xpay/callback'
+                        placeholder='https://synthapi.asia:3000/api/xpay/callback'
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1810,7 +1810,7 @@ export function PaymentSettingsSection({
                     <FormLabel>{t('MPay notify URL')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='https://118.25.43.185/api/mpay/notify'
+                        placeholder='https://synthapi.asia/api/mpay/notify'
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1831,7 +1831,7 @@ export function PaymentSettingsSection({
                     <FormLabel>{t('MPay return URL')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='https://118.25.43.185/wallet'
+                        placeholder='https://synthapi.asia/wallet'
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
