@@ -23,38 +23,7 @@ type Redemption struct {
 	Count        int            `json:"count" gorm:"-:all"` // only for api request
 	UsedUserId   int            `json:"used_user_id"`
 	DeletedAt    gorm.DeletedAt `gorm:"index"`
-	ExpiredTime  int64          `json:"expired_time" gorm:"bigint"`          // 过期时间，0 表示不过期
-	BatchId      string         `json:"batch_id" gorm:"type:char(32);index"` // 同一批次兑换码共享，用于每用户批次限兑一次
-}
-
-// RedemptionUsage 记录用户兑换历史，用于实现同一批兑换码每用户限兑一次。
-type RedemptionUsage struct {
-	Id            int    `json:"id"`
-	UserId        int    `json:"user_id" gorm:"index;index:idx_redemption_usage_user_batch,unique"`
-	RedemptionKey string `json:"redemption_key" gorm:"type:char(32);index"`
-	BatchId       string `json:"batch_id" gorm:"type:char(32);index:idx_redemption_usage_user_batch,unique"`
-	CreatedAt     int64  `json:"created_at" gorm:"bigint"`
-}
-
-func (RedemptionUsage) TableName() string {
-	return "redemption_usage"
-}
-
-// HasUserRedeemedBatch checks whether the user already redeemed any code in the batch.
-func HasUserRedeemedBatch(userId int, batchId string) (bool, error) {
-	var count int64
-	if batchId == "" {
-		return false, nil
-	}
-	err := DB.Model(&RedemptionUsage{}).Where("user_id = ? AND batch_id = ?", userId, batchId).Count(&count).Error
-	return count > 0, err
-}
-
-func redemptionBatchId(redemption *Redemption) string {
-	if redemption == nil || redemption.BatchId == "" {
-		return ""
-	}
-	return redemption.BatchId
+	ExpiredTime  int64          `json:"expired_time" gorm:"bigint"` // 过期时间，0 表示不过期
 }
 
 func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
@@ -156,7 +125,6 @@ func Redeem(key string, userId int) (quota int, err error) {
 	if common.UsingPostgreSQL {
 		keyCol = `"key"`
 	}
-
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
@@ -169,30 +137,6 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
-
-		batchId := redemptionBatchId(redemption)
-		if batchId != "" {
-			var usageCount int64
-			err = tx.Model(&RedemptionUsage{}).Where("user_id = ? AND batch_id = ?", userId, batchId).Count(&usageCount).Error
-			if err != nil {
-				return errors.New("系统错误")
-			}
-			if usageCount > 0 {
-				return errors.New("您已兑换过该批次兑换码，每个用户在有效期内仅限兑换1次")
-			}
-
-			usage := &RedemptionUsage{
-				UserId:        userId,
-				RedemptionKey: key,
-				BatchId:       batchId,
-				CreatedAt:     common.GetTimestamp(),
-			}
-			err = tx.Create(usage).Error
-			if err != nil {
-				return errors.New("记录兑换信息失败")
-			}
-		}
-
 		err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 		if err != nil {
 			return err
@@ -225,7 +169,7 @@ func (redemption *Redemption) SelectUpdate() error {
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
 	var err error
-	err = DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time", "batch_id").Updates(redemption).Error
+	err = DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time").Updates(redemption).Error
 	return err
 }
 

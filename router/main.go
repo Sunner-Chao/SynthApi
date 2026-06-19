@@ -118,7 +118,6 @@ func isBlockedOnPublicPort(path string) bool {
 	switch path {
 	case "/api/status/test",
 		"/api/user",
-		"/api/user/topup",
 		"/api/user/topup/complete",
 		"/api/user/search",
 		"/api/log",

@@ -88,6 +88,10 @@ func AddRedemption(c *gin.Context) {
 		return
 	}
 	var keys []string
+	batchId := redemption.BatchId
+	if batchId == "" {
+		batchId = common.GetUUID()
+	}
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
 		cleanRedemption := model.Redemption{
@@ -97,6 +101,7 @@ func AddRedemption(c *gin.Context) {
 			CreatedTime: common.GetTimestamp(),
 			Quota:       redemption.Quota,
 			ExpiredTime: redemption.ExpiredTime,
+			BatchId:     batchId,
 		}
 		err = cleanRedemption.Insert()
 		if err != nil {
