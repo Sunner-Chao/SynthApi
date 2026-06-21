@@ -40,6 +40,7 @@ export function Playground() {
     models,
     groups,
     updateMessages,
+    clearMessages,
     setModels,
     setGroups,
     updateConfig,
@@ -198,6 +199,11 @@ export function Playground() {
     updateMessages(newMessages)
   }
 
+  const handleClearMessages = () => {
+    if (isGenerating) return
+    clearMessages()
+  }
+
   return (
     <div className='relative flex size-full flex-col overflow-hidden'>
       {/* Full-width scroll container: scrolling works even over side whitespace */}
@@ -208,6 +214,7 @@ export function Playground() {
           onRegenerateMessage={handleRegenerateMessage}
           onEditMessage={handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
+          onClearMessages={handleClearMessages}
           isGenerating={isGenerating}
           editingKey={editingMessageKey}
           onCancelEdit={handleEditOpenChange}

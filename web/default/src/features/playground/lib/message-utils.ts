@@ -25,6 +25,7 @@ import type {
   ContentPart,
   PlaygroundAttachment,
 } from '../types'
+import { buildAttachmentTextBlock } from './attachment-text'
 
 /**
  * Create a new message version
@@ -101,17 +102,17 @@ export function createLoadingAssistantMessage(): Message {
 }
 
 /**
- * Build message content with optional images
+ * Build message content with optional images.
+ * Non-image documents are converted to text before request construction because
+ * OpenAI-compatible chat endpoints do not consistently support file parts.
  */
 export function buildMessageContent(
   text: string,
-  imageUrls: string[] = [],
-  files: Pick<PlaygroundAttachment, 'name' | 'type' | 'base64'>[] = []
+  imageUrls: string[] = []
 ): string | ContentPart[] {
   const validImages = imageUrls.filter((url) => url.trim() !== '')
-  const validFiles = files.filter((file) => file.base64.trim() !== '')
 
-  if (validImages.length === 0 && validFiles.length === 0) {
+  if (validImages.length === 0) {
     return text
   }
 
@@ -123,14 +124,6 @@ export function buildMessageContent(
     ...validImages.map((url) => ({
       type: 'image_url' as const,
       image_url: { url: url.trim() },
-    })),
-    ...validFiles.map((file) => ({
-      type: 'file' as const,
-      file: {
-        filename: file.name,
-        file_data: file.base64,
-        mime_type: file.type,
-      },
     })),
   ]
 
@@ -162,13 +155,11 @@ export function formatMessageForAPI(message: Message): ChatCompletionMessage {
   const imageUrls = attachments
     .filter((item) => item.kind === 'image')
     .map((item) => item.data)
-  const files = attachments
-    .filter((item) => item.kind === 'file')
-    .map((item) => ({ name: item.name, type: item.type, base64: item.base64 }))
+  const textWithAttachments = `${currentVersion.content}${buildAttachmentTextBlock(attachments)}`
 
   return {
     role: message.from,
-    content: buildMessageContent(currentVersion.content, imageUrls, files),
+    content: buildMessageContent(textWithAttachments, imageUrls),
   }
 }
 
@@ -178,6 +169,7 @@ export function formatMessageForAPI(message: Message): ChatCompletionMessage {
  */
 export function isValidMessage(message: Message): boolean {
   if (!message || !message.from || !message.versions.length) return false
+  if (message.status === MESSAGE_STATUS.ERROR) return false
 
   const content = message.versions[0]?.content
   if (content === undefined) return false

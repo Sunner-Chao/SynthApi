@@ -147,6 +147,9 @@ export interface PlaygroundAttachment {
   data: string
   base64: string
   kind: 'image' | 'file'
+  extractedText?: string
+  extractionStatus?: 'ready' | 'unsupported' | 'failed'
+  extractionError?: string
 }
 
 export interface ParameterEnabled {

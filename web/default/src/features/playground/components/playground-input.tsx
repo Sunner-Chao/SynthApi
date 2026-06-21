@@ -51,6 +51,11 @@ import {
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { Badge } from '@/components/ui/badge'
 import { ModelGroupSelector } from '@/components/model-group-selector'
+import {
+  attachmentExtension,
+  extractAttachmentText,
+  supportsTextExtraction,
+} from '../lib/attachment-text'
 import type { ModelOption, GroupOption, PlaygroundAttachment } from '../types'
 
 interface PlaygroundInputProps {
@@ -71,6 +76,24 @@ interface PlaygroundInputProps {
 
 const MAX_ATTACHMENTS = 5
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+const IMAGE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'gif',
+  'bmp',
+  'avif',
+])
+const IMAGE_EXTENSION_MIME_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+}
 
 const suggestions = [
   { icon: BarChartIcon, text: 'Analyze data', color: '#76d0eb' },
@@ -132,16 +155,34 @@ export function PlaygroundInput({
       reader.readAsDataURL(file)
     })
 
-  const readFileAsDataUrl = async (file: File) => {
+  const isImageFile = (file: File) =>
+    file.type.startsWith('image/') ||
+    IMAGE_EXTENSIONS.has(attachmentExtension(file.name))
+
+  const getAttachmentMimeType = (
+    file: File,
+    attachmentKind: PlaygroundAttachment['kind']
+  ) => {
+    if (attachmentKind === 'image') {
+      if (file.type.startsWith('image/')) return file.type
+      return (
+        IMAGE_EXTENSION_MIME_TYPES[attachmentExtension(file.name)] ||
+        'application/octet-stream'
+      )
+    }
+    return file.type || 'application/octet-stream'
+  }
+
+  const readFileAsDataUrl = async (file: File, mimeType: string) => {
     if (typeof file.arrayBuffer === 'function') {
       try {
         const buffer = await file.arrayBuffer()
-        return `data:${file.type || 'application/octet-stream'};base64,${arrayBufferToBase64(buffer)}`
+        return `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`
       } catch (error) {
         // Some WebViews fail Blob.arrayBuffer() for cloud-backed files.
         // Fall back to FileReader before treating the attachment as unreadable.
         // eslint-disable-next-line no-console
-        console.warn('Blob.arrayBuffer() failed, falling back to FileReader', error)
+            console.warn('Blob.arrayBuffer() failed, falling back to FileReader', error)
       }
     }
     return readFileAsDataUrlWithReader(file)
@@ -189,18 +230,31 @@ export function PlaygroundInput({
     try {
       for (const file of acceptedFiles) {
         try {
-          const dataUrl = await readFileAsDataUrl(file)
+          const attachmentKind = kind === 'image' || isImageFile(file) ? 'image' : 'file'
+          const mimeType = getAttachmentMimeType(file, attachmentKind)
+          const dataUrl =
+            attachmentKind === 'image' ? await readFileAsDataUrl(file, mimeType) : ''
+          const extracted =
+            attachmentKind === 'file' && supportsTextExtraction(file)
+              ? await extractAttachmentText(file)
+              : attachmentKind === 'file'
+                ? {
+                    text: '',
+                    status: 'unsupported' as const,
+                    error: 'Unsupported file type',
+                  }
+                : undefined
           nextAttachments.push({
             id: nanoid(),
             name: file.name,
-            type: file.type || 'application/octet-stream',
+            type: mimeType,
             size: file.size,
             data: dataUrl,
-            base64: getBase64Payload(dataUrl),
-            kind:
-              kind === 'image' || file.type.startsWith('image/')
-                ? 'image'
-                : 'file',
+            base64: dataUrl ? getBase64Payload(dataUrl) : '',
+            kind: attachmentKind,
+            extractedText: extracted?.text,
+            extractionStatus: extracted?.status,
+            extractionError: extracted?.error,
           })
         } catch (error) {
           const reason = getReadErrorMessage(error)
@@ -246,7 +300,7 @@ export function PlaygroundInput({
         type='file'
         className='hidden'
         multiple
-        accept='image/*'
+        accept='image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif'
         onChange={(event) => handleFilesSelected(event, 'image')}
       />
       <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
@@ -270,6 +324,16 @@ export function PlaygroundInput({
           <div className='flex flex-wrap gap-2 px-3 pb-1'>
             {attachments.map((attachment) => {
               const Icon = attachment.kind === 'image' ? ImageIcon : FileIcon
+              const statusLabel =
+                attachment.kind === 'file'
+                  ? attachment.extractionStatus === 'ready'
+                    ? t('Text ready')
+                    : attachment.extractionStatus === 'failed'
+                      ? t('Parse failed')
+                      : attachment.extractionStatus === 'unsupported'
+                        ? t('Unsupported')
+                        : ''
+                  : ''
               return (
                 <Badge
                   key={attachment.id}
@@ -278,6 +342,11 @@ export function PlaygroundInput({
                 >
                   <Icon className='size-3.5 shrink-0' />
                   <span className='max-w-44 truncate'>{attachment.name}</span>
+                  {statusLabel && (
+                    <span className='text-muted-foreground hidden text-[10px] sm:inline'>
+                      {statusLabel}
+                    </span>
+                  )}
                   <button
                     type='button'
                     className='hover:bg-background/80 flex size-5 items-center justify-center rounded-sm'

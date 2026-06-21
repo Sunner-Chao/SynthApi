@@ -17,9 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import {
   Branch,
   BranchMessages,
@@ -52,6 +54,7 @@ import { MESSAGE_ROLES } from '../constants'
 import { getMessageContentStyles } from '../lib/message-styles'
 import { parseThinkTags } from '../lib/message-utils'
 import type { Message as MessageType } from '../types'
+import { MessageActionButton } from './message-action-button'
 import { MessageActions } from './message-actions'
 import { MessageError } from './message-error'
 
@@ -61,6 +64,7 @@ interface PlaygroundChatProps {
   onRegenerateMessage?: (message: MessageType) => void
   onEditMessage?: (message: MessageType) => void
   onDeleteMessage?: (message: MessageType) => void
+  onClearMessages?: () => void
   isGenerating?: boolean
   editingKey?: string | null
   onSaveEdit?: (newContent: string) => void
@@ -74,6 +78,7 @@ export function PlaygroundChat({
   onRegenerateMessage,
   onEditMessage,
   onDeleteMessage,
+  onClearMessages,
   isGenerating = false,
   editingKey,
   onSaveEdit,
@@ -104,6 +109,20 @@ export function PlaygroundChat({
       {/* Remove outer padding; apply padding to inner centered container to align with input */}
       <ConversationContent className='p-0'>
         <div className='mx-auto w-full max-w-4xl px-4 py-4'>
+          {messages.length > 0 && onClearMessages && (
+            <div className='sticky top-0 z-10 mb-2 flex justify-end bg-background/80 py-1 backdrop-blur'>
+              <TooltipProvider delay={300}>
+                <MessageActionButton
+                  icon={Trash2}
+                  label='Clear messages'
+                  onClick={onClearMessages}
+                  disabled={isGenerating}
+                  variant='destructive'
+                  className='border bg-background'
+                />
+              </TooltipProvider>
+            </div>
+          )}
           {messages.map((message, messageIndex) => {
             const { versions = [] } = message
             const isLastAssistantMessage =

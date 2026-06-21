@@ -1186,7 +1186,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 {other.subscription_consumed != null && (
                   <DetailRow
                     label={t('Final Consumed')}
-                    value={formatDetailQuota(other.subscription_consumed)}
+                    value={formatSubscriptionFormulaQuota(
+                      subscriptionActualConsumed
+                    )}
                     mono
                   />
                 )}
