@@ -60,6 +60,70 @@ function getChartThemeTokens(resolvedTheme: string) {
   }
 }
 
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
+}
+
+function floorToStep(value: number, step: number): number {
+  return Math.floor(value / step) * step
+}
+
+function ceilToStep(value: number, step: number): number {
+  return Math.ceil(value / step) * step
+}
+
+function getUptimeAxisDomain(series: UptimeDayPoint[]): {
+  min: number
+  max: number
+} {
+  const values = series
+    .map((point) => point.uptime_pct)
+    .filter((value) => Number.isFinite(value))
+    .map(clampPercent)
+
+  if (values.length === 0) return { min: 0, max: 100 }
+
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+
+  let min = 0
+  let max = 100
+
+  if (minValue >= 99.5) {
+    min = 99.5
+  } else if (minValue >= 99) {
+    min = 99
+  } else if (minValue >= 95) {
+    min = Math.max(95, floorToStep(minValue - 0.5, 0.5))
+  } else if (minValue >= 90) {
+    min = Math.max(90, floorToStep(minValue - 1, 1))
+  } else if (minValue >= 50) {
+    min = Math.max(0, floorToStep(minValue - 5, 5))
+    max = Math.min(100, Math.max(ceilToStep(maxValue + 5, 5), min + 5))
+  } else {
+    min = 0
+    max = Math.min(100, Math.max(ceilToStep(maxValue + 10, 10), 10))
+  }
+
+  if (maxValue > 0 && maxValue < 95) {
+    max = Math.min(100, Math.max(max, ceilToStep(maxValue + 5, 5)))
+  }
+
+  if (max <= min) {
+    min = Math.max(0, min - 0.5)
+    max = Math.min(100, max + 0.5)
+  }
+
+  return { min, max }
+}
+
+function formatAxisPercent(value: number | string): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return `${value}%`
+  return `${numeric % 1 === 0 ? numeric.toFixed(0) : numeric.toFixed(1)}%`
+}
+
 // ---------------------------------------------------------------------------
 // Latency trend chart (24h, multi-group point-line chart)
 // ---------------------------------------------------------------------------
@@ -176,10 +240,11 @@ export function UptimeTrendChart(props: {
 
     const data = props.series.map((point) => ({
       date: formatDayLabel(point.date),
-      uptime: point.uptime_pct,
+      uptime: clampPercent(point.uptime_pct),
       incidents: point.incidents,
       outage: point.outage_minutes,
     }))
+    const yDomain = getUptimeAxisDomain(props.series)
 
     return {
       type: 'line' as const,
@@ -234,10 +299,11 @@ export function UptimeTrendChart(props: {
         },
         {
           orient: 'left',
-          min: 95,
-          max: 100,
+          min: yDomain.min,
+          max: yDomain.max,
+          nice: false,
           label: {
-            formatMethod: (val: number | string) => `${val}%`,
+            formatMethod: formatAxisPercent,
             style: { fill: textColor, fontSize: 10 },
           },
           grid: {

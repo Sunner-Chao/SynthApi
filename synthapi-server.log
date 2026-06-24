@@ -80,3 +80,4 @@
 
 2026/06/21 23:11:57 [32m/home/ubuntu/demo/SynthApi/model/main.go:531
 [0m[33m[26.659ms] [34;1m[rows:1][0m SELECT count(*) FROM INFORMATION_SCHEMA.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'subscription_plans' AND column_name = 'price_amount'
+[SYS] 2026/06/24 - 10:39:56 | initializing token encoders 
