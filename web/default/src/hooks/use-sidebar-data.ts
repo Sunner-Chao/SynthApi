@@ -27,6 +27,7 @@ import {
   ListTodo,
   MessageSquare,
   Radio,
+  Receipt,
   Settings,
   Ticket,
   User,
@@ -104,6 +105,11 @@ export function useSidebarData(): SidebarData {
             title: t('Wallet'),
             url: '/wallet',
             icon: Wallet,
+          },
+          {
+            title: t('Topup Orders'),
+            url: '/topup-orders',
+            icon: Receipt,
           },
           {
             title: t('Profile'),
