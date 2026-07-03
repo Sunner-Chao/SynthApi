@@ -46,11 +46,12 @@ export function Playground() {
     updateConfig,
   } = usePlaygroundState()
 
-  const { sendChat, stopGeneration, isGenerating } = useChatHandler({
-    config,
-    parameterEnabled,
-    onMessageUpdate: updateMessages,
-  })
+  const { sendChat, sendImageGeneration, stopGeneration, isGenerating } =
+    useChatHandler({
+      config,
+      parameterEnabled,
+      onMessageUpdate: updateMessages,
+    })
 
   // Edit dialog state
   const [editingMessageKey, setEditingMessageKey] = useState<string | null>(
@@ -119,6 +120,20 @@ export function Playground() {
     }
   }, [groupsData, setGroups, config.group, updateConfig])
 
+  const selectedGroup = groups.find((group) => group.value === config.group)
+  const imageGenerationEnabled = [
+    config.model,
+    config.group,
+    selectedGroup?.label,
+    selectedGroup?.desc,
+  ]
+    .filter(Boolean)
+    .some((value) =>
+      /gpt-image|chatgpt-image|dall-e|imagen|image|生图|绘图|画图|图片|apimart/i.test(
+        String(value)
+      )
+    )
+
   const handleSendMessage = (
     text: string,
     attachments: PlaygroundAttachment[] = []
@@ -132,7 +147,11 @@ export function Playground() {
     const newMessages = [...messages, userMessage, assistantMessage]
     updateMessages(newMessages)
 
-    // Send chat request
+    if (imageGenerationEnabled) {
+      sendImageGeneration(newMessages)
+      return
+    }
+
     sendChat(newMessages)
   }
 
@@ -189,9 +208,20 @@ export function Playground() {
         createLoadingAssistantMessage(),
       ]
       updateMessages(toSubmit)
+      if (imageGenerationEnabled) {
+        sendImageGeneration(toSubmit)
+        return
+      }
       sendChat(toSubmit)
     },
-    [editingMessageKey, messages, updateMessages, sendChat]
+    [
+      editingMessageKey,
+      messages,
+      updateMessages,
+      sendChat,
+      sendImageGeneration,
+      imageGenerationEnabled,
+    ]
   )
 
   const handleDeleteMessage = (message: MessageType) => {
@@ -237,6 +267,7 @@ export function Playground() {
           onModelChange={(value) => updateConfig('model', value)}
           onStop={stopGeneration}
           onSubmit={handleSendMessage}
+          imageGenerationEnabled={imageGenerationEnabled}
           webSearchEnabled={config.web_search}
           onWebSearchChange={(value) => updateConfig('web_search', value)}
         />

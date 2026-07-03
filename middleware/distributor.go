@@ -400,6 +400,15 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		modelRequest.Group = req.Group
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
 	}
+	if strings.HasPrefix(c.Request.URL.Path, "/pg/images/generations") {
+		req, err := getModelFromRequest(c)
+		if err != nil {
+			return nil, false, err
+		}
+		modelRequest.Model = common.GetStringIfEmpty(req.Model, "gpt-image-2")
+		modelRequest.Group = req.Group
+		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
+	}
 
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") && modelRequest.Model != "" {
 		modelRequest.Model = ratio_setting.WithCompactModelSuffix(modelRequest.Model)

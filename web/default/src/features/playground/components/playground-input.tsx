@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useRef, useState, type ChangeEvent } from 'react'
-import { nanoid } from 'nanoid'
 import {
   PaperclipIcon,
   FileIcon,
@@ -32,8 +31,10 @@ import {
   GraduationCapIcon,
   XIcon,
 } from 'lucide-react'
+import { nanoid } from 'nanoid'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,7 +50,6 @@ import {
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
-import { Badge } from '@/components/ui/badge'
 import { ModelGroupSelector } from '@/components/model-group-selector'
 import {
   attachmentExtension,
@@ -72,6 +72,7 @@ interface PlaygroundInputProps {
   onGroupChange: (value: string) => void
   webSearchEnabled: boolean
   onWebSearchChange: (value: boolean) => void
+  imageGenerationEnabled?: boolean
 }
 
 const MAX_ATTACHMENTS = 5
@@ -118,6 +119,7 @@ export function PlaygroundInput({
   onGroupChange,
   webSearchEnabled,
   onWebSearchChange,
+  imageGenerationEnabled = false,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -131,7 +133,7 @@ export function PlaygroundInput({
 
   const handleSubmit = (message: PromptInputMessage) => {
     if ((!message.text?.trim() && attachments.length === 0) || disabled) return
-    onSubmit(message.text || '', attachments)
+    onSubmit(message.text || '', imageGenerationEnabled ? [] : attachments)
     setText('')
     setAttachments([])
   }
@@ -182,7 +184,10 @@ export function PlaygroundInput({
         // Some WebViews fail Blob.arrayBuffer() for cloud-backed files.
         // Fall back to FileReader before treating the attachment as unreadable.
         // eslint-disable-next-line no-console
-            console.warn('Blob.arrayBuffer() failed, falling back to FileReader', error)
+        console.warn(
+          'Blob.arrayBuffer() failed, falling back to FileReader',
+          error
+        )
       }
     }
     return readFileAsDataUrlWithReader(file)
@@ -215,7 +220,9 @@ export function PlaygroundInput({
     }
 
     const acceptedFiles = selectedFiles.slice(0, availableSlots)
-    const oversized = acceptedFiles.find((file) => file.size > MAX_ATTACHMENT_SIZE)
+    const oversized = acceptedFiles.find(
+      (file) => file.size > MAX_ATTACHMENT_SIZE
+    )
     if (oversized) {
       toast.error(t('Attachment is too large'), {
         description: `${oversized.name} > 10MB`,
@@ -230,10 +237,13 @@ export function PlaygroundInput({
     try {
       for (const file of acceptedFiles) {
         try {
-          const attachmentKind = kind === 'image' || isImageFile(file) ? 'image' : 'file'
+          const attachmentKind =
+            kind === 'image' || isImageFile(file) ? 'image' : 'file'
           const mimeType = getAttachmentMimeType(file, attachmentKind)
           const dataUrl =
-            attachmentKind === 'image' ? await readFileAsDataUrl(file, mimeType) : ''
+            attachmentKind === 'image'
+              ? await readFileAsDataUrl(file, mimeType)
+              : ''
           const extracted =
             attachmentKind === 'file' && supportsTextExtraction(file)
               ? await extractAttachmentText(file)
@@ -260,7 +270,11 @@ export function PlaygroundInput({
           const reason = getReadErrorMessage(error)
           failedFiles.push(`${file.name}: ${reason}`)
           // eslint-disable-next-line no-console
-          console.error('Failed to read playground attachment:', file.name, error)
+          console.error(
+            'Failed to read playground attachment:',
+            file.name,
+            error
+          )
         }
       }
 
@@ -313,9 +327,11 @@ export function PlaygroundInput({
           disabled={disabled}
           onChange={(event) => setText(event.target.value)}
           placeholder={
-            webSearchEnabled
-              ? t('Ask anything with web search')
-              : t('Ask anything')
+            imageGenerationEnabled
+              ? t('Describe the image to generate')
+              : webSearchEnabled
+                ? t('Ask anything with web search')
+                : t('Ask anything')
           }
           value={text}
         />
@@ -368,7 +384,7 @@ export function PlaygroundInput({
                 render={
                   <PromptInputButton
                     className='border font-medium'
-                    disabled={disabled}
+                    disabled={disabled || imageGenerationEnabled}
                     variant='outline'
                   />
                 }
@@ -378,9 +394,7 @@ export function PlaygroundInput({
                 <span className='sr-only sm:hidden'>{t('Attach')}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='start'>
-                <DropdownMenuItem
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                   <FileIcon className='mr-2' size={16} />
                   {t('Upload file')}
                 </DropdownMenuItem>
@@ -394,9 +408,9 @@ export function PlaygroundInput({
             </DropdownMenu>
 
             <PromptInputButton
-              className='border font-medium data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary'
+              className='data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary border font-medium'
               data-active={webSearchEnabled}
-              disabled={disabled}
+              disabled={disabled || imageGenerationEnabled}
               onClick={() => onWebSearchChange(!webSearchEnabled)}
               variant='outline'
               type='button'
@@ -435,13 +449,19 @@ export function PlaygroundInput({
             ) : (
               <PromptInputButton
                 className='text-foreground font-medium'
-                disabled={disabled || (!text.trim() && attachments.length === 0)}
+                disabled={
+                  disabled || (!text.trim() && attachments.length === 0)
+                }
                 type='submit'
                 variant='secondary'
               >
                 <SendIcon size={16} />
-                <span className='hidden sm:inline'>{t('Send')}</span>
-                <span className='sr-only sm:hidden'>{t('Send')}</span>
+                <span className='hidden sm:inline'>
+                  {imageGenerationEnabled ? t('Generate image') : t('Send')}
+                </span>
+                <span className='sr-only sm:hidden'>
+                  {imageGenerationEnabled ? t('Generate image') : t('Send')}
+                </span>
               </PromptInputButton>
             )}
           </div>
