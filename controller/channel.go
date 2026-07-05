@@ -185,6 +185,147 @@ func GetAllChannels(c *gin.Context) {
 	return
 }
 
+func isImportedAccountChannel(channel *model.Channel) bool {
+	if channel == nil {
+		return false
+	}
+
+	settings := map[string]any{}
+	if strings.TrimSpace(channel.OtherSettings) != "" {
+		_ = common.Unmarshal([]byte(channel.OtherSettings), &settings)
+	}
+	if _, ok := settings["imported_account_platform"]; ok {
+		return true
+	}
+	if _, ok := settings["imported_account_monitor"]; ok {
+		return true
+	}
+
+	remark := ""
+	if channel.Remark != nil {
+		remark = *channel.Remark
+	}
+	return strings.Contains(remark, "Account ID:") ||
+		strings.Contains(remark, "Account email:") ||
+		strings.Contains(remark, "Imported account type:") ||
+		strings.Contains(remark, "Imported source type:")
+}
+
+func importedAccountChannelQuery(group string, statusFilter int, typeFilter int) *gorm.DB {
+	return buildChannelListQuery(group, statusFilter, typeFilter).Where(
+		"settings LIKE ? OR remark LIKE ? OR remark LIKE ? OR remark LIKE ? OR remark LIKE ?",
+		"%imported_account_%",
+		"%Account ID:%",
+		"%Account email:%",
+		"%Imported account type:%",
+		"%Imported source type:%",
+	)
+}
+
+func GetImportedAccountChannels(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
+	sortOptions := model.NewChannelSortOptions(c.Query("sort_by"), c.Query("sort_order"), idSort)
+	groupFilter := model.NormalizeChannelGroupFilter(c.Query("group"))
+	statusFilter := parseStatusFilter(c.Query("status"))
+	typeFilter := -1
+	if typeStr := c.Query("type"); typeStr != "" {
+		if t, err := strconv.Atoi(typeStr); err == nil {
+			typeFilter = t
+		}
+	}
+
+	var total int64
+	if err := importedAccountChannelQuery(groupFilter, statusFilter, typeFilter).Count(&total).Error; err != nil {
+		common.SysError("failed to count imported account channels: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取导入账号渠道数量失败，请稍后重试"})
+		return
+	}
+
+	channelData := make([]*model.Channel, 0)
+	err := sortOptions.Apply(importedAccountChannelQuery(groupFilter, statusFilter, typeFilter)).
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Omit("key").
+		Find(&channelData).Error
+	if err != nil {
+		common.SysError("failed to get imported account channels: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取导入账号渠道失败，请稍后重试"})
+		return
+	}
+
+	for _, datum := range channelData {
+		clearChannelInfo(datum)
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"items":     channelData,
+		"total":     total,
+		"page":      pageInfo.GetPage(),
+		"page_size": pageInfo.GetPageSize(),
+	})
+}
+
+type ImportedAccountMonitorRequest struct {
+	Monitor map[string]any `json:"monitor"`
+}
+
+func UpdateImportedAccountMonitor(c *gin.Context) {
+	channelId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, fmt.Errorf("invalid channel id: %w", err))
+		return
+	}
+
+	req := ImportedAccountMonitorRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.Monitor == nil {
+		req.Monitor = map[string]any{}
+	}
+
+	channel, err := model.GetChannelById(channelId, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !isImportedAccountChannel(channel) {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel is not an imported account channel"})
+		return
+	}
+
+	settings := map[string]any{}
+	if strings.TrimSpace(channel.OtherSettings) != "" {
+		if err := common.Unmarshal([]byte(channel.OtherSettings), &settings); err != nil {
+			common.ApiError(c, fmt.Errorf("failed to parse channel settings: %w", err))
+			return
+		}
+	}
+	settings["imported_account_monitor"] = req.Monitor
+	encoded, err := common.Marshal(settings)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if err := model.DB.Model(&model.Channel{}).Where("id = ?", channelId).Update("settings", string(encoded)).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	service.ResetProxyClientCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"id":       channelId,
+			"settings": string(encoded),
+		},
+	})
+}
+
 func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, error) {
 	var headers http.Header
 	switch channel.Type {
@@ -676,10 +817,35 @@ func AddChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	createdChannels := make([]gin.H, 0, len(channels))
+	createdIds := make([]int, 0, len(channels))
+	for _, channel := range channels {
+		if channel.Id <= 0 {
+			continue
+		}
+		createdIds = append(createdIds, channel.Id)
+		createdChannels = append(createdChannels, gin.H{
+			"id":                   channel.Id,
+			"name":                 channel.Name,
+			"type":                 channel.Type,
+			"models":               channel.Models,
+			"group":                channel.Group,
+			"status":               channel.Status,
+			"balance":              channel.Balance,
+			"balance_updated_time": channel.BalanceUpdatedTime,
+			"used_quota":           channel.UsedQuota,
+			"remark":               channel.Remark,
+			"created_time":         channel.CreatedTime,
+		})
+	}
 	service.ResetProxyClientCache()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
+		"data": gin.H{
+			"ids":      createdIds,
+			"channels": createdChannels,
+		},
 	})
 	return
 }

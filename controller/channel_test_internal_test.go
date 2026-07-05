@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -79,4 +81,25 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 2, userID)
+}
+
+func TestNormalizeChannelTestStreamForCodex(t *testing.T) {
+	require.True(t, normalizeChannelTestStream(&model.Channel{Type: constant.ChannelTypeCodex}, false))
+	require.True(t, normalizeChannelTestStream(&model.Channel{Type: constant.ChannelTypeOpenAI}, true))
+	require.False(t, normalizeChannelTestStream(&model.Channel{Type: constant.ChannelTypeOpenAI}, false))
+}
+
+func TestCodexResponsesChannelTestRequestUsesForcedStream(t *testing.T) {
+	channel := &model.Channel{Type: constant.ChannelTypeCodex}
+	req := buildTestRequest(
+		"gpt-5",
+		string(constant.EndpointTypeOpenAIResponse),
+		channel,
+		normalizeChannelTestStream(channel, false),
+	)
+
+	responseReq, ok := req.(*dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.NotNil(t, responseReq.Stream)
+	require.True(t, *responseReq.Stream)
 }

@@ -28,7 +28,6 @@ import {
   RefreshCw,
   LayoutGrid,
   LayoutList,
-  Calendar,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -48,7 +47,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusBadge } from '@/components/status-badge'
 import {
   Table,
   TableBody,
@@ -57,6 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { StatusBadge } from '@/components/status-badge'
 import { useBillingHistory } from '@/features/wallet/hooks/use-billing-history'
 import {
   getStatusConfig,
@@ -355,9 +354,9 @@ function TopupOrdersPage() {
       {/* Header */}
       <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
         <div>
-          <h1 className='text-2xl font-bold'>{t('Topup Orders')}</h1>
+          <h1 className='text-2xl font-bold'>{t('Recharge Orders')}</h1>
           <p className='text-muted-foreground mt-1 text-sm'>
-            {t('View your topup transaction records for reimbursement')}
+            {t('View your recharge transaction records for reimbursement')}
           </p>
         </div>
         <div className='flex items-center gap-2'>
@@ -367,7 +366,9 @@ function TopupOrdersPage() {
             onClick={() => refresh()}
             disabled={loading}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+            />
             {t('Refresh')}
           </Button>
           <Button
@@ -396,7 +397,9 @@ function TopupOrdersPage() {
           </div>
           <Select
             value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value)}
+            onValueChange={(value) => {
+              if (value !== null) setStatusFilter(value)
+            }}
           >
             <SelectTrigger className='h-9 w-[130px]'>
               <SelectValue placeholder={t('All Status')} />

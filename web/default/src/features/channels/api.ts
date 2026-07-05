@@ -20,6 +20,7 @@ import { api, type ApiRequestConfig } from '@/lib/api'
 import { getGroups as getUserGroups } from '@/features/users/api'
 import type {
   AddChannelRequest,
+  AddChannelResponse,
   BatchDeleteParams,
   BatchSetTagParams,
   Channel,
@@ -112,6 +113,16 @@ export async function searchChannels(
 }
 
 /**
+ * Get channels created through the account import page
+ */
+export async function getImportedAccountChannels(
+  params: GetChannelsParams = {}
+): Promise<GetChannelsResponse> {
+  const res = await api.get('/api/channel/imported_accounts', { params })
+  return res.data
+}
+
+/**
  * Get single channel by ID
  */
 export async function getChannel(id: number): Promise<GetChannelResponse> {
@@ -125,7 +136,7 @@ export async function getChannel(id: number): Promise<GetChannelResponse> {
  */
 export async function createChannel(
   data: AddChannelRequest
-): Promise<{ success: boolean; message?: string }> {
+): Promise<AddChannelResponse> {
   const res = await api.post('/api/channel', data, channelActionConfig())
   return res.data
 }
@@ -140,6 +151,22 @@ export async function updateChannel(
   const res = await api.put(
     '/api/channel/',
     { id, ...data },
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function updateImportedAccountMonitor(
+  id: number,
+  monitor: Record<string, unknown>
+): Promise<{
+  success: boolean
+  message?: string
+  data?: { id: number; settings: string }
+}> {
+  const res = await api.post(
+    `/api/channel/${id}/imported_account_monitor`,
+    { monitor },
     channelActionConfig()
   )
   return res.data

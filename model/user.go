@@ -143,22 +143,26 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":      true,
+			"account":      true,
+			"channel":      true,
+			"models":       true,
+			"redemption":   true,
+			"user":         true,
+			"subscription": true,
+			"setting":      false, // 管理员不能访问系统设置
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":      true,
+			"account":      true,
+			"channel":      true,
+			"models":       true,
+			"redemption":   true,
+			"user":         true,
+			"subscription": true,
+			"setting":      true,
 		}
 	}
 	// 普通用户不包含admin区域
@@ -239,13 +243,13 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 
 // allowedSortFields 白名单：仅允许按这些字段排序，防止 SQL 注入
 var allowedSortFields = map[string]string{
-	"quota":          "quota",
-	"used_quota":     "used_quota",
-	"request_count":  "request_count",
-	"aff_quota":      "aff_quota",
-	"id":             "id",
-	"created_at":     "created_at",
-	"last_login_at":  "last_login_at",
+	"quota":         "quota",
+	"used_quota":    "used_quota",
+	"request_count": "request_count",
+	"aff_quota":     "aff_quota",
+	"id":            "id",
+	"created_at":    "created_at",
+	"last_login_at": "last_login_at",
 }
 
 func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {

@@ -23,6 +23,7 @@ import {
   FileText,
   FlaskConical,
   Key,
+  KeyRound,
   LayoutDashboard,
   ListTodo,
   MessageSquare,
@@ -107,7 +108,7 @@ export function useSidebarData(): SidebarData {
             icon: Wallet,
           },
           {
-            title: t('Topup Orders'),
+            title: t('Recharge Orders'),
             url: '/topup-orders',
             icon: Receipt,
           },
@@ -122,6 +123,11 @@ export function useSidebarData(): SidebarData {
         id: 'admin',
         title: t('Admin'),
         items: [
+          {
+            title: t('Account Import'),
+            url: '/accounts',
+            icon: KeyRound,
+          },
           {
             title: t('Channels'),
             url: '/channels',

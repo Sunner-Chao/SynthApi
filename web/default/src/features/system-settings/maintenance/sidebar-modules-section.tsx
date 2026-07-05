@@ -126,6 +126,10 @@ export function SidebarModulesSection({
       },
     },
     admin: {
+      account: {
+        title: t('Account Import'),
+        description: t('Import upstream account credentials.'),
+      },
       channel: {
         title: t('Channels'),
         description: t('Configure upstream providers and routing.'),

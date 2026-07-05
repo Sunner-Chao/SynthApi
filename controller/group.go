@@ -286,7 +286,7 @@ func testUserGroupChannels(channels []model.Channel, groupStatus map[string]*gro
 		}
 
 		tik := time.Now()
-		result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+		result := testChannel(channel, testUserID, "", "", normalizeChannelTestStream(channel, false))
 		milliseconds := int(time.Since(tik).Milliseconds())
 		if result.localErr == nil {
 			channel.UpdateResponseTime(int64(milliseconds))

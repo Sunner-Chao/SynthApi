@@ -334,3 +334,24 @@ export interface AddChannelRequest {
   batch_add_set_key_prefix_2_name?: boolean
   channel: Partial<Channel>
 }
+
+export interface AddChannelResponse {
+  success: boolean
+  message?: string
+  data?: {
+    ids?: number[]
+    channels?: Array<{
+      id: number
+      name: string
+      type: number
+      models: string
+      group: string
+      status?: number
+      balance?: number
+      balance_updated_time?: number
+      used_quota?: number
+      remark?: string
+      created_time?: number
+    }>
+  }
+}

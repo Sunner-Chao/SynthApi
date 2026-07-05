@@ -120,6 +120,48 @@ export function SidebarModulesCard() {
         },
       ],
     },
+    {
+      key: 'admin',
+      title: t('Admin Area'),
+      description: t('Administrative tools'),
+      modules: [
+        {
+          key: 'account',
+          title: t('Account Import'),
+          description: t('Import upstream account credentials'),
+        },
+        {
+          key: 'channel',
+          title: t('Channels'),
+          description: t('Upstream channel management'),
+        },
+        {
+          key: 'models',
+          title: t('Models'),
+          description: t('Model catalog management'),
+        },
+        {
+          key: 'user',
+          title: t('Users'),
+          description: t('User account management'),
+        },
+        {
+          key: 'redemption',
+          title: t('Redemption Codes'),
+          description: t('Redeem code management'),
+        },
+        {
+          key: 'subscription',
+          title: t('Subscription Management'),
+          description: t('Subscription plan management'),
+        },
+        {
+          key: 'setting',
+          title: t('System Settings'),
+          description: t('System configuration'),
+        },
+      ],
+    },
   ]
 
   const loadConfig = useCallback(async () => {
