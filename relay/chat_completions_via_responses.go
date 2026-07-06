@@ -96,6 +96,15 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	if err != nil {
 		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
+
+	clientRequestedStream := responsesReq.Stream != nil && *responsesReq.Stream
+	forceUpstreamStreamForNonStream := false
+	if info.ApiType == constant.APITypeCodex && !clientRequestedStream {
+		stream := true
+		responsesReq.Stream = &stream
+		forceUpstreamStreamForNonStream = true
+	}
+
 	info.AppendRequestConversion(types.RelayFormatOpenAIResponses)
 
 	savedRelayMode := info.RelayMode
@@ -145,13 +154,23 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
 	httpResp = resp.(*http.Response)
-	info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
+	upstreamIsStream := strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 	if httpResp.StatusCode != http.StatusOK {
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
 		return nil, newApiErr
 	}
 
+	if forceUpstreamStreamForNonStream && upstreamIsStream {
+		usage, newApiErr := openaichannel.OaiResponsesStreamToChatHandler(c, info, httpResp)
+		if newApiErr != nil {
+			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+			return nil, newApiErr
+		}
+		return usage, nil
+	}
+
+	info.IsStream = info.IsStream || upstreamIsStream
 	if info.IsStream {
 		usage, newApiErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
 		if newApiErr != nil {

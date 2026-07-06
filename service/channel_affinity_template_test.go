@@ -304,4 +304,19 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	require.False(t, exists)
 	_, exists = info.RuntimeHeadersOverride["x-codex-turn-metadata"]
 	require.False(t, exists)
+
+	infoWithoutSessionHeader := &relaycommon.RelayInfo{
+		RequestHeaders: map[string]string{
+			"Originator": "Codex CLI",
+			"User-Agent": "codex-cli-test",
+		},
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ParamOverride: mergedOverride,
+		},
+	}
+
+	_, err = relaycommon.ApplyParamOverrideWithRelayInfo([]byte(fmt.Sprintf(`{"model":"gpt-5","prompt_cache_key":"%s"}`, affinityValue)), infoWithoutSessionHeader)
+	require.NoError(t, err)
+	require.True(t, infoWithoutSessionHeader.UseRuntimeHeadersOverride)
+	require.Equal(t, affinityValue, infoWithoutSessionHeader.RuntimeHeadersOverride["session_id"])
 }

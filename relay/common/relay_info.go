@@ -243,6 +243,13 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	}
 }
 
+func (info *RelayInfo) IsImportedAccountChannel() bool {
+	if info == nil || info.ChannelMeta == nil {
+		return false
+	}
+	return info.ChannelMeta.ChannelOtherSettings.IsImportedAccountChannel()
+}
+
 func (info *RelayInfo) ToString() string {
 	if info == nil {
 		return "RelayInfo<nil>"

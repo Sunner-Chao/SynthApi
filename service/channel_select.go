@@ -17,6 +17,7 @@ type RetryParam struct {
 	ModelName    string
 	Retry        *int
 	resetNextTry bool
+	skipDepth    int
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -86,6 +87,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	smartGroups, isSmartGroup := setting.GetSmartGroupSources(param.TokenGroup)
+	excludeIDs := ImportedAccountExcludedChannelIDs(param.Ctx)
 
 	if param.TokenGroup == "auto" || isSmartGroup {
 		if param.TokenGroup == "auto" && len(setting.GetAutoGroups()) == 0 {
@@ -122,7 +124,19 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry)
+			channel, _ = model.GetRandomSatisfiedChannelExcluding(autoGroup, param.ModelName, priorityRetry, excludeIDs)
+			if ShouldSkipChannelForImportedAccountFailover(param.Ctx, channel) {
+				MarkImportedAccountChannelExcluded(param.Ctx, channel.Id)
+				if param.skipDepth > 100 {
+					return nil, selectGroup, errors.New("no imported account channel available after low quota filtering")
+				}
+				param.skipDepth++
+				defer func() {
+					param.skipDepth--
+				}()
+				param.ResetRetryNextTry()
+				return CacheGetRandomSatisfiedChannel(param)
+			}
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -160,7 +174,19 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())
+		channel, err = model.GetRandomSatisfiedChannelExcluding(param.TokenGroup, param.ModelName, param.GetRetry(), excludeIDs)
+		if err == nil && ShouldSkipChannelForImportedAccountFailover(param.Ctx, channel) {
+			MarkImportedAccountChannelExcluded(param.Ctx, channel.Id)
+			if param.skipDepth > 100 {
+				return nil, param.TokenGroup, errors.New("no imported account channel available after low quota filtering")
+			}
+			param.skipDepth++
+			defer func() {
+				param.skipDepth--
+			}()
+			param.ResetRetryNextTry()
+			return CacheGetRandomSatisfiedChannel(param)
+		}
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

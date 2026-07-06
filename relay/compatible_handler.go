@@ -24,6 +24,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func shouldFallbackImportedAccountChatToResponses(info *relaycommon.RelayInfo, err error) bool {
+	if err == nil || info == nil {
+		return false
+	}
+	if info.RelayMode != relayconstant.RelayModeChatCompletions {
+		return false
+	}
+	if !info.IsImportedAccountChannel() {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "not supported") ||
+		strings.Contains(message, "not implemented")
+}
+
+func postChatCompletionsUsage(c *gin.Context, info *relaycommon.RelayInfo, usage *dto.Usage) {
+	containAudioTokens := usage.CompletionTokenDetails.AudioTokens > 0 || usage.PromptTokensDetails.AudioTokens > 0
+	containsAudioRatios := ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
+
+	if containAudioTokens && containsAudioRatios {
+		service.PostAudioConsumeQuota(c, info, usage, "")
+	} else {
+		service.PostTextConsumeQuota(c, info, usage, nil)
+	}
+}
+
 func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 
@@ -103,15 +129,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		if newApiErr != nil {
 			return newApiErr
 		}
-
-		var containAudioTokens = usage.CompletionTokenDetails.AudioTokens > 0 || usage.PromptTokensDetails.AudioTokens > 0
-		var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
-
-		if containAudioTokens && containsAudioRatios {
-			service.PostAudioConsumeQuota(c, info, usage, "")
-		} else {
-			service.PostTextConsumeQuota(c, info, usage, nil)
-		}
+		postChatCompletionsUsage(c, info, usage)
 		return nil
 	}
 
@@ -131,6 +149,16 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIRequest(c, info, request)
 		if err != nil {
+			if shouldFallbackImportedAccountChatToResponses(info, err) {
+				logger.LogInfo(c, fmt.Sprintf("imported account channel #%d falling back chat completions to responses: %s", info.ChannelId, err.Error()))
+				applySystemPromptIfNeeded(c, info, request)
+				usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, request)
+				if newApiErr != nil {
+					return newApiErr
+				}
+				postChatCompletionsUsage(c, info, usage)
+				return nil
+			}
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 		relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
@@ -234,13 +262,6 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		return newApiErr
 	}
 
-	var containAudioTokens = usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0
-	var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
-
-	if containAudioTokens && containsAudioRatios {
-		service.PostAudioConsumeQuota(c, info, usage.(*dto.Usage), "")
-	} else {
-		service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
-	}
+	postChatCompletionsUsage(c, info, usage.(*dto.Usage))
 	return nil
 }
