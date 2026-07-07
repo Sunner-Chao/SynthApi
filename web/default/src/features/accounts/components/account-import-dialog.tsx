@@ -16,8 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import {
   Activity,
@@ -31,10 +38,12 @@ import {
   FileUp,
   Gauge,
   KeyRound,
+  Layers3,
   ListChecks,
   Loader2,
   RefreshCw,
   Server,
+  Tag,
   UploadCloud,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -49,6 +58,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -60,8 +70,10 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import {
+  batchSetChannelGroup,
   createChannel,
   getCodexUsage,
+  getGroups,
   getImportedAccountChannels,
   testChannel,
   updateImportedAccountMonitor,
@@ -366,6 +378,16 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   const [checking, setChecking] = useState(false)
   const [loadingImported, setLoadingImported] = useState(false)
   const [autoMonitor, setAutoMonitor] = useState(false)
+  const [applyingGroup, setApplyingGroup] = useState(false)
+
+  const { data: groupsData } = useQuery({
+    queryKey: ['groups'],
+    queryFn: getGroups,
+  })
+  const groupOptions = useMemo(
+    () => (Array.isArray(groupsData?.data) ? groupsData.data : []),
+    [groupsData]
+  )
 
   const reset = () => {
     setFileName('')
@@ -698,6 +720,40 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     return () => window.clearInterval(timer)
   }, [autoMonitor, checkItems.length, runPostImportChecks])
 
+  const handleApplyGroup = useCallback(
+    async (group: string) => {
+      const targets = checkItems.filter((item) => item.channelId)
+      if (targets.length === 0) {
+        toast.error(t('No imported channels to update'))
+        return
+      }
+      setApplyingGroup(true)
+      try {
+        const response = await batchSetChannelGroup({
+          ids: targets.map((item) => item.channelId!),
+          group,
+        })
+        if (!response.success) {
+          throw new Error(response.message || t('Failed to set group'))
+        }
+        targets.forEach((item) => updateCheckItem(item.key, { group }))
+        toast.success(
+          t('Group applied to {{count}} channel(s)', {
+            count: response.data ?? targets.length,
+          })
+        )
+        await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : t('Failed to set group')
+        )
+      } finally {
+        setApplyingGroup(false)
+      }
+    },
+    [checkItems, queryClient, t, updateCheckItem]
+  )
+
   const handleToggleAutoMonitor = useCallback(async () => {
     const nextAutoMonitor = !autoMonitor
     const nextItems = checkItems.map((item) => ({
@@ -726,13 +782,7 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     if (nextAutoMonitor && nextItems.length > 0) {
       void runPostImportChecks(nextItems)
     }
-  }, [
-    autoMonitor,
-    checkItems,
-    persistMonitorSnapshot,
-    runPostImportChecks,
-    t,
-  ])
+  }, [autoMonitor, checkItems, persistMonitorSnapshot, runPostImportChecks, t])
 
   const handleImport = async () => {
     const currentBuildResult = buildResult ?? parseContent(content)
@@ -834,9 +884,9 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   return (
     <section className='space-y-4'>
       <div className='bg-background overflow-hidden rounded-lg border shadow-sm'>
-        <div className='border-border/70 flex flex-col gap-4 border-b px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between'>
+        <div className='flex flex-col gap-4 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between'>
           <div className='flex min-w-0 items-center gap-3'>
-            <span className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg'>
+            <span className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl'>
               <KeyRound className='size-5' />
             </span>
             <div className='min-w-0'>
@@ -849,12 +899,17 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
             </div>
           </div>
           <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
-            <ImportMetric label={t('Ready')} value={readyCount} />
+            <ImportMetric label={t('Ready')} value={readyCount} color='blue' />
             <ImportMetric
               label={t('Imported')}
               value={checkItems.length || getCreatedCount(runResult)}
+              color='green'
             />
-            <ImportMetric label={t('Needs review')} value={reviewCount} />
+            <ImportMetric
+              label={t('Needs review')}
+              value={reviewCount}
+              color={reviewCount > 0 ? 'amber' : 'default'}
+            />
             <ImportMetric
               label={t('Checks')}
               value={
@@ -864,6 +919,7 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                     item.channelStatus !== 'pending'
                 ).length
               }
+              color='default'
             />
           </div>
         </div>
@@ -872,14 +928,16 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
       <div className='grid gap-4 xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.12fr)]'>
         <div className='bg-background overflow-hidden rounded-lg border shadow-sm'>
           <div className='border-border/70 flex items-center justify-between gap-3 border-b px-4 py-3'>
-            <div className='flex min-w-0 items-center gap-2'>
-              <ClipboardList className='text-primary size-4' />
-              <h4 className='truncate text-sm font-medium'>
+            <div className='flex min-w-0 items-center gap-2.5'>
+              <span className='bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-lg'>
+                <ClipboardList className='size-3.5' />
+              </span>
+              <h4 className='truncate text-sm font-semibold'>
                 {t('Credential Content')}
               </h4>
             </div>
             {fileName && (
-              <span className='text-muted-foreground max-w-48 truncate text-xs'>
+              <span className='text-muted-foreground max-w-48 truncate rounded-md border px-2 py-0.5 font-mono text-xs'>
                 {fileName}
               </span>
             )}
@@ -985,20 +1043,50 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
           checking={checking}
           loading={loadingImported}
           autoMonitor={autoMonitor}
+          applyingGroup={applyingGroup}
+          groupOptions={groupOptions}
           onRefresh={() => loadImportedChannels()}
           onRunChecks={() => runPostImportChecks()}
           onToggleAutoMonitor={handleToggleAutoMonitor}
+          onApplyGroup={handleApplyGroup}
         />
       </div>
     </section>
   )
 }
 
-function ImportMetric({ label, value }: { label: string; value: number }) {
+const METRIC_COLOR_MAP = {
+  blue: 'border-blue-200/80 bg-blue-50/60 dark:border-blue-900/40 dark:bg-blue-950/20',
+  green:
+    'border-emerald-200/80 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20',
+  amber:
+    'border-amber-200/80 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20',
+  default: 'bg-muted/30',
+}
+const METRIC_VALUE_COLOR_MAP = {
+  blue: 'text-blue-700 dark:text-blue-300',
+  green: 'text-emerald-700 dark:text-emerald-300',
+  amber: 'text-amber-700 dark:text-amber-300',
+  default: '',
+}
+
+function ImportMetric({
+  label,
+  value,
+  color = 'default',
+}: {
+  label: string
+  value: number
+  color?: 'blue' | 'green' | 'amber' | 'default'
+}) {
   return (
-    <div className='bg-muted/30 rounded-lg border px-3 py-2'>
+    <div className={`rounded-lg border px-3 py-2 ${METRIC_COLOR_MAP[color]}`}>
       <div className='text-muted-foreground text-xs'>{label}</div>
-      <div className='mt-1 text-2xl font-semibold'>{value}</div>
+      <div
+        className={`mt-0.5 text-2xl font-bold tabular-nums ${METRIC_VALUE_COLOR_MAP[color]}`}
+      >
+        {value}
+      </div>
     </div>
   )
 }
@@ -1018,28 +1106,35 @@ function ImportPreviewAndErrors({
   return (
     <div className='grid gap-4 lg:grid-cols-2'>
       <div>
-        <div className='mb-2 flex items-center gap-2 text-sm font-medium'>
-          <ListChecks className='text-primary size-4' />
+        <div className='mb-2 flex items-center gap-1.5 text-sm font-medium'>
+          <ListChecks className='text-primary size-3.5' />
           {t('Import Preview')}
+          {buildResult?.previews.length ? (
+            <Badge variant='secondary' className='ml-1 rounded-md tabular-nums'>
+              {buildResult.previews.length}
+            </Badge>
+          ) : null}
         </div>
         <div className='max-h-56 overflow-auto rounded-lg border'>
           {buildResult?.previews.length ? (
             buildResult.previews.slice(0, 40).map((item) => (
               <div
                 key={`${item.index}-${item.name}`}
-                className='border-border/60 grid grid-cols-[3rem_1fr_auto] items-center gap-2 border-b px-3 py-2 text-xs last:border-b-0'
+                className='border-border/50 hover:bg-muted/30 grid grid-cols-[3rem_1fr_auto] items-center gap-2 border-b px-3 py-2 text-xs transition-colors last:border-b-0'
               >
-                <span className='text-muted-foreground'>#{item.index + 1}</span>
+                <span className='text-muted-foreground font-mono'>
+                  #{item.index + 1}
+                </span>
                 <span className='min-w-0 truncate font-medium'>
                   {item.name}
                 </span>
-                <Badge variant='outline' className='rounded-md'>
+                <Badge variant='outline' className='rounded-md font-normal'>
                   {item.platform}
                 </Badge>
               </div>
             ))
           ) : (
-            <div className='text-muted-foreground flex h-24 items-center justify-center px-4 text-center text-sm'>
+            <div className='text-muted-foreground flex h-20 items-center justify-center px-4 text-center text-sm'>
               {t('No preview yet')}
             </div>
           )}
@@ -1047,17 +1142,32 @@ function ImportPreviewAndErrors({
       </div>
 
       <div>
-        <div className='mb-2 flex items-center gap-2 text-sm font-medium'>
-          <AlertTriangle className='size-4 text-amber-500' />
+        <div className='mb-2 flex items-center gap-1.5 text-sm font-medium'>
+          <AlertTriangle className='size-3.5 text-amber-500' />
           {t('Import errors')}
+          {errors.length > 0 && (
+            <Badge
+              variant='outline'
+              className='ml-1 rounded-md border-amber-300 text-amber-700 tabular-nums dark:border-amber-700 dark:text-amber-400'
+            >
+              {errors.length}
+            </Badge>
+          )}
         </div>
         <div className='max-h-56 overflow-auto rounded-lg border border-amber-200/70 bg-amber-50/60 p-3 font-mono text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200'>
           {errors.length ? (
-            errors.map((item) => (
-              <div key={`${item.index}-${item.name}-${item.message}`}>
-                #{item.index + 1} {item.name || '-'}: {item.message}
-              </div>
-            ))
+            <div className='space-y-1'>
+              {errors.map((item) => (
+                <div
+                  key={`${item.index}-${item.name}-${item.message}`}
+                  className='leading-relaxed'
+                >
+                  <span className='opacity-60'>#{item.index + 1}</span>{' '}
+                  <span className='font-medium'>{item.name || '-'}</span>
+                  <span className='opacity-70'>: {item.message}</span>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className='text-muted-foreground flex h-16 items-center justify-center font-sans text-sm'>
               {t('No import errors')}
@@ -1082,98 +1192,170 @@ function ImportedChannelsPanel({
   checking,
   loading,
   autoMonitor,
+  applyingGroup,
+  groupOptions,
   onRefresh,
   onRunChecks,
   onToggleAutoMonitor,
+  onApplyGroup,
 }: {
   items: ImportedChannelCheck[]
   checking: boolean
   loading: boolean
   autoMonitor: boolean
+  applyingGroup: boolean
+  groupOptions: string[]
   onRefresh: () => void
   onRunChecks: () => void
   onToggleAutoMonitor: () => void
+  onApplyGroup: (group: string) => Promise<void>
 }) {
   const { t } = useTranslation()
+  const [groupInput, setGroupInput] = useState('')
+  const groupListId = 'group-options-list'
 
   return (
     <div className='bg-background flex min-h-[720px] min-w-0 flex-col overflow-hidden rounded-lg border shadow-sm'>
-      <div className='border-border/70 flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between'>
-        <div className='flex min-w-0 items-center gap-2'>
-          <Database className='text-primary size-4' />
-          <div className='min-w-0'>
-            <h4 className='truncate text-sm font-medium'>
-              {t('Imported Channels')}
-            </h4>
-            <p className='text-muted-foreground text-xs'>
-              {t('Channel account information')}
-            </p>
+      {/* Panel header */}
+      <div className='border-border/70 border-b px-4 py-3'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='flex min-w-0 items-center gap-2.5'>
+            <span className='bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg'>
+              <Database className='size-4' />
+            </span>
+            <div className='min-w-0'>
+              <div className='flex items-center gap-2'>
+                <h4 className='truncate text-sm font-semibold'>
+                  {t('Imported Channels')}
+                </h4>
+                <Badge variant='secondary' className='rounded-md tabular-nums'>
+                  {items.length}
+                </Badge>
+                <StatusBadge
+                  label={t(autoMonitor ? 'Enabled' : 'Disabled')}
+                  variant={autoMonitor ? 'success' : 'neutral'}
+                  size='sm'
+                  copyable={false}
+                />
+              </div>
+              <p className='text-muted-foreground text-xs'>
+                {t('Channel account information')}
+              </p>
+            </div>
           </div>
-          <Badge variant='secondary' className='rounded-md'>
-            {items.length}
-          </Badge>
-          <StatusBadge
-            label={t(autoMonitor ? 'Enabled' : 'Disabled')}
-            variant={autoMonitor ? 'success' : 'neutral'}
-            size='sm'
-            copyable={false}
-          />
-        </div>
-        <div className='flex flex-wrap gap-2'>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            onClick={onRefresh}
-            disabled={loading || checking}
-          >
-            {loading ? (
-              <Loader2 className='size-3.5 animate-spin' />
-            ) : (
-              <RefreshCw className='size-3.5' />
-            )}
-            {t('Refresh list')}
-          </Button>
-          <Button
-            type='button'
-            variant={autoMonitor ? 'secondary' : 'outline'}
-            size='sm'
-            onClick={onToggleAutoMonitor}
-            disabled={loading || checking || items.length === 0}
-          >
-            {autoMonitor ? t('Stop monitor') : t('Start monitor')}
-          </Button>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            onClick={onRunChecks}
-            disabled={checking || loading || items.length === 0}
-          >
-            {checking ? (
-              <Loader2 className='size-3.5 animate-spin' />
-            ) : (
-              <RefreshCw className='size-3.5' />
-            )}
-            {t('Run checks')}
-          </Button>
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={onRefresh}
+              disabled={loading || checking}
+            >
+              {loading ? (
+                <Loader2 className='size-3.5 animate-spin' />
+              ) : (
+                <RefreshCw className='size-3.5' />
+              )}
+              {t('Refresh list')}
+            </Button>
+            <Button
+              type='button'
+              variant={autoMonitor ? 'secondary' : 'outline'}
+              size='sm'
+              onClick={onToggleAutoMonitor}
+              disabled={loading || checking || items.length === 0}
+            >
+              {autoMonitor ? t('Stop monitor') : t('Start monitor')}
+            </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={onRunChecks}
+              disabled={checking || loading || items.length === 0}
+            >
+              {checking ? (
+                <Loader2 className='size-3.5 animate-spin' />
+              ) : (
+                <RefreshCw className='size-3.5' />
+              )}
+              {t('Run checks')}
+            </Button>
+          </div>
         </div>
       </div>
 
-      {loading ? (
-        <div className='text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center'>
-          <Loader2 className='size-6 animate-spin' />
-          <div className='text-sm font-medium'>
-            {t('Loading imported channels')}
+      {/* One-click group configuration bar */}
+      {items.length > 0 && (
+        <div className='border-border/70 bg-muted/20 flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center'>
+          <div className='flex min-w-0 items-center gap-2'>
+            <Layers3 className='text-muted-foreground size-4 shrink-0' />
+            <span className='text-sm font-medium'>{t('Batch set group')}</span>
+            <span className='text-muted-foreground text-xs'>
+              {t('Apply group to all {{count}} imported channels', {
+                count: items.filter((i) => i.channelId).length,
+              })}
+            </span>
+          </div>
+          <div className='flex min-w-0 flex-1 items-center gap-2 sm:justify-end'>
+            <div className='relative min-w-0 flex-1 sm:max-w-48'>
+              <Tag className='text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2' />
+              <Input
+                list={groupListId}
+                value={groupInput}
+                onChange={(e) => setGroupInput(e.target.value)}
+                placeholder={t('Group name')}
+                className='h-8 pl-8 text-sm'
+                disabled={applyingGroup || items.length === 0}
+              />
+              <datalist id={groupListId}>
+                {groupOptions.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+            </div>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              disabled={
+                applyingGroup ||
+                !groupInput.trim() ||
+                items.filter((i) => i.channelId).length === 0
+              }
+              onClick={() => onApplyGroup(groupInput.trim())}
+              className='shrink-0'
+            >
+              {applyingGroup ? (
+                <Loader2 className='size-3.5 animate-spin' />
+              ) : (
+                <Layers3 className='size-3.5' />
+              )}
+              {applyingGroup ? t('Applying...') : t('Apply to all')}
+            </Button>
           </div>
         </div>
-      ) : items.length === 0 ? (
+      )}
+
+      {loading ? (
         <div className='text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center'>
-          <div className='bg-muted/60 flex size-12 items-center justify-center rounded-lg'>
-            <Server className='size-6' />
+          <Loader2 className='size-7 animate-spin opacity-60' />
+          <p className='text-sm font-medium'>
+            {t('Loading imported channels')}
+          </p>
+        </div>
+      ) : items.length === 0 ? (
+        <div className='text-muted-foreground flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center'>
+          <div className='bg-muted/50 flex size-14 items-center justify-center rounded-xl border'>
+            <Server className='size-6 opacity-50' />
           </div>
-          <div className='text-sm font-medium'>
-            {t('No imported channels yet')}
+          <div>
+            <p className='text-foreground/70 text-sm font-medium'>
+              {t('No imported channels yet')}
+            </p>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {t('Import credentials on the left to get started')}
+            </p>
           </div>
         </div>
       ) : (
@@ -1290,21 +1472,22 @@ function ChannelIdentity({ item }: { item: ImportedChannelCheck }) {
   const statusMeta = getChannelStatusMeta(item.status)
 
   return (
-    <div className='min-w-0 space-y-1'>
-      <div className='flex min-w-0 items-center gap-2'>
-        <span className='truncate font-medium'>{item.name}</span>
+    <div className='min-w-0 space-y-1.5'>
+      <div className='flex min-w-0 items-center gap-1.5'>
+        <span className='truncate text-sm font-semibold'>{item.name}</span>
         {item.channelId && (
-          <span className='text-muted-foreground font-mono text-xs'>
+          <span className='text-muted-foreground shrink-0 font-mono text-xs'>
             #{item.channelId}
           </span>
         )}
       </div>
-      <div className='flex flex-wrap items-center gap-1.5'>
-        <Badge variant='outline' className='rounded-md'>
+      <div className='flex flex-wrap items-center gap-1'>
+        <Badge variant='outline' className='rounded-md text-xs font-normal'>
           {item.platform || '-'}
         </Badge>
         {item.group && (
-          <Badge variant='secondary' className='rounded-md'>
+          <Badge variant='secondary' className='rounded-md text-xs font-normal'>
+            <Tag className='mr-1 size-2.5 opacity-70' />
             {item.group}
           </Badge>
         )}

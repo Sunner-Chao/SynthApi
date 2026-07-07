@@ -992,8 +992,17 @@ func EditTagChannels(c *gin.Context) {
 }
 
 type ChannelBatch struct {
-	Ids []int   `json:"ids"`
-	Tag *string `json:"tag"`
+	Ids            []int    `json:"ids"`
+	Fields         []string `json:"fields"`
+	Tag            *string  `json:"tag"`
+	Group          string   `json:"group"`
+	Groups         *string  `json:"groups"`
+	Models         *string  `json:"models"`
+	ModelMapping   *string  `json:"model_mapping"`
+	Priority       *int64   `json:"priority"`
+	Weight         *uint    `json:"weight"`
+	ParamOverride  *string  `json:"param_override"`
+	HeaderOverride *string  `json:"header_override"`
 }
 
 func DeleteChannelBatch(c *gin.Context) {
@@ -1288,6 +1297,89 @@ func BatchSetChannelTag(c *gin.Context) {
 		return
 	}
 	err = model.BatchSetChannelTag(channelBatch.Ids, channelBatch.Tag)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(channelBatch.Ids),
+	})
+	return
+}
+
+func BatchSetChannelGroup(c *gin.Context) {
+	channelBatch := ChannelBatch{}
+	err := c.ShouldBindJSON(&channelBatch)
+	if err != nil || len(channelBatch.Ids) == 0 || strings.TrimSpace(channelBatch.Group) == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+	err = model.BatchSetChannelGroup(channelBatch.Ids, channelBatch.Group)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(channelBatch.Ids),
+	})
+	return
+}
+
+func BatchUpdateChannels(c *gin.Context) {
+	channelBatch := ChannelBatch{}
+	err := c.ShouldBindJSON(&channelBatch)
+	if err != nil || len(channelBatch.Ids) == 0 || len(channelBatch.Fields) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+	if channelBatch.ParamOverride != nil {
+		trimmed := strings.TrimSpace(*channelBatch.ParamOverride)
+		if trimmed != "" && !json.Valid([]byte(trimmed)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "参数覆盖必须是合法的 JSON 格式",
+			})
+			return
+		}
+		channelBatch.ParamOverride = common.GetPointer[string](trimmed)
+	}
+	if channelBatch.HeaderOverride != nil {
+		trimmed := strings.TrimSpace(*channelBatch.HeaderOverride)
+		if trimmed != "" && !json.Valid([]byte(trimmed)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "请求头覆盖必须是合法的 JSON 格式",
+			})
+			return
+		}
+		channelBatch.HeaderOverride = common.GetPointer[string](trimmed)
+	}
+	err = model.BatchUpdateChannels(
+		channelBatch.Ids,
+		channelBatch.Fields,
+		model.ChannelBatchUpdate{
+			Tag:            channelBatch.Tag,
+			Models:         channelBatch.Models,
+			ModelMapping:   channelBatch.ModelMapping,
+			Groups:         channelBatch.Groups,
+			Priority:       channelBatch.Priority,
+			Weight:         channelBatch.Weight,
+			ParamOverride:  channelBatch.ParamOverride,
+			HeaderOverride: channelBatch.HeaderOverride,
+		},
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return

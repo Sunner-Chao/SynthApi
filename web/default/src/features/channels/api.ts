@@ -22,7 +22,9 @@ import type {
   AddChannelRequest,
   AddChannelResponse,
   BatchDeleteParams,
+  BatchSetGroupParams,
   BatchSetTagParams,
+  BatchUpdateChannelsParams,
   Channel,
   ChannelBalanceResponse,
   ChannelTestResponse,
@@ -200,6 +202,34 @@ export async function batchSetChannelTag(
 ): Promise<{ success: boolean; message?: string; data?: number }> {
   const res = await api.post(
     '/api/channel/batch/tag',
+    data,
+    channelActionConfig()
+  )
+  return res.data
+}
+
+/**
+ * Batch set group for channels
+ */
+export async function batchSetChannelGroup(
+  data: BatchSetGroupParams
+): Promise<{ success: boolean; message?: string; data?: number }> {
+  const res = await api.post(
+    '/api/channel/batch/group',
+    data,
+    channelActionConfig()
+  )
+  return res.data
+}
+
+/**
+ * Batch update selected channel fields
+ */
+export async function batchUpdateChannels(
+  data: BatchUpdateChannelsParams
+): Promise<{ success: boolean; message?: string; data?: number }> {
+  const res = await api.post(
+    '/api/channel/batch/update',
     data,
     channelActionConfig()
   )

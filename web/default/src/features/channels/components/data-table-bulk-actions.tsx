@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type Table } from '@tanstack/react-table'
-import { Power, PowerOff, Tag, Trash2 } from 'lucide-react'
+import { PencilLine, Power, PowerOff, Tag, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,6 +45,7 @@ import {
   handleBatchSetTag,
 } from '../lib'
 import type { Channel } from '../types'
+import { SelectedChannelsBatchEditDialog } from './dialogs/selected-channels-batch-edit-dialog'
 
 interface DataTableBulkActionsProps<TData> {
   table: Table<TData>
@@ -55,11 +56,12 @@ export function DataTableBulkActions<TData>({
 }: DataTableBulkActionsProps<TData>) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [showBatchEditDialog, setShowBatchEditDialog] = useState(false)
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [tagValue, setTagValue] = useState('')
 
-  const selectedRows = table.getFilteredSelectedRowModel().rows
+  const selectedRows = table.getSelectedRowModel().rows
   const selectedIds = selectedRows.reduce<number[]>((ids, row) => {
     const id = (row.original as Channel).id
 
@@ -100,6 +102,27 @@ export function DataTableBulkActions<TData>({
   return (
     <>
       <BulkActionsToolbar table={table} entityName='channel'>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant='outline'
+                size='icon'
+                onClick={() => setShowBatchEditDialog(true)}
+                className='size-8'
+                aria-label={t('Batch edit selected channels')}
+                title={t('Batch edit selected channels')}
+              />
+            }
+          >
+            <PencilLine />
+            <span className='sr-only'>{t('Batch edit selected channels')}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t('Batch edit selected channels')}</p>
+          </TooltipContent>
+        </Tooltip>
+
         <Tooltip>
           <TooltipTrigger
             render={
@@ -186,6 +209,13 @@ export function DataTableBulkActions<TData>({
           </TooltipContent>
         </Tooltip>
       </BulkActionsToolbar>
+
+      <SelectedChannelsBatchEditDialog
+        open={showBatchEditDialog}
+        onOpenChange={setShowBatchEditDialog}
+        selectedIds={selectedIds}
+        onSuccess={handleClearSelection}
+      />
 
       {/* Set Tag Dialog */}
       <Dialog open={showTagDialog} onOpenChange={setShowTagDialog}>

@@ -282,6 +282,33 @@ export interface BatchSetTagParams {
   tag: string | null
 }
 
+export interface BatchSetGroupParams {
+  ids: number[]
+  group: string
+}
+
+export interface BatchUpdateChannelsParams {
+  ids: number[]
+  fields: Array<
+    | 'tag'
+    | 'models'
+    | 'model_mapping'
+    | 'groups'
+    | 'priority'
+    | 'weight'
+    | 'param_override'
+    | 'header_override'
+  >
+  tag?: string | null
+  models?: string
+  model_mapping?: string
+  groups?: string
+  priority?: number
+  weight?: number
+  param_override?: string
+  header_override?: string
+}
+
 export interface TagOperationParams {
   tag: string
   new_tag?: string

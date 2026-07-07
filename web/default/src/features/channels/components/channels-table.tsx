@@ -300,6 +300,8 @@ export function ChannelsTable() {
     onPaginationChange,
     onExpandedChange: setExpanded,
     onGlobalFilterChange,
+    getRowId: (row) =>
+      isTagAggregateRow(row) ? `tag-${row.tag || row.name}` : String(row.id),
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getSubRows: (row: Channel & { children?: Channel[] }) => row.children,

@@ -2,8 +2,12 @@ package dto
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 )
+
+var importedAccountQuotaPercentPattern = regexp.MustCompile(`(?i)(5\s*h|5-hour|5\s*hour|7\s*d|7-day|7\s*day|weekly)\D{0,12}([0-9]+(?:\.[0-9]+)?)\s*%`)
 
 type ChannelSettings struct {
 	ForceFormat            bool   `json:"force_format,omitempty"`
@@ -87,6 +91,9 @@ func importedAccountQuotaMessageLooksLow(message string) bool {
 	if message == "" {
 		return false
 	}
+	if importedAccountQuotaMessagePercentLooksLow(message) {
+		return true
+	}
 	lowQuotaKeywords := []string{
 		"quota exhausted",
 		"quota exceeded",
@@ -112,6 +119,23 @@ func importedAccountQuotaMessageLooksLow(message string) bool {
 	}
 	for _, keyword := range lowQuotaKeywords {
 		if strings.Contains(message, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func importedAccountQuotaMessagePercentLooksLow(message string) bool {
+	matches := importedAccountQuotaPercentPattern.FindAllStringSubmatch(message, -1)
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+		percent, err := strconv.ParseFloat(match[2], 64)
+		if err != nil {
+			continue
+		}
+		if percent >= 95 {
 			return true
 		}
 	}

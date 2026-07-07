@@ -1058,6 +1058,127 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	return tx.Commit().Error
 }
 
+func BatchSetChannelGroup(ids []int, group string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return errors.New("group cannot be empty")
+	}
+
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	for _, chunk := range lo.Chunk(ids, 200) {
+		if err := tx.Model(&Channel{}).Where("id in (?)", chunk).Update("group", group).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		var channels []*Channel
+		if err := tx.Where("id in (?)", chunk).Find(&channels).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		for _, channel := range channels {
+			if err := channel.UpdateAbilities(tx); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+	}
+
+	return tx.Commit().Error
+}
+
+type ChannelBatchUpdate struct {
+	Tag            *string
+	Models         *string
+	ModelMapping   *string
+	Groups         *string
+	Priority       *int64
+	Weight         *uint
+	ParamOverride  *string
+	HeaderOverride *string
+}
+
+func BatchUpdateChannels(ids []int, fields []string, update ChannelBatchUpdate) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if len(fields) == 0 {
+		return errors.New("fields cannot be empty")
+	}
+
+	updateData := map[string]interface{}{}
+	for _, field := range fields {
+		switch field {
+		case "tag":
+			updateData["tag"] = update.Tag
+		case "models":
+			if update.Models == nil {
+				return errors.New("models cannot be empty")
+			}
+			updateData["models"] = *update.Models
+		case "model_mapping":
+			updateData["model_mapping"] = update.ModelMapping
+		case "groups":
+			if update.Groups == nil || strings.TrimSpace(*update.Groups) == "" {
+				return errors.New("group cannot be empty")
+			}
+			updateData["group"] = strings.TrimSpace(*update.Groups)
+		case "priority":
+			if update.Priority == nil {
+				return errors.New("priority cannot be empty")
+			}
+			updateData["priority"] = *update.Priority
+		case "weight":
+			if update.Weight == nil {
+				return errors.New("weight cannot be empty")
+			}
+			updateData["weight"] = *update.Weight
+		case "param_override":
+			updateData["param_override"] = update.ParamOverride
+		case "header_override":
+			updateData["header_override"] = update.HeaderOverride
+		default:
+			return fmt.Errorf("unsupported batch update field: %s", field)
+		}
+	}
+	if len(updateData) == 0 {
+		return errors.New("fields cannot be empty")
+	}
+
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	for _, chunk := range lo.Chunk(ids, 200) {
+		if err := tx.Model(&Channel{}).Where("id in (?)", chunk).Updates(updateData).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		var channels []*Channel
+		if err := tx.Where("id in (?)", chunk).Find(&channels).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		for _, channel := range channels {
+			if err := channel.UpdateAbilities(tx); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+	}
+
+	return tx.Commit().Error
+}
+
 // CountAllChannels returns total channels in DB
 func CountAllChannels() (int64, error) {
 	var total int64

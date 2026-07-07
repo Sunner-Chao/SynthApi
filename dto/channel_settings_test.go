@@ -32,6 +32,9 @@ func TestImportedAccountMonitorLowQuota(t *testing.T) {
 	settings.ImportedAccountMonitor["quota_message"] = "5h 12% · 7d 20%"
 	require.False(t, settings.ImportedAccountMonitorLowQuota())
 
+	settings.ImportedAccountMonitor["quota_message"] = "5h 96% · 7d 20%"
+	require.True(t, settings.ImportedAccountMonitorLowQuota())
+
 	settings.ImportedAccountMonitor["quota_status"] = "exhausted"
 	require.True(t, settings.ImportedAccountMonitorLowQuota())
 }
