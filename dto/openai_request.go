@@ -196,6 +196,69 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	return &tokenCountMeta
 }
 
+func (r *GeneralOpenAIRequest) GetSensitiveCheckText() string {
+	texts := make([]string, 0)
+
+	if r.Prompt != nil {
+		texts = append(texts, promptAnyToSensitiveTexts(r.Prompt)...)
+	}
+
+	if r.Input != nil {
+		texts = append(texts, r.ParseInput()...)
+	}
+
+	if strings.TrimSpace(r.Instruction) != "" {
+		texts = append(texts, r.Instruction)
+	}
+
+	if r.Prefix != nil {
+		texts = append(texts, promptAnyToSensitiveTexts(r.Prefix)...)
+	}
+
+	if r.Suffix != nil {
+		texts = append(texts, promptAnyToSensitiveTexts(r.Suffix)...)
+	}
+
+	for _, message := range r.Messages {
+		if message.Role != "user" {
+			continue
+		}
+		for _, m := range message.ParseContent() {
+			if m.Type == ContentTypeText && strings.TrimSpace(m.Text) != "" {
+				texts = append(texts, m.Text)
+			}
+		}
+	}
+
+	return strings.Join(texts, "\n")
+}
+
+func promptAnyToSensitiveTexts(prompt any) []string {
+	switch v := prompt.(type) {
+	case nil:
+		return nil
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil
+		}
+		return []string{v}
+	case []any:
+		texts := make([]string, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok && strings.TrimSpace(str) != "" {
+				texts = append(texts, str)
+			}
+		}
+		return texts
+	default:
+		text := fmt.Sprintf("%v", v)
+		if strings.TrimSpace(text) == "" {
+			return nil
+		}
+		return []string{text}
+	}
+}
+
 func (r *GeneralOpenAIRequest) IsStream(c *gin.Context) bool {
 	return lo.FromPtrOr(r.Stream, false)
 }
@@ -942,6 +1005,53 @@ func (r *OpenAIResponsesRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	}
 }
 
+func (r *OpenAIResponsesRequest) GetSensitiveCheckText() string {
+	texts := make([]string, 0)
+
+	if r.Input != nil {
+		inputs := r.ParseInput()
+		for _, input := range inputs {
+			if input.Type != "input_text" || strings.TrimSpace(input.Text) == "" {
+				continue
+			}
+			if input.Role == "" || input.Role == "user" {
+				texts = append(texts, input.Text)
+			}
+		}
+	}
+
+	if len(r.Prompt) > 0 {
+		texts = append(texts, rawJSONTextForSensitiveCheck(r.Prompt)...)
+	}
+
+	return strings.Join(texts, "\n")
+}
+
+func rawJSONTextForSensitiveCheck(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	switch common.GetJsonType(raw) {
+	case "string":
+		var value string
+		if err := common.Unmarshal(raw, &value); err == nil && strings.TrimSpace(value) != "" {
+			return []string{value}
+		}
+	case "array":
+		var values []string
+		if err := common.Unmarshal(raw, &values); err == nil {
+			result := make([]string, 0, len(values))
+			for _, value := range values {
+				if strings.TrimSpace(value) != "" {
+					result = append(result, value)
+				}
+			}
+			return result
+		}
+	}
+	return nil
+}
+
 func (r *OpenAIResponsesRequest) IsStream(c *gin.Context) bool {
 	return lo.FromPtrOr(r.Stream, false)
 }
@@ -973,6 +1083,7 @@ type Input struct {
 
 type MediaInput struct {
 	Type     string `json:"type"`
+	Role     string `json:"role,omitempty"`
 	Text     string `json:"text,omitempty"`
 	FileUrl  string `json:"file_url,omitempty"`
 	FileData string `json:"file_data,omitempty"`
@@ -1014,7 +1125,7 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 			if common.GetJsonType(input.Content) == "string" {
 				var str string
 				_ = common.Unmarshal(input.Content, &str)
-				mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: str})
+				mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Role: input.Role, Text: str})
 			}
 
 			if common.GetJsonType(input.Content) == "array" {
@@ -1040,7 +1151,7 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 					switch typeVal {
 					case "input_text":
 						text, _ := item["text"].(string)
-						mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: text})
+						mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Role: input.Role, Text: text})
 					case "input_image":
 						// image_url may be string or object with url field
 						var imageUrl string
@@ -1052,7 +1163,7 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 								imageUrl = url
 							}
 						}
-						mediaInputs = append(mediaInputs, MediaInput{Type: "input_image", ImageUrl: imageUrl})
+						mediaInputs = append(mediaInputs, MediaInput{Type: "input_image", Role: input.Role, ImageUrl: imageUrl})
 					case "input_file":
 						// file_url may be string or object with url field; file_data/file_id
 						// are accepted by compatibility conversion paths.
@@ -1076,6 +1187,7 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 						}
 						mediaInputs = append(mediaInputs, MediaInput{
 							Type:     "input_file",
+							Role:     input.Role,
 							FileUrl:  fileUrl,
 							FileData: fileData,
 							FileId:   fileId,

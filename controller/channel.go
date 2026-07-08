@@ -741,6 +741,7 @@ func AddChannel(c *gin.Context) {
 		})
 		return
 	}
+	addChannelRequest.Channel.Group = model.NormalizeChannelGroups(addChannelRequest.Channel.Group)
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
@@ -1313,7 +1314,8 @@ func BatchSetChannelTag(c *gin.Context) {
 func BatchSetChannelGroup(c *gin.Context) {
 	channelBatch := ChannelBatch{}
 	err := c.ShouldBindJSON(&channelBatch)
-	if err != nil || len(channelBatch.Ids) == 0 || strings.TrimSpace(channelBatch.Group) == "" {
+	channelBatch.Group = model.NormalizeChannelGroups(channelBatch.Group)
+	if err != nil || len(channelBatch.Ids) == 0 || channelBatch.Group == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "参数错误",

@@ -191,8 +191,15 @@ func InitOptionMap() {
 	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(operation_setting.SelfUseModeEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
+	common.OptionMap["SensitiveNotifyAdminEmailEnabled"] = strconv.FormatBool(setting.SensitiveNotifyAdminEmailEnabled)
+	common.OptionMap["SensitiveNotifyUserEmailEnabled"] = strconv.FormatBool(setting.SensitiveNotifyUserEmailEnabled)
+	common.OptionMap["SensitiveRiskScanEnabled"] = strconv.FormatBool(setting.SensitiveRiskScanEnabled)
+	common.OptionMap["SensitiveRiskThreshold"] = strconv.Itoa(setting.SensitiveRiskThreshold)
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
 	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
+	common.OptionMap["SensitiveIntentRules"] = setting.SensitiveIntentRules
+	common.OptionMap["SensitiveRegexRules"] = setting.SensitiveRegexRules
+	common.OptionMap["SensitiveRiskAllowRules"] = setting.SensitiveRiskAllowRules
 	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(setting.StreamCacheQueueLength)
 	common.OptionMap["AutomaticDisableKeywords"] = operation_setting.AutomaticDisableKeywordsToString()
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
@@ -402,6 +409,12 @@ func updateOptionMap(key string, value string) (err error) {
 			operation_setting.SelfUseModeEnabled = boolValue
 		case "CheckSensitiveOnPromptEnabled":
 			setting.CheckSensitiveOnPromptEnabled = boolValue
+		case "SensitiveNotifyAdminEmailEnabled":
+			setting.SensitiveNotifyAdminEmailEnabled = boolValue
+		case "SensitiveNotifyUserEmailEnabled":
+			setting.SensitiveNotifyUserEmailEnabled = boolValue
+		case "SensitiveRiskScanEnabled":
+			setting.SensitiveRiskScanEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":
 			setting.ModelRequestRateLimitEnabled = boolValue
 		case "StopOnSensitiveEnabled":
@@ -660,6 +673,14 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaPerUnit, _ = strconv.ParseFloat(value, 64)
 	case "SensitiveWords":
 		setting.SensitiveWordsFromString(value)
+	case "SensitiveIntentRules":
+		setting.SensitiveIntentRulesFromString(value)
+	case "SensitiveRegexRules":
+		setting.SensitiveRegexRulesFromString(value)
+	case "SensitiveRiskAllowRules":
+		setting.SensitiveRiskAllowRulesFromString(value)
+	case "SensitiveRiskThreshold":
+		setting.SensitiveRiskThreshold, _ = strconv.Atoi(value)
 	case "AutomaticDisableKeywords":
 		operation_setting.AutomaticDisableKeywordsFromString(value)
 	case "AutomaticDisableStatusCodes":

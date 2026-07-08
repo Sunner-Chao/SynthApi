@@ -45,6 +45,7 @@ import {
   Server,
   Tag,
   UploadCloud,
+  ChevronDown,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -52,13 +53,19 @@ import { formatTimestampToDate } from '@/lib/format'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -379,6 +386,10 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   const [loadingImported, setLoadingImported] = useState(false)
   const [autoMonitor, setAutoMonitor] = useState(false)
   const [applyingGroup, setApplyingGroup] = useState(false)
+  const [selectedImportedKeys, setSelectedImportedKeys] = useState<Set<string>>(
+    () => new Set()
+  )
+  const [mobileTab, setMobileTab] = useState<'import' | 'channels'>('import')
 
   const { data: groupsData } = useQuery({
     queryKey: ['groups'],
@@ -456,6 +467,59 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   useEffect(() => {
     void loadImportedChannels()
   }, [loadImportedChannels])
+
+  useEffect(() => {
+    setSelectedImportedKeys((previous) => {
+      if (previous.size === 0) return previous
+
+      const selectableKeys = new Set(
+        checkItems.filter((item) => item.channelId).map((item) => item.key)
+      )
+      let changed = false
+      const next = new Set<string>()
+
+      previous.forEach((key) => {
+        if (selectableKeys.has(key)) {
+          next.add(key)
+        } else {
+          changed = true
+        }
+      })
+
+      return changed ? next : previous
+    })
+  }, [checkItems])
+
+  const handleToggleImportedSelected = useCallback(
+    (key: string, selected: boolean) => {
+      setSelectedImportedKeys((previous) => {
+        const next = new Set(previous)
+        if (selected) {
+          next.add(key)
+        } else {
+          next.delete(key)
+        }
+        return next
+      })
+    },
+    []
+  )
+
+  const handleToggleAllImported = useCallback(
+    (selected: boolean) => {
+      if (!selected) {
+        setSelectedImportedKeys(new Set())
+        return
+      }
+
+      setSelectedImportedKeys(
+        new Set(
+          checkItems.filter((item) => item.channelId).map((item) => item.key)
+        )
+      )
+    },
+    [checkItems]
+  )
 
   const persistMonitorSnapshot = useCallback(
     async (
@@ -722,15 +786,17 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
 
   const handleApplyGroup = useCallback(
     async (group: string) => {
-      const targets = checkItems.filter((item) => item.channelId)
+      const targets = checkItems.filter(
+        (item) => item.channelId && selectedImportedKeys.has(item.key)
+      )
       if (targets.length === 0) {
-        toast.error(t('No imported channels to update'))
+        toast.error(t('Select imported channels first'))
         return
       }
       setApplyingGroup(true)
       try {
         const response = await batchSetChannelGroup({
-          ids: targets.map((item) => item.channelId!),
+          ids: Array.from(new Set(targets.map((item) => item.channelId!))),
           group,
         })
         if (!response.success) {
@@ -751,7 +817,7 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
         setApplyingGroup(false)
       }
     },
-    [checkItems, queryClient, t, updateCheckItem]
+    [checkItems, queryClient, selectedImportedKeys, t, updateCheckItem]
   )
 
   const handleToggleAutoMonitor = useCallback(async () => {
@@ -862,6 +928,13 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     setImporting(false)
 
     if (created > 0) {
+      setSelectedImportedKeys(
+        new Set(
+          importedChannels
+            .filter((item) => item.channelId)
+            .map((item) => item.key)
+        )
+      )
       props.onImported?.()
       void runPostImportChecks(importedChannels)
     }
@@ -925,8 +998,45 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
         </div>
       </div>
 
+      {/* Mobile tab switcher — hidden on xl+ */}
+      <div className='xl:hidden'>
+        <div className='bg-muted flex rounded-lg p-1'>
+          <button
+            type='button'
+            onClick={() => setMobileTab('import')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+              mobileTab === 'import'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <ClipboardList className='size-3.5' />
+            {t('Credentials')}
+          </button>
+          <button
+            type='button'
+            onClick={() => setMobileTab('channels')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+              mobileTab === 'channels'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Database className='size-3.5' />
+            {t('Imported Channels')}
+            {checkItems.length > 0 && (
+              <span className='bg-primary/15 text-primary rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums'>
+                {checkItems.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
       <div className='grid gap-4 xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.12fr)]'>
-        <div className='bg-background overflow-hidden rounded-lg border shadow-sm'>
+        <div
+          className={`bg-background overflow-hidden rounded-lg border shadow-sm ${mobileTab !== 'import' ? 'hidden xl:block' : ''}`}
+        >
           <div className='border-border/70 flex items-center justify-between gap-3 border-b px-4 py-3'>
             <div className='flex min-w-0 items-center gap-2.5'>
               <span className='bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-lg'>
@@ -1038,18 +1148,23 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
           </div>
         </div>
 
-        <ImportedChannelsPanel
-          items={checkItems}
-          checking={checking}
-          loading={loadingImported}
-          autoMonitor={autoMonitor}
-          applyingGroup={applyingGroup}
-          groupOptions={groupOptions}
-          onRefresh={() => loadImportedChannels()}
-          onRunChecks={() => runPostImportChecks()}
-          onToggleAutoMonitor={handleToggleAutoMonitor}
-          onApplyGroup={handleApplyGroup}
-        />
+        <div className={mobileTab !== 'channels' ? 'hidden xl:block' : ''}>
+          <ImportedChannelsPanel
+            items={checkItems}
+            checking={checking}
+            loading={loadingImported}
+            autoMonitor={autoMonitor}
+            applyingGroup={applyingGroup}
+            groupOptions={groupOptions}
+            selectedKeys={selectedImportedKeys}
+            onRefresh={() => loadImportedChannels()}
+            onRunChecks={() => runPostImportChecks()}
+            onToggleAutoMonitor={handleToggleAutoMonitor}
+            onToggleSelected={handleToggleImportedSelected}
+            onToggleAll={handleToggleAllImported}
+            onApplyGroup={handleApplyGroup}
+          />
+        </div>
       </div>
     </section>
   )
@@ -1194,9 +1309,12 @@ function ImportedChannelsPanel({
   autoMonitor,
   applyingGroup,
   groupOptions,
+  selectedKeys,
   onRefresh,
   onRunChecks,
   onToggleAutoMonitor,
+  onToggleSelected,
+  onToggleAll,
   onApplyGroup,
 }: {
   items: ImportedChannelCheck[]
@@ -1205,14 +1323,38 @@ function ImportedChannelsPanel({
   autoMonitor: boolean
   applyingGroup: boolean
   groupOptions: string[]
+  selectedKeys: Set<string>
   onRefresh: () => void
   onRunChecks: () => void
   onToggleAutoMonitor: () => void
+  onToggleSelected: (key: string, selected: boolean) => void
+  onToggleAll: (selected: boolean) => void
   onApplyGroup: (group: string) => Promise<void>
 }) {
   const { t } = useTranslation()
-  const [groupInput, setGroupInput] = useState('')
-  const groupListId = 'group-options-list'
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
+  const selectableItems = items.filter((item) => item.channelId)
+  const selectedCount = selectableItems.filter((item) =>
+    selectedKeys.has(item.key)
+  ).length
+  const allSelected =
+    selectableItems.length > 0 && selectedCount === selectableItems.length
+  const someSelected = selectedCount > 0 && !allSelected
+  const groupSelectOptions = useMemo(
+    () => Array.from(new Set(groupOptions)).filter(Boolean),
+    [groupOptions]
+  )
+  const selectedGroupsLabel =
+    selectedGroups.length > 0 ? selectedGroups.join(', ') : t('Select groups')
+
+  const toggleSelectedGroup = useCallback((group: string, checked: boolean) => {
+    setSelectedGroups((current) => {
+      if (checked) {
+        return current.includes(group) ? current : [...current, group]
+      }
+      return current.filter((item) => item !== group)
+    })
+  }, [])
 
   return (
     <div className='bg-background flex min-h-[720px] min-w-0 flex-col overflow-hidden rounded-lg border shadow-sm'>
@@ -1285,54 +1427,125 @@ function ImportedChannelsPanel({
         </div>
       </div>
 
-      {/* One-click group configuration bar */}
+      {/* Batch group configuration */}
       {items.length > 0 && (
-        <div className='border-border/70 bg-muted/20 flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center'>
-          <div className='flex min-w-0 items-center gap-2'>
-            <Layers3 className='text-muted-foreground size-4 shrink-0' />
-            <span className='text-sm font-medium'>{t('Batch set group')}</span>
-            <span className='text-muted-foreground text-xs'>
-              {t('Apply group to all {{count}} imported channels', {
-                count: items.filter((i) => i.channelId).length,
-              })}
-            </span>
-          </div>
-          <div className='flex min-w-0 flex-1 items-center gap-2 sm:justify-end'>
-            <div className='relative min-w-0 flex-1 sm:max-w-48'>
-              <Tag className='text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2' />
-              <Input
-                list={groupListId}
-                value={groupInput}
-                onChange={(e) => setGroupInput(e.target.value)}
-                placeholder={t('Group name')}
-                className='h-8 pl-8 text-sm'
-                disabled={applyingGroup || items.length === 0}
-              />
-              <datalist id={groupListId}>
-                {groupOptions.map((g) => (
-                  <option key={g} value={g} />
-                ))}
-              </datalist>
+        <div className='relative border-b'>
+          {/* Left accent bar */}
+          <div className='bg-primary absolute top-0 left-0 h-full w-0.5 rounded-r-full' />
+          <div className='from-primary/5 to-background bg-gradient-to-r px-4 py-3 pl-5'>
+            {/* Top row: label + counters + toggle */}
+            <div className='mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5'>
+              <div className='flex items-center gap-1.5'>
+                <Layers3 className='text-primary size-3.5' />
+                <span className='text-sm font-semibold'>
+                  {t('Batch set group')}
+                </span>
+              </div>
+              <div className='flex items-center gap-1.5'>
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium tabular-nums transition-colors ${
+                    selectedCount > 0
+                      ? 'bg-primary/10 text-primary ring-primary/20 ring-1'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {selectedCount} / {selectableItems.length} {t('selected')}
+                </span>
+              </div>
+              <div className='ml-auto flex items-center gap-1.5'>
+                <button
+                  type='button'
+                  disabled={applyingGroup || selectableItems.length === 0}
+                  onClick={() => onToggleAll(!allSelected)}
+                  className='text-muted-foreground hover:text-foreground cursor-pointer text-xs underline-offset-2 transition-colors hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-40'
+                >
+                  {allSelected ? t('Clear selection') : t('Select all')}
+                </button>
+              </div>
             </div>
-            <Button
-              type='button'
-              size='sm'
-              variant='outline'
-              disabled={
-                applyingGroup ||
-                !groupInput.trim() ||
-                items.filter((i) => i.channelId).length === 0
-              }
-              onClick={() => onApplyGroup(groupInput.trim())}
-              className='shrink-0'
-            >
-              {applyingGroup ? (
-                <Loader2 className='size-3.5 animate-spin' />
-              ) : (
-                <Layers3 className='size-3.5' />
-              )}
-              {applyingGroup ? t('Applying...') : t('Apply to all')}
-            </Button>
+
+            {/* Bottom row: input + apply */}
+            <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger
+                  disabled={applyingGroup}
+                  render={
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      className='min-w-0 flex-1 justify-between gap-2'
+                      disabled={applyingGroup}
+                    />
+                  }
+                >
+                  <span className='flex min-w-0 items-center gap-2'>
+                    <Tag className='text-muted-foreground size-3.5 shrink-0' />
+                    <span className='truncate text-sm font-medium'>
+                      {selectedGroupsLabel}
+                    </span>
+                  </span>
+                  <ChevronDown className='text-muted-foreground size-3.5 shrink-0' />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align='start'
+                  className='max-h-64 min-w-64'
+                >
+                  {groupSelectOptions.length > 0 ? (
+                    groupSelectOptions.map((group) => (
+                      <DropdownMenuCheckboxItem
+                        key={group}
+                        checked={selectedGroups.includes(group)}
+                        onCheckedChange={(checked) =>
+                          toggleSelectedGroup(group, checked)
+                        }
+                        onSelect={(event) => event.preventDefault()}
+                        className='min-w-0'
+                      >
+                        <span className='truncate'>{group}</span>
+                      </DropdownMenuCheckboxItem>
+                    ))
+                  ) : (
+                    <div className='text-muted-foreground px-2 py-1.5 text-sm'>
+                      {t('No groups available')}
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                type='button'
+                size='sm'
+                disabled={
+                  applyingGroup ||
+                  selectedGroups.length === 0 ||
+                  selectedCount === 0
+                }
+                onClick={() => {
+                  if (selectedGroups.length > 0) {
+                    void onApplyGroup(selectedGroups.join(','))
+                  }
+                }}
+                className='shrink-0 gap-1.5'
+              >
+                {applyingGroup ? (
+                  <Loader2 className='size-3.5 animate-spin' />
+                ) : (
+                  <Layers3 className='size-3.5' />
+                )}
+                {applyingGroup
+                  ? t('Applying...')
+                  : selectedCount > 0
+                    ? t('Apply to {{count}} channels', { count: selectedCount })
+                    : t('Apply to all')}
+              </Button>
+            </div>
+
+            {/* Progress bar while applying */}
+            {applyingGroup && (
+              <div className='bg-primary/15 mt-2.5 h-1 w-full overflow-hidden rounded-full'>
+                <div className='bg-primary h-full w-1/3 animate-[slide_1.2s_ease-in-out_infinite] rounded-full' />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1364,6 +1577,15 @@ function ImportedChannelsPanel({
             <Table>
               <TableHeader className='bg-muted/40 sticky top-0 z-10'>
                 <TableRow>
+                  <TableHead className='w-10'>
+                    <Checkbox
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      disabled={selectableItems.length === 0}
+                      onCheckedChange={(value) => onToggleAll(!!value)}
+                      aria-label={t('Select all imported channels')}
+                    />
+                  </TableHead>
                   <TableHead className='w-[34%]'>{t('Channel')}</TableHead>
                   <TableHead>{t('Account quota')}</TableHead>
                   <TableHead>{t('Channel check')}</TableHead>
@@ -1373,14 +1595,28 @@ function ImportedChannelsPanel({
               </TableHeader>
               <TableBody>
                 {items.map((item) => (
-                  <ImportedChannelRow key={item.key} item={item} />
+                  <ImportedChannelRow
+                    key={item.key}
+                    item={item}
+                    selected={selectedKeys.has(item.key)}
+                    onSelectedChange={(selected) =>
+                      onToggleSelected(item.key, selected)
+                    }
+                  />
                 ))}
               </TableBody>
             </Table>
           </div>
           <div className='divide-border divide-y md:hidden'>
             {items.map((item) => (
-              <ImportedChannelCard key={item.key} item={item} />
+              <ImportedChannelCard
+                key={item.key}
+                item={item}
+                selected={selectedKeys.has(item.key)}
+                onSelectedChange={(selected) =>
+                  onToggleSelected(item.key, selected)
+                }
+              />
             ))}
           </div>
         </div>
@@ -1389,9 +1625,27 @@ function ImportedChannelsPanel({
   )
 }
 
-function ImportedChannelRow({ item }: { item: ImportedChannelCheck }) {
+function ImportedChannelRow({
+  item,
+  selected,
+  onSelectedChange,
+}: {
+  item: ImportedChannelCheck
+  selected: boolean
+  onSelectedChange: (selected: boolean) => void
+}) {
+  const { t } = useTranslation()
+
   return (
-    <TableRow>
+    <TableRow data-state={selected ? 'selected' : undefined}>
+      <TableCell className='w-10'>
+        <Checkbox
+          checked={selected}
+          disabled={!item.channelId}
+          onCheckedChange={(value) => onSelectedChange(!!value)}
+          aria-label={t('Select imported channel')}
+        />
+      </TableCell>
       <TableCell className='whitespace-normal'>
         <ChannelIdentity item={item} />
       </TableCell>
@@ -1411,13 +1665,33 @@ function ImportedChannelRow({ item }: { item: ImportedChannelCheck }) {
   )
 }
 
-function ImportedChannelCard({ item }: { item: ImportedChannelCheck }) {
+function ImportedChannelCard({
+  item,
+  selected,
+  onSelectedChange,
+}: {
+  item: ImportedChannelCheck
+  selected: boolean
+  onSelectedChange: (selected: boolean) => void
+}) {
   const { t } = useTranslation()
 
   return (
-    <div className='space-y-3 p-4'>
+    <div
+      className='data-[state=selected]:bg-primary/5 space-y-3 p-4'
+      data-state={selected ? 'selected' : undefined}
+    >
       <div className='flex items-start justify-between gap-3'>
-        <ChannelIdentity item={item} />
+        <div className='flex min-w-0 items-start gap-3'>
+          <Checkbox
+            checked={selected}
+            disabled={!item.channelId}
+            onCheckedChange={(value) => onSelectedChange(!!value)}
+            aria-label={t('Select imported channel')}
+            className='mt-1'
+          />
+          <ChannelIdentity item={item} />
+        </div>
         <OpenChannelButton item={item} compact />
       </div>
       <div className='grid gap-3 text-xs'>

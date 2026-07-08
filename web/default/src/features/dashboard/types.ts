@@ -105,6 +105,23 @@ export interface ChannelMonitorItem {
   model_count: number
   response_time: number
   test_time: number
+  active_users: number
+  channel_count?: number
+  enabled_count?: number
+  success_rate?: number
+  success_rate_source?: 'usage' | 'availability'
+  availability_rate?: number
+  usage_request_count?: number
+  usage_success_count?: number
+  success_series?: {
+    ts: number
+    avg_ttft_ms: number
+    avg_latency_ms: number
+    success_rate: number
+    avg_tps: number
+    request_count?: number
+    success_count?: number
+  }[]
 }
 
 export interface ChannelMonitorSummary {
@@ -114,12 +131,16 @@ export interface ChannelMonitorSummary {
   manual_disabled: number
   untested: number
   slow: number
+  active_users: number
+  active_channels: number
 }
 
 export interface ChannelMonitorResponse {
   success: boolean
   message?: string
   data?: {
+    model?: string
+    models?: string[]
     summary: ChannelMonitorSummary
     items: ChannelMonitorItem[]
   }

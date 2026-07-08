@@ -11,6 +11,10 @@ type Request interface {
 	SetModelName(modelName string)
 }
 
+type SensitiveTextProvider interface {
+	GetSensitiveCheckText() string
+}
+
 type BaseRequest struct {
 }
 

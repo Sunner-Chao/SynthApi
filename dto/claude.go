@@ -358,6 +358,36 @@ func (c *ClaudeRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	return &tokenCountMeta
 }
 
+func (c *ClaudeRequest) GetSensitiveCheckText() string {
+	texts := make([]string, 0)
+	if strings.TrimSpace(c.Prompt) != "" {
+		texts = append(texts, c.Prompt)
+	}
+	for _, message := range c.Messages {
+		if message.Role != "user" {
+			continue
+		}
+		if message.IsStringContent() {
+			content := message.GetStringContent()
+			if strings.TrimSpace(content) != "" {
+				texts = append(texts, content)
+			}
+			continue
+		}
+
+		content, _ := message.ParseContent()
+		for _, media := range content {
+			if media.Type == "text" {
+				text := media.GetText()
+				if strings.TrimSpace(text) != "" {
+					texts = append(texts, text)
+				}
+			}
+		}
+	}
+	return strings.Join(texts, "\n")
+}
+
 func (c *ClaudeRequest) IsStream(ctx *gin.Context) bool {
 	if c.Stream == nil {
 		return false

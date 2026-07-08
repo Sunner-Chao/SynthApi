@@ -124,12 +124,13 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 
 	// 控制台区域 - 所有用户都可以访问
 	defaultConfig["console"] = map[string]interface{}{
-		"enabled":    true,
-		"detail":     true,
-		"token":      true,
-		"log":        true,
-		"midjourney": true,
-		"task":       true,
+		"enabled":       true,
+		"detail":        true,
+		"group_monitor": true,
+		"token":         true,
+		"log":           true,
+		"midjourney":    true,
+		"task":          true,
 	}
 
 	// 个人中心区域 - 所有用户都可以访问
@@ -941,6 +942,11 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 		err := cacheIncrUserQuota(id, int64(quota))
 		if err != nil {
 			common.SysLog("failed to increase user quota: " + err.Error())
+		}
+		if quota > 0 {
+			if err := ClearWalletLowQuotaNotifyStateIfRecovered(id); err != nil {
+				common.SysLog("failed to clear recovered wallet low quota notify state: " + err.Error())
+			}
 		}
 	})
 	if !db && common.BatchUpdateEnabled {

@@ -44,9 +44,9 @@ func (r *GeminiChatRequest) UnmarshalJSON(data []byte) error {
 }
 
 type ToolConfig struct {
-	FunctionCallingConfig *FunctionCallingConfig `json:"functionCallingConfig,omitempty"`
-	RetrievalConfig       *RetrievalConfig       `json:"retrievalConfig,omitempty"`
-	IncludeServerSideToolInvocations *bool       `json:"includeServerSideToolInvocations,omitempty"`
+	FunctionCallingConfig            *FunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+	RetrievalConfig                  *RetrievalConfig       `json:"retrievalConfig,omitempty"`
+	IncludeServerSideToolInvocations *bool                  `json:"includeServerSideToolInvocations,omitempty"`
 }
 
 type FunctionCallingConfig struct {
@@ -106,6 +106,21 @@ func (r *GeminiChatRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		Files:       files,
 		MaxTokens:   maxTokens,
 	}
+}
+
+func (r *GeminiChatRequest) GetSensitiveCheckText() string {
+	inputTexts := make([]string, 0)
+	for _, content := range r.Contents {
+		if content.Role != "" && content.Role != "user" {
+			continue
+		}
+		for _, part := range content.Parts {
+			if strings.TrimSpace(part.Text) != "" {
+				inputTexts = append(inputTexts, part.Text)
+			}
+		}
+	}
+	return strings.Join(inputTexts, "\n")
 }
 
 func (r *GeminiChatRequest) IsStream(c *gin.Context) bool {

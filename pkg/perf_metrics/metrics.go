@@ -282,6 +282,8 @@ func buildQueryResult(modelName string, merged map[bucketKey]counters) QueryResu
 			AvgLatencyMs: avg(total.totalLatencyMs, total.requestCount),
 			SuccessRate:  successRate(total),
 			AvgTps:       avgTps(total),
+			RequestCount: total.requestCount,
+			SuccessCount: total.successCount,
 			Series:       series,
 		})
 	}
@@ -300,6 +302,8 @@ func bucketPoint(ts int64, value counters) BucketPoint {
 		AvgLatencyMs: avg(value.totalLatencyMs, value.requestCount),
 		SuccessRate:  successRate(value),
 		AvgTps:       avgTps(value),
+		RequestCount: value.requestCount,
+		SuccessCount: value.successCount,
 	}
 }
 

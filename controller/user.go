@@ -998,6 +998,12 @@ func ManageUser(c *gin.Context) {
 				common.ApiError(c, err)
 				return
 			}
+			if req.Value >= model.LowQuotaNotifyThreshold(user.GetSetting().QuotaWarningThreshold) {
+				if err := model.ClearLowQuotaNotifyState(user.Id, model.LowQuotaNotifyScopeWallet, 0); err != nil {
+					common.ApiError(c, err)
+					return
+				}
+			}
 			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
 				fmt.Sprintf("管理员覆盖用户额度从 %s 为 %s", logger.LogQuota(oldQuota), logger.LogQuota(req.Value)), adminInfo)
 		default:

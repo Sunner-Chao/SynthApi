@@ -55,6 +55,19 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 	return err
 }
 
+func shouldBypassSensitiveRiskCheck(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool {
+	if c == nil {
+		return false
+	}
+	if c.GetInt("role") >= common.RoleAdminUser {
+		return true
+	}
+	if relayInfo != nil && relayInfo.UserId > 0 {
+		return model.IsAdmin(relayInfo.UserId)
+	}
+	return false
+}
+
 func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	var err *types.NewAPIError
 	if strings.Contains(c.Request.URL.Path, "embed") {
@@ -123,21 +136,23 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
+	needSensitiveCheck := setting.ShouldCheckPromptSensitive() && !shouldBypassSensitiveRiskCheck(c, relayInfo)
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
 	var meta *types.TokenCountMeta
-	if needSensitiveCheck || needCountToken {
+	if needCountToken || (needSensitiveCheck && !hasSensitiveTextProvider(request)) {
 		meta = request.GetTokenCountMeta()
 	} else {
 		meta = fastTokenCountMetaForPricing(request)
 	}
 
 	if needSensitiveCheck && meta != nil {
-		contains, words := service.CheckSensitiveText(meta.CombineText)
-		if contains {
-			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
+		sensitiveText := getSensitiveCheckText(request, meta)
+		riskResult := service.ScanSensitiveRiskText(sensitiveText)
+		if riskResult.Blocked {
+			logger.LogWarn(c, fmt.Sprintf("user sensitive risk detected: score=%d, hits=%s", riskResult.Score, strings.Join(riskResult.Words, ", ")))
+			service.NotifySensitiveRisk(service.NewSensitiveRiskEventWithScore(relayInfo, c.ClientIP(), riskResult.Score, riskResult.Words, sensitiveText))
+			newAPIError = types.NewError(errors.New("sensitive words detected"), types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithSkipRetry())
 			return
 		}
 	}
@@ -209,16 +224,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		switch relayFormat {
-		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(c, relayInfo)
-		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(c, relayInfo)
-		case types.RelayFormatGemini:
-			newAPIError = geminiRelayHandler(c, relayInfo)
-		default:
-			newAPIError = relayHandler(c, relayInfo)
-		}
+		func() {
+			endActiveUse := service.BeginChannelActiveUse(channel.Id, relayInfo.UserId)
+			defer endActiveUse()
+
+			switch relayFormat {
+			case types.RelayFormatOpenAIRealtime:
+				newAPIError = relay.WssHelper(c, relayInfo)
+			case types.RelayFormatClaude:
+				newAPIError = relay.ClaudeHelper(c, relayInfo)
+			case types.RelayFormatGemini:
+				newAPIError = geminiRelayHandler(c, relayInfo)
+			default:
+				newAPIError = relayHandler(c, relayInfo)
+			}
+		}()
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
@@ -291,6 +311,24 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 		// Best-effort: leave CombineText empty to avoid large allocations.
 	}
 	return meta
+}
+
+func hasSensitiveTextProvider(request dto.Request) bool {
+	if request == nil {
+		return false
+	}
+	_, ok := request.(dto.SensitiveTextProvider)
+	return ok
+}
+
+func getSensitiveCheckText(request dto.Request, meta *types.TokenCountMeta) string {
+	if provider, ok := request.(dto.SensitiveTextProvider); ok {
+		return provider.GetSensitiveCheckText()
+	}
+	if meta == nil {
+		return ""
+	}
+	return meta.CombineText
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {

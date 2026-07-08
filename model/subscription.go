@@ -1053,6 +1053,9 @@ func CancelUserSubscriptionWithRefund(userId int, userSubscriptionId int) (*Subs
 						Update("quota", gorm.Expr("quota + ?", refundQuota)).Error; err != nil {
 						return err
 					}
+					if err := ClearWalletLowQuotaNotifyStateIfRecoveredTx(tx, userId); err != nil {
+						return err
+					}
 				}
 				result.RefundRatio, _ = refundRatio.Float64()
 				result.RefundAmount, _ = decimal.NewFromFloat(plan.PriceAmount).Mul(refundRatio).Float64()
@@ -1315,6 +1318,9 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	sub.AmountUsed = 0
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
+	if err := ClearLowQuotaNotifyStateTx(tx, sub.UserId, LowQuotaNotifyScopeSubscription, sub.Id); err != nil {
+		return err
+	}
 	return tx.Save(sub).Error
 }
 

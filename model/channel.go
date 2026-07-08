@@ -161,6 +161,37 @@ func ApplyChannelGroupFilter(query *gorm.DB, group string) *gorm.DB {
 	return query.Where(channelGroupFilterCondition(), channelGroupFilterPattern(group))
 }
 
+func NormalizeChannelGroups(groups string) string {
+	groups = strings.TrimSpace(groups)
+	if groups == "" {
+		return ""
+	}
+
+	splitter := func(r rune) bool {
+		switch r {
+		case ',', '，', ';', '；', '\n', '\r', '\t':
+			return true
+		default:
+			return false
+		}
+	}
+
+	seen := make(map[string]struct{})
+	normalized := make([]string, 0)
+	for _, group := range strings.FieldsFunc(groups, splitter) {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		if _, exists := seen[group]; exists {
+			continue
+		}
+		seen[group] = struct{}{}
+		normalized = append(normalized, group)
+	}
+	return strings.Join(normalized, ",")
+}
+
 // Value implements driver.Valuer interface
 func (c ChannelInfo) Value() (driver.Value, error) {
 	return common.Marshal(&c)
@@ -297,9 +328,13 @@ func (channel *Channel) GetGroups() []string {
 	if channel.Group == "" {
 		return []string{}
 	}
-	groups := strings.Split(strings.Trim(channel.Group, ","), ",")
-	for i, group := range groups {
-		groups[i] = strings.TrimSpace(group)
+	rawGroups := strings.Split(strings.Trim(channel.Group, ","), ",")
+	groups := make([]string, 0, len(rawGroups))
+	for _, group := range rawGroups {
+		group = strings.TrimSpace(group)
+		if group != "" {
+			groups = append(groups, group)
+		}
 	}
 	return groups
 }
@@ -1062,7 +1097,7 @@ func BatchSetChannelGroup(ids []int, group string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	group = strings.TrimSpace(group)
+	group = NormalizeChannelGroups(group)
 	if group == "" {
 		return errors.New("group cannot be empty")
 	}
@@ -1126,10 +1161,14 @@ func BatchUpdateChannels(ids []int, fields []string, update ChannelBatchUpdate) 
 		case "model_mapping":
 			updateData["model_mapping"] = update.ModelMapping
 		case "groups":
-			if update.Groups == nil || strings.TrimSpace(*update.Groups) == "" {
+			if update.Groups == nil {
 				return errors.New("group cannot be empty")
 			}
-			updateData["group"] = strings.TrimSpace(*update.Groups)
+			groups := NormalizeChannelGroups(*update.Groups)
+			if groups == "" {
+				return errors.New("group cannot be empty")
+			}
+			updateData["group"] = groups
 		case "priority":
 			if update.Priority == nil {
 				return errors.New("priority cannot be empty")

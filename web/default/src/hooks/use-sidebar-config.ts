@@ -44,6 +44,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
   console: {
     enabled: true,
     detail: true,
+    group_monitor: true,
     token: true,
     log: true,
     midjourney: true,
@@ -110,6 +111,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/profile': { section: 'personal', module: 'personal' },
   '/accounts': { section: 'admin', module: 'account' },
   '/channels': { section: 'admin', module: 'channel' },
+  '/channel-monitor': { section: 'console', module: 'group_monitor' },
   '/models': { section: 'admin', module: 'models' },
   '/models/metadata': { section: 'admin', module: 'models' },
   '/models/deployments': { section: 'admin', module: 'models' },

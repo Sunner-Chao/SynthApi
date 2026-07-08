@@ -105,6 +105,9 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
 			return errors.New("签到失败：更新额度出错")
 		}
+		if err := ClearWalletLowQuotaNotifyStateIfRecoveredTx(tx, userId); err != nil {
+			return errors.New("签到失败：更新额度提醒状态出错")
+		}
 
 		return nil
 	})

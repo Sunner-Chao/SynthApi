@@ -16,14 +16,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, CircleAlert, CircleCheck, Clock3, Route } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import {
+  Activity,
+  CircleAlert,
+  CircleCheck,
+  Clock3,
+  HeartPulse,
+  Route,
+  Users,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/status-badge'
+import {
+  formatSuccessRate,
+  successRateTextClass,
+} from '@/features/channel-monitor/components/success-rate-strip'
+import {
+  getAvailabilityRate,
+  getUsageSuccessRate,
+  hasUsageMetrics,
+} from '@/features/channel-monitor/lib/metrics'
 import { getChannelMonitor } from '../../api'
 import type { ChannelMonitorItem } from '../../types'
 
@@ -77,7 +94,7 @@ export function ChannelMonitorPanel() {
   const { t } = useTranslation()
   const monitorQuery = useQuery({
     queryKey: ['dashboard', 'channel-monitor'],
-    queryFn: getChannelMonitor,
+    queryFn: () => getChannelMonitor(),
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
     retry: false,
@@ -98,22 +115,22 @@ export function ChannelMonitorPanel() {
           className='text-muted-foreground/60 size-4 shrink-0'
           aria-hidden='true'
         />
-        <h3 className='text-sm font-semibold'>{t('Channel monitor')}</h3>
+        <h3 className='text-sm font-semibold'>{t('Group monitor')}</h3>
         <span className='text-muted-foreground hidden text-xs sm:inline'>
-          {t('Live status of upstream channels')}
+          {t('Live group health for upstream routing')}
         </span>
         <Button
           variant='outline'
           size='sm'
           className='ml-auto h-7 px-2 text-xs'
-          render={<Link to='/channels' />}
+          render={<Link to='/channel-monitor' />}
         >
-          {t('Manage')}
+          {t('View')}
         </Button>
       </div>
 
       <div className='space-y-3 p-4 sm:p-5'>
-        <div className='grid grid-cols-3 gap-2'>
+        <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
           <MonitorMetric
             icon={CircleCheck}
             label={t('Available')}
@@ -142,10 +159,20 @@ export function ChannelMonitorPanel() {
             }
             loading={loading}
             valueClassName={
-              summary &&
-              summary.auto_disabled + summary.manual_disabled > 0
+              summary && summary.auto_disabled + summary.manual_disabled > 0
                 ? 'text-destructive'
                 : 'text-success'
+            }
+          />
+          <MonitorMetric
+            icon={Users}
+            label={t('Active users')}
+            value={loading ? '' : String(summary?.active_users ?? 0)}
+            loading={loading}
+            valueClassName={
+              summary && summary.active_users > 0
+                ? 'text-primary'
+                : 'text-muted-foreground'
             }
           />
         </div>
@@ -158,7 +185,7 @@ export function ChannelMonitorPanel() {
           </div>
         ) : items.length === 0 ? (
           <div className='text-muted-foreground flex h-28 items-center justify-center text-sm'>
-            {t('No channels configured')}
+            {t('No groups configured')}
           </div>
         ) : (
           <div className='space-y-1.5'>
@@ -206,6 +233,18 @@ function ChannelMonitorRow(props: { item: ChannelMonitorItem }) {
   const { t } = useTranslation()
   const item = props.item
   const meta = statusMeta(item.status, t)
+  const groupName = item.group || item.name
+  const channelCount = item.channel_count ?? 0
+  const enabledCount = item.enabled_count ?? 0
+  const hasUsage = hasUsageMetrics(item)
+  const usageRate = getUsageSuccessRate(item)
+  const availabilityRate = getAvailabilityRate(item)
+  const healthValue = hasUsage ? formatSuccessRate(usageRate) : t('No data')
+  const healthDetail = hasUsage
+    ? t('{{count}} request(s)', { count: item.usage_request_count ?? 0 })
+    : t('Availability {{rate}}', {
+        rate: formatSuccessRate(availabilityRate),
+      })
 
   return (
     <div className='hover:bg-muted/40 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-3 py-2 transition-colors'>
@@ -215,18 +254,20 @@ function ChannelMonitorRow(props: { item: ChannelMonitorItem }) {
             className={cn('size-2 shrink-0 rounded-full', meta.dot)}
             aria-hidden='true'
           />
-          <span className='truncate text-sm font-medium'>{item.name}</span>
+          <span className='truncate text-sm font-medium'>{groupName}</span>
           <StatusBadge
-            label={item.type_name}
+            label={`${enabledCount}/${channelCount}`}
             variant='neutral'
             size='sm'
             copyable={false}
           />
         </div>
         <div className='text-muted-foreground mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]'>
-          <span className='truncate'>{item.group}</span>
-          {item.tag && <span className='truncate'>#{item.tag}</span>}
           <span>{t('{{count}} models', { count: item.model_count })}</span>
+          <span>{t('{{count}} channel(s)', { count: channelCount })}</span>
+          <span>
+            {t('{{count}} active user(s)', { count: item.active_users ?? 0 })}
+          </span>
         </div>
       </div>
 
@@ -237,6 +278,20 @@ function ChannelMonitorRow(props: { item: ChannelMonitorItem }) {
           size='sm'
           copyable={false}
         />
+        <div className='hidden min-w-16 text-right sm:block'>
+          <div
+            className={cn(
+              'inline-flex items-center gap-1 font-mono text-xs font-semibold',
+              hasUsage ? successRateTextClass(usageRate) : 'text-muted-foreground'
+            )}
+          >
+            <HeartPulse className='size-3' />
+            {healthValue}
+          </div>
+          <div className='text-muted-foreground/70 mt-1 text-[10px]'>
+            {healthDetail}
+          </div>
+        </div>
         <div className='hidden min-w-20 text-right sm:block'>
           <div className={cn('font-mono text-xs font-semibold', meta.text)}>
             {formatLatency(item.response_time)}

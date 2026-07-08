@@ -237,6 +237,9 @@ func ConfirmMPayOrder(tradeNo string, callbackMoney float64, callerIP string) er
 		if err := tx.Model(&model.User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
 			return fmt.Errorf("failed to increase user quota: %w", err)
 		}
+		if err := model.ClearWalletLowQuotaNotifyStateIfRecoveredTx(tx, topUp.UserId); err != nil {
+			return fmt.Errorf("failed to clear wallet low quota notify state: %w", err)
+		}
 		return nil
 	})
 	if err != nil {

@@ -29,6 +29,10 @@ func (r *OpenAIResponsesCompactionRequest) GetTokenCountMeta() *types.TokenCount
 	}
 }
 
+func (r *OpenAIResponsesCompactionRequest) GetSensitiveCheckText() string {
+	return (&OpenAIResponsesRequest{Input: r.Input}).GetSensitiveCheckText()
+}
+
 func (r *OpenAIResponsesCompactionRequest) IsStream(c *gin.Context) bool {
 	return false
 }

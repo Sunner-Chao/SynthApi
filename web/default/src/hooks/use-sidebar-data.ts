@@ -80,6 +80,11 @@ export function useSidebarData(): SidebarData {
             icon: LayoutDashboard,
           },
           {
+            title: t('Group Monitor'),
+            url: '/channel-monitor',
+            icon: Activity,
+          },
+          {
             title: t('API Keys'),
             url: '/keys',
             icon: Key,

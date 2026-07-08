@@ -48,7 +48,16 @@ const SECURITY_SECTIONS = [
         defaultValues={{
           CheckSensitiveEnabled: settings.CheckSensitiveEnabled,
           CheckSensitiveOnPromptEnabled: settings.CheckSensitiveOnPromptEnabled,
+          SensitiveNotifyAdminEmailEnabled:
+            settings.SensitiveNotifyAdminEmailEnabled,
+          SensitiveNotifyUserEmailEnabled:
+            settings.SensitiveNotifyUserEmailEnabled,
+          SensitiveRiskScanEnabled: settings.SensitiveRiskScanEnabled,
+          SensitiveRiskThreshold: settings.SensitiveRiskThreshold,
           SensitiveWords: settings.SensitiveWords,
+          SensitiveIntentRules: settings.SensitiveIntentRules,
+          SensitiveRegexRules: settings.SensitiveRegexRules,
+          SensitiveRiskAllowRules: settings.SensitiveRiskAllowRules,
         }}
       />
     ),

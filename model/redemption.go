@@ -197,6 +197,9 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if err != nil {
 			return err
 		}
+		if err := ClearWalletLowQuotaNotifyStateIfRecoveredTx(tx, userId); err != nil {
+			return err
+		}
 		redemption.RedeemedTime = common.GetTimestamp()
 		redemption.Status = common.RedemptionCodeStatusUsed
 		redemption.UsedUserId = userId

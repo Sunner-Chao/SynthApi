@@ -452,19 +452,35 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 
 func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int) {
 	gopool.Go(func() {
-		userSetting := relayInfo.UserSetting
-		threshold := common.QuotaRemindThreshold
-		if userSetting.QuotaWarningThreshold != 0 {
-			threshold = int(userSetting.QuotaWarningThreshold)
+		if relayInfo == nil {
+			return
 		}
+		userSetting := relayInfo.UserSetting
+		threshold := model.LowQuotaNotifyThreshold(userSetting.QuotaWarningThreshold)
 
 		//noMoreQuota := userCache.Quota-(quota+preConsumedQuota) <= 0
 		quotaTooLow := false
 		consumeQuota := quota + preConsumedQuota
-		if relayInfo.UserQuota-consumeQuota < threshold {
+		remainingQuota := relayInfo.UserQuota - consumeQuota
+		if remainingQuota < threshold {
 			quotaTooLow = true
 		}
+		if !quotaTooLow {
+			if err := model.ClearLowQuotaNotifyState(relayInfo.UserId, model.LowQuotaNotifyScopeWallet, 0); err != nil {
+				common.SysError(fmt.Sprintf("failed to clear wallet low quota notify state for user %d: %s", relayInfo.UserId, err.Error()))
+			}
+			return
+		}
 		if quotaTooLow {
+			shouldNotify, err := model.TryMarkLowQuotaNotified(relayInfo.UserId, model.LowQuotaNotifyScopeWallet, 0)
+			if err != nil {
+				common.SysError(fmt.Sprintf("failed to mark wallet low quota notify state for user %d: %s", relayInfo.UserId, err.Error()))
+				return
+			}
+			if !shouldNotify {
+				return
+			}
+
 			prompt := "您的额度即将用尽"
 			topUpLink := PaymentReturnURL("/console/topup")
 
@@ -480,19 +496,18 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 			if notifyType == dto.NotifyTypeBark {
 				// Bark推送使用简短文本，不支持HTML
 				content = "{{value}}，剩余额度：{{value}}，请及时充值"
-				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota)}
+				values = []interface{}{prompt, logger.FormatQuota(remainingQuota)}
 			} else if notifyType == dto.NotifyTypeGotify {
 				content = "{{value}}，当前剩余额度为 {{value}}，请及时充值。"
-				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota)}
+				values = []interface{}{prompt, logger.FormatQuota(remainingQuota)}
 			} else {
 				// 默认内容格式，适用于Email和Webhook（支持HTML）
 				content = "{{value}}，当前剩余额度为 {{value}}，为了不影响您的使用，请及时充值。<br/>充值链接：<a href='{{value}}'>{{value}}</a>"
-				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota), topUpLink, topUpLink}
+				values = []interface{}{prompt, logger.FormatQuota(remainingQuota), topUpLink, topUpLink}
 			}
 
-			err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
-			if err != nil {
-				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, err.Error()))
+			if notifyErr := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); notifyErr != nil {
+				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, notifyErr.Error()))
 			}
 		}
 	})
@@ -508,14 +523,23 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 		}
 
 		userSetting := relayInfo.UserSetting
-		threshold := common.QuotaRemindThreshold
-		if userSetting.QuotaWarningThreshold != 0 {
-			threshold = int(userSetting.QuotaWarningThreshold)
-		}
+		threshold := model.LowQuotaNotifyThreshold(userSetting.QuotaWarningThreshold)
 
 		usedAfter := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
 		remaining := relayInfo.SubscriptionAmountTotal - usedAfter
 		if remaining >= int64(threshold) {
+			if err := model.ClearLowQuotaNotifyState(relayInfo.UserId, model.LowQuotaNotifyScopeSubscription, relayInfo.SubscriptionId); err != nil {
+				common.SysError(fmt.Sprintf("failed to clear subscription low quota notify state for user %d subscription %d: %s", relayInfo.UserId, relayInfo.SubscriptionId, err.Error()))
+			}
+			return
+		}
+
+		shouldNotify, err := model.TryMarkLowQuotaNotified(relayInfo.UserId, model.LowQuotaNotifyScopeSubscription, relayInfo.SubscriptionId)
+		if err != nil {
+			common.SysError(fmt.Sprintf("failed to mark subscription low quota notify state for user %d subscription %d: %s", relayInfo.UserId, relayInfo.SubscriptionId, err.Error()))
+			return
+		}
+		if !shouldNotify {
 			return
 		}
 

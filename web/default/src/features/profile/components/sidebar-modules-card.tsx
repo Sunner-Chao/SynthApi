@@ -82,6 +82,11 @@ export function SidebarModulesCard() {
           description: t('System data statistics'),
         },
         {
+          key: 'group_monitor',
+          title: t('Group Monitor'),
+          description: t('Group health and current usage'),
+        },
+        {
           key: 'token',
           title: t('Token Management'),
           description: t('API token management'),

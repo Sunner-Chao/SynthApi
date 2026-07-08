@@ -37,6 +37,11 @@ export type DashboardQuotaParams = {
   username?: string
 }
 
+export type ChannelMonitorParams = {
+  limit?: number
+  model?: string
+}
+
 function normalizeQuotaParams(params: DashboardQuotaParams) {
   return {
     ...params,
@@ -82,9 +87,12 @@ export async function getUptimeStatus(): Promise<
   return res.data
 }
 
-export async function getChannelMonitor(): Promise<ChannelMonitorResponse> {
+export async function getChannelMonitor(
+  params?: ChannelMonitorParams
+): Promise<ChannelMonitorResponse> {
   const res = await api.get<ChannelMonitorResponse>(
-    '/api/dashboard/channel-monitor'
+    '/api/dashboard/channel-monitor',
+    { params }
   )
   return res.data
 }
