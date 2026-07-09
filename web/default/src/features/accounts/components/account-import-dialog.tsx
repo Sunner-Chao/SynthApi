@@ -30,8 +30,10 @@ import {
   Activity,
   AlertTriangle,
   Boxes,
+  Check,
   CheckCircle2,
   ClipboardList,
+  Copy,
   Database,
   ExternalLink,
   FileText,
@@ -50,6 +52,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatTimestampToDate } from '@/lib/format'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -66,6 +69,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -78,10 +82,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import {
   batchSetChannelGroup,
+  completeCodexOAuth,
   createChannel,
   getCodexUsage,
   getGroups,
   getImportedAccountChannels,
+  startCodexOAuth,
   testChannel,
   updateImportedAccountMonitor,
   updateChannelBalance,
@@ -109,6 +115,16 @@ type ImportRunResult = {
   created: number
   failed: number
   errors: AccountImportError[]
+}
+
+type OpenAIOAuthImportState = {
+  authorizeUrl: string
+  callbackUrl: string
+  name: string
+  group: string
+  models: string
+  starting: boolean
+  creating: boolean
 }
 
 type CheckStatus = 'pending' | 'running' | 'success' | 'error' | 'skipped'
@@ -140,6 +156,8 @@ type ImportedChannelCheck = {
 }
 
 const CODEX_CHANNEL_TYPE = 57
+const OPENAI_OAUTH_CHANNEL_BASE_URL = 'https://chatgpt.com'
+const OPENAI_OAUTH_DEFAULT_GROUP = 'default'
 const CHECK_DELAY_MS = 300
 const MONITOR_INTERVAL_MS = 5 * 60 * 1000
 const IMPORTED_CHANNEL_PAGE_SIZE = 100
@@ -149,6 +167,48 @@ const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
   success: 'Success',
   error: 'Error',
   skipped: 'Skipped',
+}
+
+const createEmptyOpenAIOAuthImportState = (): OpenAIOAuthImportState => ({
+  authorizeUrl: '',
+  callbackUrl: '',
+  name: '',
+  group: OPENAI_OAUTH_DEFAULT_GROUP,
+  models: '',
+  starting: false,
+  creating: false,
+})
+
+function buildOpenAIOAuthChannelName(email?: string, accountId?: string) {
+  const normalizedEmail = String(email || '').trim()
+  if (normalizedEmail) return normalizedEmail
+
+  const normalizedAccountId = String(accountId || '').trim()
+  if (normalizedAccountId) {
+    return `OpenAI OAuth ${normalizedAccountId.slice(0, 8)}`
+  }
+
+  return 'OpenAI OAuth Account'
+}
+
+function buildOpenAIOAuthSettings(email?: string, accountId?: string) {
+  return JSON.stringify({
+    imported_account_platform: 'openai',
+    imported_account_type: 'oauth',
+    imported_account_source: 'openai_oauth_authorization_page',
+    imported_account_email: String(email || '').trim() || undefined,
+    imported_account_id: String(accountId || '').trim() || undefined,
+  })
+}
+
+function buildOpenAIOAuthRemark(email?: string, accountId?: string) {
+  return [
+    'Imported via OpenAI OAuth authorization',
+    email ? `Account email: ${email}` : '',
+    accountId ? `Account ID: ${accountId}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 async function readFileAsText(file: File): Promise<string> {
@@ -196,7 +256,16 @@ function isCheckStatus(value: unknown): value is CheckStatus {
 
 function getPlatformLabel(type?: number, settings?: Record<string, unknown>) {
   const platform = String(settings?.imported_account_platform || '').trim()
+  const accountType = String(settings?.imported_account_type || '').trim()
+  const accountSource = String(settings?.imported_account_source || '').trim()
   if (platform) {
+    if (
+      platform === 'openai' &&
+      (accountType === 'oauth' ||
+        accountSource === 'openai_oauth_authorization_page')
+    ) {
+      return 'OpenAI OAuth'
+    }
     const labels: Record<string, string> = {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
@@ -373,9 +442,12 @@ function getImportedChannelKey(index: number, channelId?: number) {
 export function AccountImportPanel(props: AccountImportPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [fileName, setFileName] = useState('')
   const [content, setContent] = useState('')
+  const [openAIOAuthImport, setOpenAIOAuthImport] =
+    useState<OpenAIOAuthImportState>(() => createEmptyOpenAIOAuthImportState())
   const [buildResult, setBuildResult] =
     useState<AccountImportBuildResult | null>(null)
   const [runResult, setRunResult] = useState<ImportRunResult | null>(null)
@@ -951,6 +1023,158 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     toast.success(t('Imported {{count}} account(s)', { count: created }))
   }
 
+  const handleStartOpenAIOAuth = async () => {
+    setOpenAIOAuthImport((previous) => ({
+      ...previous,
+      authorizeUrl: '',
+      starting: true,
+    }))
+
+    try {
+      const response = await startCodexOAuth()
+      if (!response.success) {
+        throw new Error(response.message || t('OAuth start failed'))
+      }
+
+      const authorizeUrl = response.data?.authorize_url || ''
+      if (!authorizeUrl) {
+        throw new Error(t('Missing authorization URL'))
+      }
+
+      setOpenAIOAuthImport((previous) => ({
+        ...previous,
+        authorizeUrl,
+      }))
+
+      const popup = window.open(authorizeUrl, '_blank', 'noopener,noreferrer')
+      if (popup) {
+        toast.success(t('Opened authorization page'))
+      } else {
+        toast.warning(t('Please manually copy and open the authorization link'))
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : t('OAuth start failed')
+      )
+    } finally {
+      setOpenAIOAuthImport((previous) => ({
+        ...previous,
+        starting: false,
+      }))
+    }
+  }
+
+  const handleCopyOpenAIOAuthUrl = async () => {
+    if (!openAIOAuthImport.authorizeUrl) return
+    const copied = await copyToClipboard(openAIOAuthImport.authorizeUrl)
+    if (copied) {
+      toast.success(t('Copied authorization link'))
+    }
+  }
+
+  const handleCreateOpenAIOAuthAccount = async () => {
+    const callbackUrl = openAIOAuthImport.callbackUrl.trim()
+    if (!callbackUrl) {
+      toast.error(t('Paste the callback URL first'))
+      return
+    }
+
+    setOpenAIOAuthImport((previous) => ({ ...previous, creating: true }))
+
+    try {
+      const oauthResponse = await completeCodexOAuth(callbackUrl)
+      if (!oauthResponse.success) {
+        throw new Error(oauthResponse.message || t('OAuth failed'))
+      }
+
+      const credential = oauthResponse.data?.key || ''
+      if (!credential) {
+        throw new Error(t('Missing generated credential'))
+      }
+
+      const email = oauthResponse.data?.email || ''
+      const accountId = oauthResponse.data?.account_id || ''
+      const group = openAIOAuthImport.group.trim() || OPENAI_OAUTH_DEFAULT_GROUP
+      const models = openAIOAuthImport.models.trim()
+      const settings = buildOpenAIOAuthSettings(email, accountId)
+      const remark = buildOpenAIOAuthRemark(email, accountId)
+      const fallbackName = buildOpenAIOAuthChannelName(email, accountId)
+      const name = openAIOAuthImport.name.trim() || fallbackName
+
+      const createResponse = await createChannel({
+        mode: 'single',
+        channel: {
+          name,
+          type: CODEX_CHANNEL_TYPE,
+          key: credential,
+          base_url: OPENAI_OAUTH_CHANNEL_BASE_URL,
+          models,
+          group,
+          priority: 0,
+          status: 1,
+          remark,
+          settings,
+        },
+      })
+
+      if (!createResponse.success) {
+        throw new Error(createResponse.message || t('Create failed'))
+      }
+
+      const channelInfo = createResponse.data?.channels?.[0]
+      const channelId = channelInfo?.id ?? createResponse.data?.ids?.[0]
+      const statusValue = Number(channelInfo?.status ?? 1)
+      const createdItem: ImportedChannelCheck = {
+        key: getImportedChannelKey(checkItems.length, channelId),
+        index: checkItems.length,
+        name: channelInfo?.name || name,
+        platform: 'OpenAI OAuth',
+        channelId,
+        type: Number(channelInfo?.type ?? CODEX_CHANNEL_TYPE),
+        models: channelInfo?.models || models,
+        group: channelInfo?.group || group,
+        status: Number.isFinite(statusValue) ? statusValue : undefined,
+        balance: Number(channelInfo?.balance ?? 0),
+        balanceCurrency: 'USD',
+        balanceUpdatedTime: Number(channelInfo?.balance_updated_time ?? 0),
+        usedQuota: Number(channelInfo?.used_quota ?? 0),
+        remark: channelInfo?.remark || remark,
+        createdTime: Number(channelInfo?.created_time ?? 0),
+        settings,
+        monitorEnabled: autoMonitor,
+        quotaStatus: 'pending',
+        channelStatus: 'pending',
+      }
+
+      setCheckItems((previous) => {
+        const next = previous.filter(
+          (item) => !channelId || item.channelId !== channelId
+        )
+        return [createdItem, ...next]
+      })
+
+      if (channelId) {
+        setSelectedImportedKeys(new Set([createdItem.key]))
+      }
+
+      await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
+      props.onImported?.()
+      toast.success(t('OpenAI OAuth account imported'))
+
+      setOpenAIOAuthImport((previous) => ({
+        ...createEmptyOpenAIOAuthImportState(),
+        group: previous.group || OPENAI_OAUTH_DEFAULT_GROUP,
+        models: previous.models,
+      }))
+
+      void runPostImportChecks([createdItem])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('OAuth failed'))
+    } finally {
+      setOpenAIOAuthImport((previous) => ({ ...previous, creating: false }))
+    }
+  }
+
   const readyCount = buildResult?.requests.length ?? 0
   const reviewCount = buildResult?.errors.length ?? 0
 
@@ -1035,116 +1259,298 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
 
       <div className='grid gap-4 xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.12fr)]'>
         <div
-          className={`bg-background overflow-hidden rounded-lg border shadow-sm ${mobileTab !== 'import' ? 'hidden xl:block' : ''}`}
+          className={`space-y-4 ${mobileTab !== 'import' ? 'hidden xl:block' : ''}`}
         >
-          <div className='border-border/70 flex items-center justify-between gap-3 border-b px-4 py-3'>
-            <div className='flex min-w-0 items-center gap-2.5'>
-              <span className='bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-lg'>
-                <ClipboardList className='size-3.5' />
-              </span>
-              <h4 className='truncate text-sm font-semibold'>
-                {t('Credential Content')}
-              </h4>
+          <div className='bg-background overflow-hidden rounded-lg border shadow-sm'>
+            <div className='border-border/70 flex items-center justify-between gap-3 border-b px-4 py-3'>
+              <div className='flex min-w-0 items-center gap-2.5'>
+                <span className='bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-lg'>
+                  <ExternalLink className='size-3.5' />
+                </span>
+                <div className='min-w-0'>
+                  <h4 className='truncate text-sm font-semibold'>
+                    {t('OpenAI OAuth Authorization Import')}
+                  </h4>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Create an OpenAI OAuth account from the authorization page'
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Badge variant='outline' className='rounded-md'>
+                OpenAI OAuth
+              </Badge>
             </div>
-            {fileName && (
-              <span className='text-muted-foreground max-w-48 truncate rounded-md border px-2 py-0.5 font-mono text-xs'>
-                {fileName}
-              </span>
-            )}
-          </div>
 
-          <div className='space-y-4 p-4 sm:p-5'>
-            <Alert className='border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100'>
-              <FileText className='size-4' />
-              <AlertTitle>{t('Credential import')}</AlertTitle>
-              <AlertDescription className='text-blue-800 dark:text-blue-200/80'>
-                {t(
-                  'Imported credentials are created as channels. Configure models later in Channels.'
-                )}
-              </AlertDescription>
-            </Alert>
+            <div className='space-y-4 p-4 sm:p-5'>
+              <Alert className='border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100'>
+                <KeyRound className='size-4' />
+                <AlertTitle>{t('Authorization page')}</AlertTitle>
+                <AlertDescription className='text-emerald-800 dark:text-emerald-200/80'>
+                  {t(
+                    'Open the OpenAI authorization page, finish login, then paste the full localhost callback URL here.'
+                  )}
+                </AlertDescription>
+              </Alert>
 
-            <Textarea
-              id='account-import-content'
-              value={content}
-              onChange={handleContentChange}
-              rows={18}
-              spellCheck={false}
-              className='min-h-[430px] resize-y font-mono text-xs leading-relaxed sm:text-sm'
-              placeholder={t(
-                'Paste JSON, an array, mixed JSON lines, or one accessToken per line'
-              )}
-            />
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <div className='space-y-1.5'>
+                  <label className='text-sm font-medium'>
+                    {t('Channel name')}
+                  </label>
+                  <Input
+                    value={openAIOAuthImport.name}
+                    onChange={(event) =>
+                      setOpenAIOAuthImport((previous) => ({
+                        ...previous,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder={t('Use account email by default')}
+                    disabled={
+                      openAIOAuthImport.starting || openAIOAuthImport.creating
+                    }
+                  />
+                </div>
+                <div className='space-y-1.5'>
+                  <label className='text-sm font-medium'>{t('Group')}</label>
+                  <Input
+                    value={openAIOAuthImport.group}
+                    onChange={(event) =>
+                      setOpenAIOAuthImport((previous) => ({
+                        ...previous,
+                        group: event.target.value,
+                      }))
+                    }
+                    placeholder='default'
+                    disabled={
+                      openAIOAuthImport.starting || openAIOAuthImport.creating
+                    }
+                  />
+                </div>
+              </div>
 
-            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+              <div className='space-y-1.5'>
+                <label className='text-sm font-medium'>{t('Models')}</label>
+                <Input
+                  value={openAIOAuthImport.models}
+                  onChange={(event) =>
+                    setOpenAIOAuthImport((previous) => ({
+                      ...previous,
+                      models: event.target.value,
+                    }))
+                  }
+                  placeholder={t(
+                    'Optional, comma-separated; can be configured later'
+                  )}
+                  disabled={
+                    openAIOAuthImport.starting || openAIOAuthImport.creating
+                  }
+                />
+              </div>
+
               <div className='flex flex-wrap gap-2'>
                 <Button
                   type='button'
-                  variant='outline'
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={parsing || importing}
+                  onClick={handleStartOpenAIOAuth}
+                  disabled={
+                    openAIOAuthImport.starting || openAIOAuthImport.creating
+                  }
                 >
-                  {parsing ? (
+                  {openAIOAuthImport.starting ? (
                     <Loader2 className='size-4 animate-spin' />
                   ) : (
-                    <UploadCloud className='size-4' />
+                    <ExternalLink className='size-4' />
                   )}
-                  {t('Choose File')}
+                  {openAIOAuthImport.authorizeUrl
+                    ? t('Regenerate authorization page')
+                    : t('Open authorization page')}
                 </Button>
                 <Button
                   type='button'
                   variant='outline'
-                  onClick={() => parseContent(content)}
-                  disabled={parsing || importing || !content.trim()}
+                  onClick={handleCopyOpenAIOAuthUrl}
+                  disabled={
+                    !openAIOAuthImport.authorizeUrl ||
+                    openAIOAuthImport.starting ||
+                    openAIOAuthImport.creating
+                  }
+                  aria-label={t('Copy authorization link')}
+                  title={t('Copy authorization link')}
                 >
-                  {parsing ? (
-                    <Loader2 className='size-4 animate-spin' />
+                  {copiedText === openAIOAuthImport.authorizeUrl ? (
+                    <Check className='size-4 text-emerald-600' />
                   ) : (
-                    <CheckCircle2 className='size-4' />
+                    <Copy className='size-4' />
                   )}
-                  {t('Preview')}
-                </Button>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  onClick={reset}
-                  disabled={parsing || importing || (!content && !buildResult)}
-                >
-                  {t('Clear')}
+                  {t('Copy authorization link')}
                 </Button>
               </div>
-              <Button
-                type='button'
-                onClick={handleImport}
-                disabled={
-                  importing ||
-                  checking ||
-                  parsing ||
-                  (!content.trim() && !buildResult?.requests.length)
-                }
-                className='sm:min-w-40'
-              >
-                {importing ? (
-                  <Loader2 className='size-4 animate-spin' />
-                ) : (
-                  <FileUp className='size-4' />
-                )}
-                {importing ? t('Importing...') : t('Import Accounts')}
-              </Button>
+
+              {openAIOAuthImport.authorizeUrl && (
+                <div className='bg-muted/30 text-muted-foreground rounded-lg border px-3 py-2 font-mono text-xs break-all'>
+                  {openAIOAuthImport.authorizeUrl}
+                </div>
+              )}
+
+              <div className='space-y-1.5'>
+                <label className='text-sm font-medium'>
+                  {t('Callback URL')}
+                </label>
+                <Input
+                  value={openAIOAuthImport.callbackUrl}
+                  onChange={(event) =>
+                    setOpenAIOAuthImport((previous) => ({
+                      ...previous,
+                      callbackUrl: event.target.value,
+                    }))
+                  }
+                  placeholder={t('Paste full callback URL with code and state')}
+                  autoComplete='off'
+                  spellCheck={false}
+                  disabled={
+                    openAIOAuthImport.starting || openAIOAuthImport.creating
+                  }
+                />
+              </div>
+
+              <div className='flex justify-end'>
+                <Button
+                  type='button'
+                  onClick={handleCreateOpenAIOAuthAccount}
+                  disabled={
+                    openAIOAuthImport.starting ||
+                    openAIOAuthImport.creating ||
+                    !openAIOAuthImport.callbackUrl.trim()
+                  }
+                  className='sm:min-w-44'
+                >
+                  {openAIOAuthImport.creating ? (
+                    <Loader2 className='size-4 animate-spin' />
+                  ) : (
+                    <FileUp className='size-4' />
+                  )}
+                  {openAIOAuthImport.creating
+                    ? t('Importing...')
+                    : t('Import OpenAI OAuth account')}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className='bg-background overflow-hidden rounded-lg border shadow-sm'>
+            <div className='border-border/70 flex items-center justify-between gap-3 border-b px-4 py-3'>
+              <div className='flex min-w-0 items-center gap-2.5'>
+                <span className='bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-lg'>
+                  <ClipboardList className='size-3.5' />
+                </span>
+                <h4 className='truncate text-sm font-semibold'>
+                  {t('Credential Content')}
+                </h4>
+              </div>
+              {fileName && (
+                <span className='text-muted-foreground max-w-48 truncate rounded-md border px-2 py-0.5 font-mono text-xs'>
+                  {fileName}
+                </span>
+              )}
             </div>
 
-            <input
-              ref={fileInputRef}
-              type='file'
-              accept='application/json,text/plain,.json,.txt'
-              className='hidden'
-              onChange={handleFileChange}
-            />
+            <div className='space-y-4 p-4 sm:p-5'>
+              <Alert className='border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100'>
+                <FileText className='size-4' />
+                <AlertTitle>{t('Credential import')}</AlertTitle>
+                <AlertDescription className='text-blue-800 dark:text-blue-200/80'>
+                  {t(
+                    'Imported credentials are created as channels. Configure models later in Channels.'
+                  )}
+                </AlertDescription>
+              </Alert>
 
-            <ImportPreviewAndErrors
-              buildResult={buildResult}
-              runResult={runResult}
-            />
+              <Textarea
+                id='account-import-content'
+                value={content}
+                onChange={handleContentChange}
+                rows={18}
+                spellCheck={false}
+                className='min-h-[430px] resize-y font-mono text-xs leading-relaxed sm:text-sm'
+                placeholder={t(
+                  'Paste JSON, an array, mixed JSON lines, or one accessToken per line'
+                )}
+              />
+
+              <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                <div className='flex flex-wrap gap-2'>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={parsing || importing}
+                  >
+                    {parsing ? (
+                      <Loader2 className='size-4 animate-spin' />
+                    ) : (
+                      <UploadCloud className='size-4' />
+                    )}
+                    {t('Choose File')}
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={() => parseContent(content)}
+                    disabled={parsing || importing || !content.trim()}
+                  >
+                    {parsing ? (
+                      <Loader2 className='size-4 animate-spin' />
+                    ) : (
+                      <CheckCircle2 className='size-4' />
+                    )}
+                    {t('Preview')}
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    onClick={reset}
+                    disabled={
+                      parsing || importing || (!content && !buildResult)
+                    }
+                  >
+                    {t('Clear')}
+                  </Button>
+                </div>
+                <Button
+                  type='button'
+                  onClick={handleImport}
+                  disabled={
+                    importing ||
+                    checking ||
+                    parsing ||
+                    (!content.trim() && !buildResult?.requests.length)
+                  }
+                  className='sm:min-w-40'
+                >
+                  {importing ? (
+                    <Loader2 className='size-4 animate-spin' />
+                  ) : (
+                    <FileUp className='size-4' />
+                  )}
+                  {importing ? t('Importing...') : t('Import Accounts')}
+                </Button>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept='application/json,text/plain,.json,.txt'
+                className='hidden'
+                onChange={handleFileChange}
+              />
+
+              <ImportPreviewAndErrors
+                buildResult={buildResult}
+                runResult={runResult}
+              />
+            </div>
           </div>
         </div>
 

@@ -193,9 +193,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	primaryGroup := relayInfo.UsingGroup
+	if primaryGroup == "" {
+		primaryGroup = relayInfo.TokenGroup
+	}
 	retryParam := &service.RetryParam{
 		Ctx:        c,
-		TokenGroup: relayInfo.TokenGroup,
+		TokenGroup: primaryGroup,
 		ModelName:  relayInfo.OriginModelName,
 		Retry:      common.GetPointer(0),
 	}
@@ -208,6 +212,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
+			if prepareSmartGroupFailover(c, relayInfo, retryParam, primaryGroup, newAPIError) {
+				continue
+			}
+			break
+		}
+
+		if billingErr := refreshBillingForSelectedGroup(c, relayInfo, tokens, meta); billingErr != nil {
+			newAPIError = billingErr
 			break
 		}
 
@@ -254,7 +266,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			retryParam.ResetRetryNextTry()
 			continue
 		}
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		remainingRetries := common.RetryTimes - retryParam.GetRetry()
+		if remainingRetries <= 0 && prepareSmartGroupFailover(c, relayInfo, retryParam, primaryGroup, newAPIError) {
+			continue
+		}
+		if !shouldRetry(c, newAPIError, remainingRetries) {
+			if prepareSmartGroupFailover(c, relayInfo, retryParam, primaryGroup, newAPIError) {
+				continue
+			}
 			break
 		}
 	}
@@ -347,6 +366,10 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 
+	if selectGroup != "" {
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, selectGroup)
+		info.UsingGroup = selectGroup
+	}
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
 	if err != nil {
@@ -361,6 +384,95 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, newAPIError
 	}
 	return channel, nil
+}
+
+func refreshBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon.RelayInfo, tokens int, meta *types.TokenCountMeta) *types.NewAPIError {
+	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest), types.ErrOptionWithSkipRetry())
+	}
+	if priceData.FreeModel {
+		return nil
+	}
+	if relayInfo.Billing == nil {
+		return service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
+	}
+	if err := relayInfo.Billing.Reserve(priceData.QuotaToPreConsume); err != nil {
+		var apiErr *types.NewAPIError
+		if errors.As(err, &apiErr) {
+			return apiErr
+		}
+		return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	return nil
+}
+
+func prepareSmartGroupFailover(c *gin.Context, relayInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, primaryGroup string, lastErr *types.NewAPIError) bool {
+	if !shouldSmartGroupFailover(c, relayInfo, primaryGroup, lastErr) {
+		return false
+	}
+	nextGroup, ok := service.NextSmartFailoverGroup(c, primaryGroup, relayInfo.OriginModelName)
+	if !ok {
+		return false
+	}
+	logger.LogInfo(c, fmt.Sprintf("分组自动兜底切换：%s -> %s，model=%s，last_status=%d，last_error=%s",
+		primaryGroup, nextGroup, relayInfo.OriginModelName, lastErr.StatusCode, common.LocalLogPreview(lastErr.Error())))
+	retryParam.TokenGroup = nextGroup
+	retryParam.SetRetry(0)
+	retryParam.ResetRetryNextTry()
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, nextGroup)
+	relayInfo.UsingGroup = nextGroup
+	return true
+}
+
+func shouldSmartGroupFailover(c *gin.Context, relayInfo *relaycommon.RelayInfo, primaryGroup string, err *types.NewAPIError) bool {
+	if c == nil || relayInfo == nil || err == nil || primaryGroup == "" || primaryGroup == "auto" {
+		return false
+	}
+	if _, ok := c.Get("specific_channel_id"); ok {
+		return false
+	}
+	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+		return false
+	}
+	switch relayInfo.RelayMode {
+	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
+		return false
+	}
+	if types.IsChannelError(err) {
+		return true
+	}
+	if err.GetErrorCode() == types.ErrorCodeGetChannelFailed {
+		return true
+	}
+	if types.IsSkipRetryError(err) {
+		return false
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeInvalidRequest,
+		types.ErrorCodeSensitiveWordsDetected,
+		types.ErrorCodeViolationFeeGrokCSAM,
+		types.ErrorCodeCountTokenFailed,
+		types.ErrorCodeModelPriceError,
+		types.ErrorCodeInvalidApiType,
+		types.ErrorCodeReadRequestBodyFailed,
+		types.ErrorCodeConvertRequestFailed,
+		types.ErrorCodeAccessDenied,
+		types.ErrorCodeInsufficientUserQuota,
+		types.ErrorCodePreConsumeTokenQuotaFailed:
+		return false
+	}
+	code := err.StatusCode
+	if code >= 200 && code < 300 {
+		return false
+	}
+	if code < 100 || code > 599 {
+		return true
+	}
+	if operation_setting.IsAlwaysSkipRetryCode(err.GetErrorCode()) {
+		return false
+	}
+	return operation_setting.ShouldRetryByStatusCode(code)
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {

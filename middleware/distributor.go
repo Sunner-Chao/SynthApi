@@ -147,22 +147,34 @@ func Distribute() func(c *gin.Context) {
 						Retry:      common.GetPointer(0),
 					})
 					if err != nil {
-						showGroup := usingGroup
-						if usingGroup == "auto" {
-							showGroup = fmt.Sprintf("auto(%s)", selectGroup)
+						if failoverChannel, failoverGroup := selectSmartFailoverChannel(c, usingGroup, modelRequest.Model); failoverChannel != nil {
+							channel = failoverChannel
+							selectGroup = failoverGroup
+							usingGroup = failoverGroup
+						} else {
+							showGroup := usingGroup
+							if usingGroup == "auto" {
+								showGroup = fmt.Sprintf("auto(%s)", selectGroup)
+							}
+							message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": showGroup, "Model": modelRequest.Model, "Error": err.Error()})
+							// 如果错误，但是渠道不为空，说明是数据库一致性问题
+							//if channel != nil {
+							//	common.SysError(fmt.Sprintf("渠道不存在：%d", channel.Id))
+							//	message = "数据库一致性已被破坏，请联系管理员"
+							//}
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
+							return
 						}
-						message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": showGroup, "Model": modelRequest.Model, "Error": err.Error()})
-						// 如果错误，但是渠道不为空，说明是数据库一致性问题
-						//if channel != nil {
-						//	common.SysError(fmt.Sprintf("渠道不存在：%d", channel.Id))
-						//	message = "数据库一致性已被破坏，请联系管理员"
-						//}
-						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
-						return
 					}
 					if channel == nil {
-						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
-						return
+						if failoverChannel, failoverGroup := selectSmartFailoverChannel(c, usingGroup, modelRequest.Model); failoverChannel != nil {
+							channel = failoverChannel
+							selectGroup = failoverGroup
+							usingGroup = failoverGroup
+						} else {
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
+							return
+						}
 					}
 				}
 			}
@@ -173,6 +185,30 @@ func Distribute() func(c *gin.Context) {
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
+	}
+}
+
+func selectSmartFailoverChannel(c *gin.Context, baseGroup string, modelName string) (*model.Channel, string) {
+	for {
+		nextGroup, ok := service.NextSmartFailoverGroup(c, baseGroup, modelName)
+		if !ok {
+			return nil, ""
+		}
+		channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
+			Ctx:        c,
+			ModelName:  modelName,
+			TokenGroup: nextGroup,
+			Retry:      common.GetPointer(0),
+		})
+		if err != nil || channel == nil {
+			continue
+		}
+		if selectGroup == "" {
+			selectGroup = nextGroup
+		}
+		common.SysLog(fmt.Sprintf("分组入口自动兜底切换：%s -> %s，model=%s", baseGroup, selectGroup, modelName))
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, selectGroup)
+		return channel, selectGroup
 	}
 }
 

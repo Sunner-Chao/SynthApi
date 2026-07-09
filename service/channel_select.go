@@ -2,14 +2,30 @@ package service
 
 import (
 	"errors"
+	"math"
+	"sort"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
+
+const (
+	smartFailoverMaxCandidates        = 4
+	smartFailoverMaxPriceIncreaseRate = 0.35
+)
+
+type smartFailoverGroupState struct {
+	BaseGroup string
+	ModelName string
+	Groups    []string
+	Index     int
+}
 
 type RetryParam struct {
 	Ctx          *gin.Context
@@ -44,6 +60,105 @@ func (p *RetryParam) IncreaseRetry() {
 
 func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
+}
+
+func NextSmartFailoverGroup(c *gin.Context, baseGroup string, modelName string) (string, bool) {
+	baseGroup = strings.TrimSpace(baseGroup)
+	modelName = strings.TrimSpace(modelName)
+	if c == nil || baseGroup == "" || modelName == "" || baseGroup == "auto" {
+		return "", false
+	}
+	if _, isSmartGroup := setting.GetSmartGroupSources(baseGroup); isSmartGroup {
+		return "", false
+	}
+
+	var state *smartFailoverGroupState
+	if value, exists := common.GetContextKey(c, constant.ContextKeySmartFailoverGroups); exists {
+		if cached, ok := value.(*smartFailoverGroupState); ok &&
+			cached.BaseGroup == baseGroup &&
+			cached.ModelName == modelName {
+			state = cached
+		}
+	}
+	if state == nil {
+		state = &smartFailoverGroupState{
+			BaseGroup: baseGroup,
+			ModelName: modelName,
+			Groups:    buildSmartFailoverGroups(c, baseGroup, modelName),
+		}
+		common.SetContextKey(c, constant.ContextKeySmartFailoverGroups, state)
+	}
+
+	for state.Index < len(state.Groups) {
+		group := state.Groups[state.Index]
+		state.Index++
+		if strings.TrimSpace(group) == "" || group == baseGroup {
+			continue
+		}
+		return group, true
+	}
+	return "", false
+}
+
+func buildSmartFailoverGroups(c *gin.Context, baseGroup string, modelName string) []string {
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	usableGroups := GetUserUsableGroups(userGroup)
+	if _, ok := usableGroups[baseGroup]; !ok {
+		return nil
+	}
+
+	baseRatio := GetUserGroupRatio(userGroup, baseGroup)
+	if baseRatio <= 0 {
+		return nil
+	}
+	maxRatio := baseRatio * (1 + smartFailoverMaxPriceIncreaseRate)
+	excludeIDs := ImportedAccountExcludedChannelIDs(c)
+
+	type candidate struct {
+		group string
+		ratio float64
+		diff  float64
+	}
+	candidates := make([]candidate, 0)
+	for group := range ratio_setting.GetGroupRatioCopy() {
+		group = strings.TrimSpace(group)
+		if group == "" || group == baseGroup || group == "auto" {
+			continue
+		}
+		if _, ok := usableGroups[group]; !ok {
+			continue
+		}
+		if _, isSmartGroup := setting.GetSmartGroupSources(group); isSmartGroup {
+			continue
+		}
+		ratio := GetUserGroupRatio(userGroup, group)
+		if ratio <= 0 || ratio > maxRatio {
+			continue
+		}
+		channel, err := model.GetRandomSatisfiedChannelExcluding(group, modelName, 0, excludeIDs)
+		if err != nil || channel == nil {
+			continue
+		}
+		diff := math.Abs(ratio - baseRatio)
+		candidates = append(candidates, candidate{group: group, ratio: ratio, diff: diff})
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].diff == candidates[j].diff {
+			return candidates[i].ratio < candidates[j].ratio
+		}
+		return candidates[i].diff < candidates[j].diff
+	})
+
+	limit := smartFailoverMaxCandidates
+	if len(candidates) < limit {
+		limit = len(candidates)
+	}
+	groups := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		groups = append(groups, candidates[i].group)
+	}
+	return groups
 }
 
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.

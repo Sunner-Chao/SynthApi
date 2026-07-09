@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -242,11 +243,11 @@ func createStateHex(nBytes int) (string, error) {
 }
 
 func generatePKCEPair() (verifier string, challenge string, err error) {
-	b := make([]byte, 32)
+	b := make([]byte, 64)
 	if _, err := rand.Read(b); err != nil {
 		return "", "", err
 	}
-	verifier = base64.RawURLEncoding.EncodeToString(b)
+	verifier = hex.EncodeToString(b)
 	sum := sha256.Sum256([]byte(verifier))
 	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
 	return verifier, challenge, nil
