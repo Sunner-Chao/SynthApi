@@ -31,6 +31,9 @@ type ModelRequest struct {
 
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		if common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime).IsZero() {
+			common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+		}
 		var channel *model.Channel
 		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
@@ -179,7 +182,6 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
-		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {

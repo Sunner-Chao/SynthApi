@@ -45,12 +45,13 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import {
   formatSubscriptionDiscountOffPercent,
   formatSubscriptionDiscountPercent,
 } from '@/features/subscriptions/lib'
-import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -68,7 +69,7 @@ import {
   isPerCallBilling,
   isTimingLogType,
 } from '../../lib/utils'
-import type { LogOtherData, UsageLog } from '../../types'
+import type { LogOtherData, RelayTrace, UsageLog } from '../../types'
 
 function timingTextColorClass(
   variant: 'success' | 'warning' | 'danger'
@@ -134,6 +135,415 @@ function DetailSection(props: {
   )
 }
 
+function formatTraceDuration(milliseconds: number | undefined): string {
+  if (milliseconds == null || !Number.isFinite(milliseconds)) return '-'
+  if (milliseconds < 1000) return `${Math.max(0, milliseconds)} ms`
+  return `${(Math.max(0, milliseconds) / 1000).toFixed(2)} s`
+}
+
+function formatTraceBytes(bytes: number | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes)) return '-'
+  const value = Math.max(0, bytes)
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`
+  return `${(value / (1024 * 1024)).toFixed(2)} MiB`
+}
+
+function RelayTraceSection(props: { trace: RelayTrace; clientIp?: string }) {
+  const { t } = useTranslation()
+  const { trace } = props
+  const client = trace.client
+  const gateway = trace.gateway
+  const attempts = Array.isArray(trace.attempts) ? trace.attempts : []
+  const clientLocation = [
+    client?.city,
+    client?.region,
+    client?.region_code,
+    client?.country,
+  ]
+    .filter(Boolean)
+    .join(', ')
+
+  return (
+    <DetailSection label={t('Request Trace')}>
+      <div className='flex min-w-0 flex-col gap-1'>
+        <p className='text-muted-foreground text-xs font-medium'>
+          {t('Client')}
+        </p>
+        {props.clientIp && (
+          <DetailRow label={t('Client IP')} value={props.clientIp} mono />
+        )}
+        {client?.user_agent && (
+          <DetailRow label={t('User Agent')} value={client.user_agent} mono />
+        )}
+        {client?.http_protocol && (
+          <DetailRow
+            label={t('HTTP Protocol')}
+            value={client.http_protocol}
+            mono
+          />
+        )}
+        {clientLocation && (
+          <DetailRow label={t('Client Location')} value={clientLocation} />
+        )}
+        {client?.timezone && (
+          <DetailRow label={t('Timezone')} value={client.timezone} mono />
+        )}
+        {client?.cf_colo && (
+          <DetailRow label={t('Edge Location')} value={client.cf_colo} mono />
+        )}
+        {client?.cf_ray && (
+          <DetailRow label='CF-Ray' value={client.cf_ray} mono />
+        )}
+        {client?.body_observed && (
+          <>
+            <DetailRow
+              label={t('Client Upload')}
+              value={formatTraceDuration(client.body_read_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Request Bytes')}
+              value={formatTraceBytes(client.request_bytes)}
+              mono
+            />
+            {client.body_storage && (
+              <DetailRow
+                label={t('Body Storage')}
+                value={client.body_storage === 'disk' ? t('Disk') : t('Memory')}
+              />
+            )}
+          </>
+        )}
+        {client?.first_write_ms != null && (
+          <DetailRow
+            label={t('First Client Write')}
+            value={formatTraceDuration(client.first_write_ms)}
+            mono
+          />
+        )}
+        {client?.stream_span_ms != null && (
+          <DetailRow
+            label={t('Client Stream Span')}
+            value={formatTraceDuration(client.stream_span_ms)}
+            mono
+          />
+        )}
+        {client?.write_blocked_ms != null && (
+          <DetailRow
+            label={t('Client Write Blocked')}
+            value={formatTraceDuration(client.write_blocked_ms)}
+            mono
+          />
+        )}
+        {client?.response_bytes != null && (
+          <DetailRow
+            label={t('Response Bytes')}
+            value={formatTraceBytes(client.response_bytes)}
+            mono
+          />
+        )}
+      </div>
+
+      {gateway && (
+        <>
+          <Separator className='my-2' />
+          <div className='flex min-w-0 flex-col gap-1'>
+            <p className='text-muted-foreground text-xs font-medium'>
+              {t('Gateway Stages')}
+            </p>
+            {trace.total_ms != null && (
+              <DetailRow
+                label={t('Total')}
+                value={formatTraceDuration(trace.total_ms)}
+                mono
+              />
+            )}
+            <DetailRow
+              label={t('Ingress Before Relay')}
+              value={formatTraceDuration(gateway.ingress_before_relay_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Validation')}
+              value={formatTraceDuration(gateway.validate_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Relay Info')}
+              value={formatTraceDuration(gateway.relay_info_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Preprocess')}
+              value={formatTraceDuration(gateway.preprocess_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Pricing')}
+              value={formatTraceDuration(gateway.pricing_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Pre-consume')}
+              value={formatTraceDuration(gateway.pre_consume_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Channel Selection')}
+              value={formatTraceDuration(gateway.select_channel_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Billing Refresh')}
+              value={formatTraceDuration(gateway.refresh_billing_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Body Storage')}
+              value={formatTraceDuration(gateway.body_storage_ms)}
+              mono
+            />
+            <DetailRow
+              label={t('Upstream Relay')}
+              value={formatTraceDuration(gateway.upstream_relay_ms)}
+              mono
+            />
+            {gateway.first_event_ms != null && (
+              <DetailRow
+                label={t('First Event')}
+                value={formatTraceDuration(gateway.first_event_ms)}
+                mono
+              />
+            )}
+            <DetailRow
+              label={t('Attempts')}
+              value={String(gateway.attempts ?? attempts.length)}
+              mono
+            />
+            <DetailRow
+              label={t('Coverage')}
+              value={trace.coverage || 'unavailable'}
+              mono
+            />
+            {trace.affinity_fingerprint && (
+              <DetailRow
+                label={t('Affinity Fingerprint')}
+                value={trace.affinity_fingerprint}
+                mono
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {attempts.map((attempt, index) => {
+        const serverTiming = (attempt.server_timing || [])
+          .map((metric) =>
+            metric.duration_ms == null
+              ? metric.name
+              : `${metric.name}=${formatTraceDuration(metric.duration_ms)}`
+          )
+          .join(', ')
+        return (
+          <div key={`${attempt.attempt ?? index + 1}-${attempt.route ?? ''}`}>
+            <Separator className='my-2' />
+            <div className='flex min-w-0 flex-col gap-1'>
+              <p className='text-muted-foreground text-xs font-medium'>
+                {t('Upstream Attempt')} #{attempt.attempt ?? index + 1}
+              </p>
+              <DetailRow
+                label={t('Route')}
+                value={attempt.route || (attempt.direct ? 'direct' : 'unknown')}
+                mono
+              />
+              <DetailRow
+                label={t('Connection')}
+                value={
+                  (attempt.got_conn_events ?? 0) <= 0
+                    ? t('Not Observed')
+                    : attempt.conn_reused
+                      ? t('Reused')
+                      : t('New Connection')
+                }
+              />
+              {attempt.conn_was_idle && (
+                <DetailRow
+                  label={t('Idle Connection')}
+                  value={formatTraceDuration(attempt.conn_idle_ms)}
+                  mono
+                />
+              )}
+              <DetailRow
+                label='DNS'
+                value={
+                  attempt.dns_observed
+                    ? formatTraceDuration(attempt.dns_ms)
+                    : t('Not Observed')
+                }
+                mono
+              />
+              <DetailRow
+                label='TCP'
+                value={
+                  attempt.tcp_observed
+                    ? formatTraceDuration(attempt.tcp_ms)
+                    : t('Not Observed')
+                }
+                mono
+              />
+              <DetailRow
+                label='TLS'
+                value={
+                  attempt.tls_observed
+                    ? formatTraceDuration(attempt.tls_ms)
+                    : t('Not Observed')
+                }
+                mono
+              />
+              {attempt.tls_observed && (
+                <DetailRow
+                  label={t('TLS Resumed')}
+                  value={attempt.tls_resumed ? t('Yes') : t('No')}
+                />
+              )}
+              {attempt.request_write_approx_ms != null && (
+                <DetailRow
+                  label={t('Request Write (approx.)')}
+                  value={formatTraceDuration(attempt.request_write_approx_ms)}
+                  mono
+                />
+              )}
+              {attempt.ttfb_ms != null && (
+                <DetailRow
+                  label='TTFB'
+                  value={formatTraceDuration(attempt.ttfb_ms)}
+                  mono
+                />
+              )}
+              {attempt.application_first_body_read_ms != null && (
+                <DetailRow
+                  label={t('Application First Body Read')}
+                  value={formatTraceDuration(
+                    attempt.application_first_body_read_ms
+                  )}
+                  mono
+                />
+              )}
+              {attempt.upstream_to_first_event_ms != null && (
+                <DetailRow
+                  label={t('Upstream to First Event')}
+                  value={formatTraceDuration(
+                    attempt.upstream_to_first_event_ms
+                  )}
+                  mono
+                />
+              )}
+              {attempt.application_body_read_span_ms != null && (
+                <DetailRow
+                  label={t('Application Body Read Span')}
+                  value={formatTraceDuration(
+                    attempt.application_body_read_span_ms
+                  )}
+                  mono
+                />
+              )}
+              {attempt.application_stream_after_first_event_ms != null && (
+                <DetailRow
+                  label={t('Application Stream Span')}
+                  value={formatTraceDuration(
+                    attempt.application_stream_after_first_event_ms
+                  )}
+                  mono
+                />
+              )}
+              <DetailRow
+                label={t('Request Bytes')}
+                value={formatTraceBytes(attempt.request_bytes_total)}
+                mono
+              />
+              {attempt.request_content_encoding && (
+                <DetailRow
+                  label={t('Content Encoding')}
+                  value={attempt.request_content_encoding}
+                  mono
+                />
+              )}
+              {attempt.request_original_bytes != null && (
+                <DetailRow
+                  label={t('Original Request Bytes')}
+                  value={formatTraceBytes(attempt.request_original_bytes)}
+                  mono
+                />
+              )}
+              {attempt.request_compression_queue_ms != null && (
+                <DetailRow
+                  label={t('Request Compression Queue Time')}
+                  value={formatTraceDuration(
+                    attempt.request_compression_queue_ms
+                  )}
+                  mono
+                />
+              )}
+              {attempt.request_compression_ms != null && (
+                <DetailRow
+                  label={t('Request Compression Time')}
+                  value={formatTraceDuration(attempt.request_compression_ms)}
+                  mono
+                />
+              )}
+              {attempt.request_compression_level != null && (
+                <DetailRow
+                  label={t('Gzip Compression Level')}
+                  value={String(attempt.request_compression_level)}
+                  mono
+                />
+              )}
+              <DetailRow
+                label={t('Response Bytes')}
+                value={formatTraceBytes(attempt.response_bytes)}
+                mono
+              />
+              {attempt.http_protocol && (
+                <DetailRow
+                  label={t('HTTP Protocol')}
+                  value={attempt.http_protocol}
+                  mono
+                />
+              )}
+              {attempt.cf_colo && (
+                <DetailRow
+                  label={t('Upstream Colo')}
+                  value={attempt.cf_colo}
+                  mono
+                />
+              )}
+              {attempt.cf_ray && (
+                <DetailRow label='CF-Ray' value={attempt.cf_ray} mono />
+              )}
+              {serverTiming && (
+                <DetailRow
+                  label={t('Server Timing')}
+                  value={serverTiming}
+                  mono
+                />
+              )}
+            </div>
+          </div>
+        )
+      })}
+
+      {(trace.attempt_overflow ?? 0) > 0 && (
+        <DetailRow
+          label={t('Omitted Attempts')}
+          value={String(trace.attempt_overflow)}
+          mono
+        />
+      )}
+    </DetailSection>
+  )
+}
+
 function formatRatio(ratio: number | undefined): string {
   if (ratio == null) return '-'
   if (!Number.isFinite(ratio)) return '-'
@@ -154,7 +564,9 @@ function cleanupFormulaNumber(value: number, maxDigits = 8): string {
 
   const nineRunTrimmed = value.toFixed(12).match(/^(-?\d+\.\d*?[0-8])9{3,}\d*$/)
   if (nineRunTrimmed) {
-    const roundedUp = Number(nineRunTrimmed[1]) + Math.pow(10, -nineRunTrimmed[1].split('.')[1].length)
+    const roundedUp =
+      Number(nineRunTrimmed[1]) +
+      Math.pow(10, -nineRunTrimmed[1].split('.')[1].length)
     return cleanupFormulaNumber(roundedUp, maxDigits)
   }
 
@@ -589,10 +1001,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
     props.log.quota,
     other
   )
-  const subscriptionRateLabel =
-    formatSubscriptionDiscountPercent(subscriptionDisplay.discount)
-  const subscriptionOffLabel =
-    formatSubscriptionDiscountOffPercent(subscriptionDisplay.discount)
+  const subscriptionRateLabel = formatSubscriptionDiscountPercent(
+    subscriptionDisplay.discount
+  )
+  const subscriptionOffLabel = formatSubscriptionDiscountOffPercent(
+    subscriptionDisplay.discount
+  )
   const subscriptionBaseQuota = props.log.quota
   const subscriptionActualConsumed = subscriptionDisplay.actualConsumed
   const isTieredBilling =
@@ -602,8 +1016,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
     !!other?.expr_b64
   const hasAudioTokens = other?.ws || other?.audio
   const showTiming = isTimingLogType(props.log.type)
-  const showAdminIp =
-    !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
+  const showOverviewIp =
+    !!props.log.ip &&
+    !other?.relay_trace &&
+    (showTiming || (props.isAdmin && isTopup))
   const adminInfo = other?.admin_info
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
@@ -749,7 +1165,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 />
               )}
 
-              {showAdminIp && (
+              {showOverviewIp && (
                 <DetailRow
                   label={t('IP Address')}
                   value={
@@ -801,6 +1217,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 />
               )}
             </div>
+
+            {other?.relay_trace && (
+              <RelayTraceSection
+                trace={other.relay_trace}
+                clientIp={props.log.ip || undefined}
+              />
+            )}
 
             {/* Request conversion (admin only, not for refund) */}
             {showConversion && (
@@ -1159,8 +1582,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
                           {t('Discount Formula')}
                         </div>
                         <div className='font-mono break-all'>
-                          {formatSubscriptionFormulaQuota(subscriptionBaseQuota)} ×{' '}
-                          {subscriptionRateLabel} ={' '}
+                          {formatSubscriptionFormulaQuota(
+                            subscriptionBaseQuota
+                          )}{' '}
+                          × {subscriptionRateLabel} ={' '}
                           {formatSubscriptionFormulaQuota(
                             subscriptionActualConsumed
                           )}

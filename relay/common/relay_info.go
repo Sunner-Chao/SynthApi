@@ -161,7 +161,14 @@ type RelayInfo struct {
 	// relay/common/outbound_body.go), so that DoApiRequest can populate
 	// http.Request.ContentLength manually (net/http only auto-detects it for
 	// *bytes.Reader/Buffer/strings.Reader). 0 means "let net/http decide".
-	UpstreamRequestBodySize int64
+	UpstreamRequestBodySize                 int64
+	UpstreamRequestBodyOriginalSize         int64
+	UpstreamRequestBodyCompressedSize       int64
+	UpstreamRequestCompressionDuration      time.Duration
+	UpstreamRequestCompressionQueueDuration time.Duration
+	UpstreamRequestCompressionLevel         int
+	upstreamTraceCollector                  *upstreamTraceCollector
+	StageMetricsProvider                    RelayStageMetricsProvider
 
 	PriceData types.PriceData
 
@@ -191,6 +198,13 @@ type RelayInfo struct {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	info.UpstreamRequestBodySize = 0
+	info.UpstreamRequestBodyOriginalSize = 0
+	info.UpstreamRequestBodyCompressedSize = 0
+	info.UpstreamRequestCompressionDuration = 0
+	info.UpstreamRequestCompressionQueueDuration = 0
+	info.UpstreamRequestCompressionLevel = 0
+
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)
@@ -470,7 +484,8 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		reqId = common.GetTimeString() + common.GetRandomString(8)
 	}
 	info := &RelayInfo{
-		Request: request,
+		Request:                request,
+		upstreamTraceCollector: newUpstreamTraceCollector(),
 
 		RequestId:  reqId,
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),

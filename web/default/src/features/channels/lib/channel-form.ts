@@ -24,6 +24,14 @@ import {
 } from '../constants'
 import type { Channel } from '../types'
 
+export const UPSTREAM_GZIP_SUPPORTED_CHANNEL_TYPES = new Set([
+  1, 3, 6, 7, 8, 9, 10, 12, 13, 14, 19, 20, 22, 31, 47, 48,
+])
+
+export function supportsUpstreamRequestGzip(channelType: number): boolean {
+  return UPSTREAM_GZIP_SUPPORTED_CHANNEL_TYPES.has(channelType)
+}
+
 // ============================================================================
 // Form Validation Schema
 // ============================================================================
@@ -182,6 +190,8 @@ export const channelFormSchema = z
     pass_through_body_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
+    upstream_request_gzip_enabled: z.boolean().optional(),
+    upstream_request_gzip_min_mib: z.number().min(1).max(128).optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -300,6 +310,8 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   pass_through_body_enabled: false,
   system_prompt: '',
   system_prompt_override: false,
+  upstream_request_gzip_enabled: true,
+  upstream_request_gzip_min_mib: 1,
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: 'json',
@@ -336,6 +348,8 @@ export function transformChannelToFormDefaults(
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
+    upstream_request_gzip_enabled: supportsUpstreamRequestGzip(channel.type),
+    upstream_request_gzip_min_mib: 1,
   }
 
   if (channel.setting) {
@@ -348,6 +362,14 @@ export function transformChannelToFormDefaults(
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
+        upstream_request_gzip_enabled:
+          supportsUpstreamRequestGzip(channel.type) &&
+          parsed.upstream_request_gzip_enabled !== false,
+        upstream_request_gzip_min_mib:
+          typeof parsed.upstream_request_gzip_min_bytes === 'number' &&
+          parsed.upstream_request_gzip_min_bytes > 0
+            ? parsed.upstream_request_gzip_min_bytes / (1 << 20)
+            : 1,
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -450,13 +472,35 @@ export function transformChannelToFormDefaults(
  * Build the setting JSON string from form extra settings
  */
 function buildSettingJSON(formData: ChannelFormValues): string {
-  const settingObj = {
+  let settingObj: Record<string, unknown> = {}
+  if (formData.setting?.trim()) {
+    try {
+      const parsed = JSON.parse(formData.setting)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        settingObj = parsed
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to preserve channel setting:', error)
+    }
+  }
+
+  Object.assign(settingObj, {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
     proxy: formData.proxy || '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
+  })
+  if (supportsUpstreamRequestGzip(formData.type)) {
+    settingObj.upstream_request_gzip_enabled =
+      formData.upstream_request_gzip_enabled !== false
+    settingObj.upstream_request_gzip_min_bytes =
+      Math.round(formData.upstream_request_gzip_min_mib || 1) * (1 << 20)
+  } else {
+    delete settingObj.upstream_request_gzip_enabled
+    delete settingObj.upstream_request_gzip_min_bytes
   }
   return JSON.stringify(settingObj)
 }

@@ -27,6 +27,8 @@ import { type ApiKey, type ApiKeysDialogType } from '../types'
 type ApiKeysContextType = {
   open: ApiKeysDialogType | null
   setOpen: (str: ApiKeysDialogType | null) => void
+  preferredGroup: string
+  setPreferredGroup: React.Dispatch<React.SetStateAction<string>>
   currentRow: ApiKey | null
   setCurrentRow: React.Dispatch<React.SetStateAction<ApiKey | null>>
   refreshTrigger: number
@@ -46,6 +48,7 @@ const ApiKeysContext = React.createContext<ApiKeysContextType | null>(null)
 export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
   const [open, setOpen] = useDialogState<ApiKeysDialogType>(null)
+  const [preferredGroup, setPreferredGroup] = useState('')
   const [currentRow, setCurrentRow] = useState<ApiKey | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [resolvedKey, setResolvedKey] = useState('')
@@ -157,6 +160,8 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
       value={{
         open,
         setOpen,
+        preferredGroup,
+        setPreferredGroup,
         currentRow,
         setCurrentRow,
         refreshTrigger,

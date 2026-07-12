@@ -43,6 +43,377 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
+const TRACE_EMPTY_VALUE = '-';
+const TRACE_SERVER_TIMING_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+const TRACE_IPV4_TEXT_PATTERN =
+  /(?:^|[^0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?:$|[^0-9])/;
+const TRACE_HTTP_PROTOCOLS = new Set([
+  'HTTP/1.0',
+  'HTTP/1.1',
+  'HTTP/2.0',
+  'HTTP/3.0',
+]);
+const TRACE_COVERAGE_VALUES = new Set(['central_http', 'unavailable']);
+const TRACE_ROUTE_VALUES = new Set([
+  'direct',
+  'channel_socks_proxy',
+  'channel_http_proxy',
+  'environment_proxy',
+  'unknown',
+]);
+
+const isTraceRecord = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const hasTraceValue = (value) =>
+  value !== undefined && value !== null && value !== '';
+
+const safeTraceText = (value, maxLength = 512) => {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+};
+
+const safeTraceToken = (value, pattern, maxLength) => {
+  const text = safeTraceText(value, maxLength);
+  return text && pattern.test(text) ? text : '';
+};
+
+const formatTraceDuration = (value) => {
+  if (!hasTraceValue(value)) return TRACE_EMPTY_VALUE;
+  const milliseconds = Number(value);
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return TRACE_EMPTY_VALUE;
+  }
+  if (milliseconds < 1000) {
+    const formatted = Number.isInteger(milliseconds)
+      ? String(milliseconds)
+      : milliseconds.toFixed(2).replace(/\.?0+$/, '');
+    return `${formatted} ms`;
+  }
+  return `${(milliseconds / 1000).toFixed(2)} s`;
+};
+
+const formatTraceBytes = (value) => {
+  if (!hasTraceValue(value)) return TRACE_EMPTY_VALUE;
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return TRACE_EMPTY_VALUE;
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
+};
+
+const formatTraceCount = (value, fallback = 0) => {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count < 0) return fallback;
+  return Math.trunc(count);
+};
+
+const formatTraceHTTPProtocol = (value) => {
+  const protocol = safeTraceText(value, 16);
+  return TRACE_HTTP_PROTOCOLS.has(protocol) ? protocol : TRACE_EMPTY_VALUE;
+};
+
+const formatTraceIdentifier = (value, allowlist) => {
+  const identifier = safeTraceText(value, 64);
+  return allowlist.has(identifier) ? identifier : 'unknown';
+};
+
+const formatTraceStorage = (value, t) => {
+  if (value === 'memory') return t('内存');
+  if (value === 'disk') return t('磁盘');
+  return TRACE_EMPTY_VALUE;
+};
+
+const formatObservedDuration = (observed, value, t) =>
+  observed === true ? formatTraceDuration(value) : t('未观测');
+
+const formatServerTiming = (value) => {
+  if (!Array.isArray(value)) return '';
+  return value
+    .slice(0, 16)
+    .map((metric) => {
+      if (!isTraceRecord(metric)) return null;
+      const name = safeTraceText(metric.name, 64);
+      if (
+        !TRACE_SERVER_TIMING_NAME_PATTERN.test(name) ||
+        TRACE_IPV4_TEXT_PATTERN.test(name)
+      ) {
+        return null;
+      }
+      if (!hasTraceValue(metric.duration_ms)) return name;
+      const duration = Number(metric.duration_ms);
+      if (!Number.isFinite(duration) || duration < 0 || duration > 86400000) {
+        return name;
+      }
+      return `${name}=${formatTraceDuration(duration)}`;
+    })
+    .filter(Boolean)
+    .join(', ');
+};
+
+const renderTraceLines = (lines) => (
+  <div
+    style={{
+      maxWidth: 760,
+      whiteSpace: 'pre-line',
+      wordBreak: 'break-word',
+      lineHeight: 1.6,
+    }}
+  >
+    {lines.filter(Boolean).join('\n')}
+  </div>
+);
+
+const appendRelayTraceDetails = (details, log, trace, t) => {
+  if (!isTraceRecord(trace)) return;
+
+  const allAttempts = Array.isArray(trace.attempts)
+    ? trace.attempts.filter(isTraceRecord)
+    : [];
+  const attempts = allAttempts.slice(0, 8);
+  const overflow =
+    formatTraceCount(trace.attempt_overflow) +
+    Math.max(0, allAttempts.length - attempts.length);
+  const version = formatTraceCount(trace.version, 1);
+  const coverage = formatTraceIdentifier(trace.coverage, TRACE_COVERAGE_VALUES);
+  const overviewLines = [
+    t('版本 {{version}}；覆盖 {{coverage}}；总耗时 {{total}}', {
+      version,
+      coverage,
+      total: formatTraceDuration(trace.total_ms),
+    }),
+  ];
+  const affinityFingerprint = safeTraceToken(
+    trace.affinity_fingerprint,
+    /^[A-Fa-f0-9]{8}$/,
+    8,
+  );
+  if (affinityFingerprint) {
+    overviewLines.push(
+      t('亲和指纹 {{fingerprint}}', { fingerprint: affinityFingerprint }),
+    );
+  }
+  if (overflow > 0) {
+    overviewLines.push(t('省略 {{count}} 次上游尝试', { count: overflow }));
+  }
+  details.push({
+    key: t('请求链路'),
+    value: renderTraceLines(overviewLines),
+  });
+
+  const clientIp = safeTraceText(log?.ip, 128);
+  if (isTraceRecord(trace.client) || clientIp) {
+    const client = isTraceRecord(trace.client) ? trace.client : {};
+    const clientLines = [];
+    const identity = [
+      clientIp ? `IP ${clientIp}` : '',
+      safeTraceText(client.user_agent, 512)
+        ? `UA ${safeTraceText(client.user_agent, 512)}`
+        : '',
+      formatTraceHTTPProtocol(client.http_protocol) !== TRACE_EMPTY_VALUE
+        ? `HTTP ${formatTraceHTTPProtocol(client.http_protocol)}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    if (identity) clientLines.push(identity);
+
+    const location = [
+      safeTraceText(client.city, 80),
+      safeTraceText(client.region, 80),
+      safeTraceToken(client.region_code, /^[A-Za-z0-9_-]{1,16}$/, 16),
+      safeTraceToken(client.country, /^[A-Za-z0-9]{1,8}$/, 8),
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const timezone = safeTraceText(client.timezone, 80);
+    if (location || timezone) {
+      clientLines.push(
+        t('位置 {{location}}；时区 {{timezone}}', {
+          location: location || TRACE_EMPTY_VALUE,
+          timezone: timezone || TRACE_EMPTY_VALUE,
+        }),
+      );
+    }
+
+    const clientRay = safeTraceToken(
+      client.cf_ray,
+      /^[A-Za-z0-9_-]{1,64}$/,
+      64,
+    );
+    const clientColo = safeTraceToken(client.cf_colo, /^[A-Za-z0-9]{1,8}$/, 8);
+    if (clientRay || clientColo) {
+      clientLines.push(
+        t('Cloudflare Ray {{ray}}；机房 {{colo}}', {
+          ray: clientRay || TRACE_EMPTY_VALUE,
+          colo: clientColo || TRACE_EMPTY_VALUE,
+        }),
+      );
+    }
+
+    if (
+      client.body_observed === true ||
+      hasTraceValue(client.body_read_ms) ||
+      hasTraceValue(client.request_bytes) ||
+      hasTraceValue(client.body_storage)
+    ) {
+      clientLines.push(
+        t('上传 {{upload}}；请求 {{requestBytes}}；存储 {{storage}}', {
+          upload: formatTraceDuration(client.body_read_ms),
+          requestBytes: formatTraceBytes(client.request_bytes),
+          storage: formatTraceStorage(client.body_storage, t),
+        }),
+      );
+    }
+
+    if (
+      hasTraceValue(client.first_write_ms) ||
+      hasTraceValue(client.stream_span_ms) ||
+      hasTraceValue(client.write_blocked_ms) ||
+      hasTraceValue(client.response_bytes)
+    ) {
+      clientLines.push(
+        t(
+          '首写 {{firstWrite}}；流跨度 {{streamSpan}}；写阻塞 {{blocked}}；响应 {{responseBytes}}',
+          {
+            firstWrite: formatTraceDuration(client.first_write_ms),
+            streamSpan: formatTraceDuration(client.stream_span_ms),
+            blocked: formatTraceDuration(client.write_blocked_ms),
+            responseBytes: formatTraceBytes(client.response_bytes),
+          },
+        ),
+      );
+    }
+
+    if (clientLines.length > 0) {
+      details.push({
+        key: t('客户端信息'),
+        value: renderTraceLines(clientLines),
+      });
+    }
+  }
+
+  if (isTraceRecord(trace.gateway)) {
+    const gateway = trace.gateway;
+    details.push({
+      key: t('网关阶段'),
+      value: renderTraceLines([
+        t('入口 {{ingress}}；校验 {{validation}}；Relay 信息 {{relayInfo}}', {
+          ingress: formatTraceDuration(gateway.ingress_before_relay_ms),
+          validation: formatTraceDuration(gateway.validate_ms),
+          relayInfo: formatTraceDuration(gateway.relay_info_ms),
+        }),
+        t('预处理 {{preprocess}}；计价 {{pricing}}；预扣 {{preConsume}}', {
+          preprocess: formatTraceDuration(gateway.preprocess_ms),
+          pricing: formatTraceDuration(gateway.pricing_ms),
+          preConsume: formatTraceDuration(gateway.pre_consume_ms),
+        }),
+        t('选渠道 {{selection}}；刷新计费 {{billing}}；存储 {{storage}}', {
+          selection: formatTraceDuration(gateway.select_channel_ms),
+          billing: formatTraceDuration(gateway.refresh_billing_ms),
+          storage: formatTraceDuration(gateway.body_storage_ms),
+        }),
+        t('上游 Relay {{upstream}}；首事件 {{firstEvent}}；尝试 {{attempts}}', {
+          upstream: formatTraceDuration(gateway.upstream_relay_ms),
+          firstEvent: formatTraceDuration(gateway.first_event_ms),
+          attempts: formatTraceCount(gateway.attempts, attempts.length),
+        }),
+      ]),
+    });
+  }
+
+  attempts.forEach((attempt, index) => {
+    const attemptNumber = Math.max(
+      1,
+      formatTraceCount(attempt.attempt, index + 1),
+    );
+    const gotConnEvents = formatTraceCount(attempt.got_conn_events);
+    const connection =
+      gotConnEvents === 0
+        ? t('未观测')
+        : attempt.conn_reused === true
+          ? t('已复用')
+          : t('新连接');
+    const idle =
+      gotConnEvents === 0
+        ? t('未观测')
+        : attempt.conn_was_idle === true
+          ? formatTraceDuration(attempt.conn_idle_ms)
+          : t('否');
+    const serverTiming = formatServerTiming(attempt.server_timing);
+    const attemptLines = [
+      t('路由 {{route}}；连接 {{connection}}；空闲 {{idle}}', {
+        route: formatTraceIdentifier(attempt.route, TRACE_ROUTE_VALUES),
+        connection,
+        idle,
+      }),
+      t('DNS {{dns}}；TCP {{tcp}}；TLS {{tls}}；恢复 {{resumed}}', {
+        dns: formatObservedDuration(attempt.dns_observed, attempt.dns_ms, t),
+        tcp: formatObservedDuration(attempt.tcp_observed, attempt.tcp_ms, t),
+        tls: formatObservedDuration(attempt.tls_observed, attempt.tls_ms, t),
+        resumed:
+          attempt.tls_observed === true
+            ? attempt.tls_resumed === true
+              ? t('是')
+              : t('否')
+            : TRACE_EMPTY_VALUE,
+      }),
+      t('近似写入 {{write}}；TTFB {{ttfb}}；首响应体 {{firstBody}}', {
+        write: formatTraceDuration(attempt.request_write_approx_ms),
+        ttfb: formatTraceDuration(attempt.ttfb_ms),
+        firstBody: formatTraceDuration(attempt.application_first_body_read_ms),
+      }),
+      t(
+        '上游到首事件 {{firstEvent}}；读取跨度 {{readSpan}}；首事件后流跨度 {{streamSpan}}',
+        {
+          firstEvent: formatTraceDuration(attempt.upstream_to_first_event_ms),
+          readSpan: formatTraceDuration(attempt.application_body_read_span_ms),
+          streamSpan: formatTraceDuration(
+            attempt.application_stream_after_first_event_ms,
+          ),
+        },
+      ),
+      t('请求 {{requestBytes}}；响应 {{responseBytes}}；HTTP {{protocol}}', {
+        requestBytes: formatTraceBytes(attempt.request_bytes_total),
+        responseBytes: formatTraceBytes(attempt.response_bytes),
+        protocol: formatTraceHTTPProtocol(attempt.http_protocol),
+      }),
+    ];
+
+    const upstreamRay = safeTraceToken(
+      attempt.cf_ray,
+      /^[A-Za-z0-9-]{1,64}$/,
+      64,
+    );
+    const upstreamColo = safeTraceToken(
+      attempt.cf_colo,
+      /^[A-Za-z0-9]{1,8}$/,
+      8,
+    );
+    if (upstreamRay || upstreamColo) {
+      attemptLines.push(
+        t('Cloudflare Ray {{ray}}；上游机房 {{colo}}', {
+          ray: upstreamRay || TRACE_EMPTY_VALUE,
+          colo: upstreamColo || TRACE_EMPTY_VALUE,
+        }),
+      );
+    }
+    if (serverTiming) {
+      attemptLines.push(
+        t('Server Timing：{{timing}}', { timing: serverTiming }),
+      );
+    }
+
+    details.push({
+      key: t('上游尝试 #{{attempt}}', { attempt: attemptNumber }),
+      value: renderTraceLines(attemptLines),
+    });
+  });
+};
+
 export const useLogsData = () => {
   const { t } = useTranslation();
 
@@ -164,7 +535,9 @@ export const useLogsData = () => {
   };
 
   // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
     getInitialBillingDisplayMode,
@@ -383,7 +756,10 @@ export const useLogsData = () => {
       let other = getLogOther(logs[i].other);
       let expandDataLocal = [];
 
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
+      if (
+        isAdminUser &&
+        (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)
+      ) {
         expandDataLocal.push({
           key: t('渠道信息'),
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
@@ -395,6 +771,7 @@ export const useLogsData = () => {
           value: logs[i].request_id,
         });
       }
+      appendRelayTraceDetails(expandDataLocal, logs[i], other?.relay_trace, t);
       if (other?.ws || other?.audio) {
         expandDataLocal.push({
           key: t('语音输入'),
@@ -430,7 +807,10 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('日志详情'),
             value: other?.claude
-              ? renderClaudeLogContent({ ...other, displayMode: billingDisplayMode })
+              ? renderClaudeLogContent({
+                  ...other,
+                  displayMode: billingDisplayMode,
+                })
               : renderLogContent({ ...other, displayMode: billingDisplayMode }),
           });
         }
@@ -520,7 +900,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.reason}
               </div>
             ),
@@ -537,7 +924,8 @@ export const useLogsData = () => {
         const ss = other.stream_status;
         const isOk = ss.status === 'ok';
         const statusLabel = isOk ? '✓ ' + t('正常') : '✗ ' + t('异常');
-        let streamValue = statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
+        let streamValue =
+          statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
         if (ss.error_count > 0) {
           streamValue += ` [${t('软错误')}: ${ss.error_count}]`;
         }
@@ -552,7 +940,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('流错误详情'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'pre-line', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'pre-line',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {ss.errors.join('\n')}
               </div>
             ),

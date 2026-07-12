@@ -23,6 +23,10 @@ func GetChannelActiveUserCounts(channelIDs []int) map[int]int {
 	return activeChannelUsers.counts(channelIDs)
 }
 
+func GetChannelActiveUserIDs(channelIDs []int) map[int][]int {
+	return activeChannelUsers.userIDs(channelIDs)
+}
+
 func GetChannelActiveUserSummary() (activeUsers int64, activeChannels int64) {
 	return activeChannelUsers.summary()
 }
@@ -83,6 +87,28 @@ func (t *channelActiveUserTracker) counts(channelIDs []int) map[int]int {
 		counts[channelID] = len(t.usersByChannel[channelID])
 	}
 	return counts
+}
+
+func (t *channelActiveUserTracker) userIDs(channelIDs []int) map[int][]int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	result := make(map[int][]int, len(channelIDs))
+	seenChannels := make(map[int]struct{}, len(channelIDs))
+	for _, channelID := range channelIDs {
+		if _, ok := seenChannels[channelID]; ok {
+			continue
+		}
+		seenChannels[channelID] = struct{}{}
+
+		userCounts := t.usersByChannel[channelID]
+		users := make([]int, 0, len(userCounts))
+		for userID := range userCounts {
+			users = append(users, userID)
+		}
+		result[channelID] = users
+	}
+	return result
 }
 
 func (t *channelActiveUserTracker) summary() (activeUsers int64, activeChannels int64) {

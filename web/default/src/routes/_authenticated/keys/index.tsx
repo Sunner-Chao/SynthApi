@@ -21,9 +21,16 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ApiKeys } from '@/features/keys'
 import { API_KEY_STATUS_OPTIONS } from '@/features/keys/constants'
 
+const booleanSearchParam = z.preprocess(
+  (value) => value === true || value === 'true' || value === '1',
+  z.boolean()
+)
+
 const apiKeySearchSchema = z.object({
   page: z.number().optional().catch(1),
   pageSize: z.number().optional().catch(undefined),
+  create: booleanSearchParam.optional().catch(false),
+  group: z.string().optional().catch(''),
   status: z
     .array(z.enum(API_KEY_STATUS_OPTIONS.map((s) => s.value as `${number}`)))
     .optional()
@@ -34,5 +41,10 @@ const apiKeySearchSchema = z.object({
 
 export const Route = createFileRoute('/_authenticated/keys/')({
   validateSearch: apiKeySearchSchema,
-  component: ApiKeys,
+  component: RouteComponent,
 })
+
+function RouteComponent() {
+  const { create, group } = Route.useSearch()
+  return <ApiKeys initialCreate={create} initialGroup={group} />
+}

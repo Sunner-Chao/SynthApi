@@ -16,17 +16,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
 import { ApiKeysDialogs } from './components/api-keys-dialogs'
 import { ApiKeysPrimaryButtons } from './components/api-keys-primary-buttons'
-import { ApiKeysProvider } from './components/api-keys-provider'
+import { ApiKeysProvider, useApiKeys } from './components/api-keys-provider'
 import { ApiKeysTable } from './components/api-keys-table'
 
-export function ApiKeys() {
+type ApiKeysProps = {
+  initialCreate?: boolean
+  initialGroup?: string
+}
+
+function ApiKeysContent({
+  initialCreate = false,
+  initialGroup = '',
+}: ApiKeysProps) {
   const { t } = useTranslation()
+  const { setOpen, setPreferredGroup } = useApiKeys()
+
+  useEffect(() => {
+    if (!initialCreate) return
+
+    setPreferredGroup(initialGroup.trim())
+    setOpen('create')
+  }, [initialCreate, initialGroup, setOpen, setPreferredGroup])
+
   return (
-    <ApiKeysProvider>
+    <>
       <SectionPageLayout>
         <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
         <SectionPageLayout.Actions>
@@ -38,6 +56,14 @@ export function ApiKeys() {
       </SectionPageLayout>
 
       <ApiKeysDialogs />
+    </>
+  )
+}
+
+export function ApiKeys(props: ApiKeysProps) {
+  return (
+    <ApiKeysProvider>
+      <ApiKeysContent {...props} />
     </ApiKeysProvider>
   )
 }

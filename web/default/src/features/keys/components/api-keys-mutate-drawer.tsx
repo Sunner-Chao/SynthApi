@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
@@ -93,6 +93,9 @@ type ApiKeyMutateDrawerProps = {
 }
 
 const GROUP_CHANNEL_STATUS_REFRESH_INTERVAL_MS = 5 * 60 * 1000
+const EMPTY_GROUPS: NonNullable<
+  Awaited<ReturnType<typeof getUserGroups>>['data']
+> = {}
 
 export function ApiKeysMutateDrawer({
   open,
@@ -101,7 +104,7 @@ export function ApiKeysMutateDrawer({
 }: ApiKeyMutateDrawerProps) {
   const { t } = useTranslation()
   const isUpdate = !!currentRow
-  const { triggerRefresh } = useApiKeys()
+  const { triggerRefresh, preferredGroup, setPreferredGroup } = useApiKeys()
   const { status } = useStatus()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -119,10 +122,13 @@ export function ApiKeysMutateDrawer({
   })
 
   // Fetch groups
-  const { data: groupsData } = useQuery({
+  const { data: groupsData, refetch: refetchGroups } = useQuery({
     queryKey: ['user-groups'],
     queryFn: getUserGroups,
-    staleTime: 5 * 60 * 1000,
+    enabled: open,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
 
   const {
@@ -137,17 +143,24 @@ export function ApiKeysMutateDrawer({
   })
 
   const models = modelsData?.data || []
-  const groupsRaw = groupsData?.data || {}
-  const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
-    ([key, info]) => ({
-      value: key,
-      label: key,
-      desc: info.desc || key,
-      ratio: info.ratio,
-      channelStatus: groupChannelStatus[key],
-    })
+  const groupsRaw = groupsData?.data || EMPTY_GROUPS
+  const availableGroupValues = useMemo(
+    () => Object.keys(groupsRaw),
+    [groupsRaw]
   )
-  const backendHasAuto = groups.some((g) => g.value === 'auto')
+  const groups: ApiKeyGroupOption[] = useMemo(
+    () =>
+      Object.entries(groupsRaw).map(([key, info]) => ({
+        value: key,
+        label: key,
+        desc: info.desc || key,
+        ratio: info.ratio,
+        channelStatus: groupChannelStatus[key],
+      })),
+    [groupsRaw, groupChannelStatus]
+  )
+  const backendHasAuto = availableGroupValues.includes('auto')
+  const normalizedPreferredGroup = preferredGroup.trim()
   const schema = getApiKeyFormSchema(t)
 
   useEffect(() => {
@@ -155,6 +168,12 @@ export function ApiKeysMutateDrawer({
       setGroupChannelStatus(groupChannelStatusData.data)
     }
   }, [groupChannelStatusData])
+
+  useEffect(() => {
+    if (open) {
+      void refetchGroups()
+    }
+  }, [open, refetchGroups])
 
   const handleTestGroupChannelStatus = (group: string) => {
     if (!group || testingGroups.has(group)) return
@@ -194,11 +213,28 @@ export function ApiKeysMutateDrawer({
         }
       })
     } else if (open && !isUpdate) {
-      form.reset(
-        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
+      const defaults = getApiKeyFormDefaultValues(
+        defaultUseAutoGroup && backendHasAuto
       )
+      if (
+        normalizedPreferredGroup &&
+        availableGroupValues.includes(normalizedPreferredGroup)
+      ) {
+        defaults.group = normalizedPreferredGroup
+        defaults.cross_group_retry = false
+      }
+      form.reset(defaults)
     }
-  }, [open, isUpdate, currentRow, form, defaultUseAutoGroup, backendHasAuto])
+  }, [
+    open,
+    isUpdate,
+    currentRow,
+    form,
+    defaultUseAutoGroup,
+    backendHasAuto,
+    normalizedPreferredGroup,
+    availableGroupValues,
+  ])
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
@@ -214,7 +250,13 @@ export function ApiKeysMutateDrawer({
         form.setValue('cross_group_retry', false)
       }
     }
-  }, [groups, form])
+    if (
+      normalizedPreferredGroup &&
+      !groups.some((g) => g.value === normalizedPreferredGroup)
+    ) {
+      setPreferredGroup('')
+    }
+  }, [groups, form, normalizedPreferredGroup, setPreferredGroup])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)
@@ -229,6 +271,7 @@ export function ApiKeysMutateDrawer({
         if (result.success) {
           toast.success(t(SUCCESS_MESSAGES.API_KEY_UPDATED))
           onOpenChange(false)
+          setPreferredGroup('')
           triggerRefresh()
         } else {
           toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
@@ -261,6 +304,7 @@ export function ApiKeysMutateDrawer({
             })
           )
           onOpenChange(false)
+          setPreferredGroup('')
           triggerRefresh()
         }
       }
@@ -306,6 +350,7 @@ export function ApiKeysMutateDrawer({
         onOpenChange(v)
         if (!v) {
           form.reset()
+          setPreferredGroup('')
         }
       }}
     >

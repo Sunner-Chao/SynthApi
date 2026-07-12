@@ -16,16 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import {
   Activity,
   BookOpen,
   Clock3,
   HeartPulse,
+  KeyRound,
   RadioTower,
   Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/status-badge'
 import type { ChannelMonitorItem } from '@/features/dashboard/types'
 import {
@@ -307,27 +310,40 @@ export function MonitorChannelCard({ item }: MonitorChannelCardProps) {
       </div>
 
       {/* Footer */}
-      <div className='mt-3 flex items-center justify-between border-t border-gray-100 pt-3 dark:border-white/5'>
-        <div className='flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500'>
-          <Clock3 className='size-3' aria-hidden='true' />
-          <span className='font-mono'>
-            {formatRelativeTime(item.test_time)}
-          </span>
+      <div className='mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-white/5'>
+        <div className='min-w-0'>
+          <div className='flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500'>
+            <Clock3 className='size-3' aria-hidden='true' />
+            <span className='font-mono'>
+              {formatRelativeTime(item.test_time)}
+            </span>
+          </div>
+          <div className='mt-1 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500'>
+            <Users className='size-3' aria-hidden='true' />
+            <span
+              className={cn(
+                'font-mono font-semibold',
+                (item.active_users ?? 0) > 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : ''
+              )}
+            >
+              {item.active_users ?? 0}
+            </span>
+            <span>{t('active')}</span>
+          </div>
         </div>
-        <div className='flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500'>
-          <Users className='size-3' aria-hidden='true' />
-          <span
-            className={cn(
-              'font-mono font-semibold',
-              (item.active_users ?? 0) > 0
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : ''
-            )}
-          >
-            {item.active_users ?? 0}
-          </span>
-          <span>{t('active')}</span>
-        </div>
+        <Button
+          size='sm'
+          variant='outline'
+          className='ml-auto'
+          render={
+            <Link to='/keys' search={{ create: true, group: groupName }} />
+          }
+        >
+          <KeyRound className='size-3.5' aria-hidden='true' />
+          {t('Create API Key')}
+        </Button>
       </div>
     </div>
   )

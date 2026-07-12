@@ -104,6 +104,9 @@ const REGION_EXAMPLE = {
 };
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8;
 const ADVANCED_SETTINGS_EXPANDED_KEY = 'channel-advanced-settings-expanded';
+const UPSTREAM_GZIP_SUPPORTED_CHANNEL_TYPES = new Set([
+  1, 3, 6, 7, 8, 9, 10, 12, 13, 14, 19, 20, 22, 31, 47, 48,
+]);
 
 const PARAM_OVERRIDE_LEGACY_TEMPLATE = {
   temperature: 0,
@@ -195,6 +198,8 @@ const EditChannelModal = (props) => {
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
+    upstream_request_gzip_enabled: true,
+    upstream_request_gzip_min_bytes: 1 << 20,
     settings: '',
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
@@ -517,6 +522,8 @@ const EditChannelModal = (props) => {
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
+    upstream_request_gzip_enabled: true,
+    upstream_request_gzip_min_bytes: 1 << 20,
   });
   const showApiConfigCard = true; // 控制是否显示 API 配置卡片
   const getInitValues = () => ({ ...originInputs });
@@ -535,7 +542,22 @@ const EditChannelModal = (props) => {
     setInputs((prev) => ({ ...prev, [key]: value }));
 
     // 生成setting JSON并更新
-    const newSettings = { ...channelSettings, [key]: value };
+    let preservedSettings = {};
+    if (inputs.setting) {
+      try {
+        const parsed = JSON.parse(inputs.setting);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          preservedSettings = parsed;
+        }
+      } catch (error) {
+        console.error('解析渠道设置失败:', error);
+      }
+    }
+    const newSettings = {
+      ...preservedSettings,
+      ...channelSettings,
+      [key]: value,
+    };
     const settingsJson = JSON.stringify(newSettings);
     handleInputChange('setting', settingsJson);
   };
@@ -870,6 +892,11 @@ const EditChannelModal = (props) => {
           data.system_prompt = parsedSettings.system_prompt || '';
           data.system_prompt_override =
             parsedSettings.system_prompt_override || false;
+          data.upstream_request_gzip_enabled =
+            UPSTREAM_GZIP_SUPPORTED_CHANNEL_TYPES.has(data.type) &&
+            parsedSettings.upstream_request_gzip_enabled !== false;
+          data.upstream_request_gzip_min_bytes =
+            parsedSettings.upstream_request_gzip_min_bytes || 1 << 20;
         } catch (error) {
           console.error('解析渠道设置失败:', error);
           data.force_format = false;
@@ -878,6 +905,9 @@ const EditChannelModal = (props) => {
           data.pass_through_body_enabled = false;
           data.system_prompt = '';
           data.system_prompt_override = false;
+          data.upstream_request_gzip_enabled =
+            UPSTREAM_GZIP_SUPPORTED_CHANNEL_TYPES.has(data.type);
+          data.upstream_request_gzip_min_bytes = 1 << 20;
         }
       } else {
         data.force_format = false;
@@ -886,6 +916,9 @@ const EditChannelModal = (props) => {
         data.pass_through_body_enabled = false;
         data.system_prompt = '';
         data.system_prompt_override = false;
+        data.upstream_request_gzip_enabled =
+          UPSTREAM_GZIP_SUPPORTED_CHANNEL_TYPES.has(data.type);
+        data.upstream_request_gzip_min_bytes = 1 << 20;
       }
 
       if (data.settings) {
@@ -995,6 +1028,10 @@ const EditChannelModal = (props) => {
         pass_through_body_enabled: data.pass_through_body_enabled,
         system_prompt: data.system_prompt,
         system_prompt_override: data.system_prompt_override || false,
+        upstream_request_gzip_enabled:
+          data.upstream_request_gzip_enabled,
+        upstream_request_gzip_min_bytes:
+          data.upstream_request_gzip_min_bytes,
       });
       initialModelsRef.current = (data.models || [])
         .map((model) => (model || '').trim())
@@ -1384,6 +1421,8 @@ const EditChannelModal = (props) => {
       pass_through_body_enabled: false,
       system_prompt: '',
       system_prompt_override: false,
+      upstream_request_gzip_enabled: true,
+      upstream_request_gzip_min_bytes: 1 << 20,
     });
     // 重置密钥模式状态
     setKeyMode('append');
@@ -1747,14 +1786,34 @@ const EditChannelModal = (props) => {
     }
 
     // 生成渠道额外设置JSON
-    const channelExtraSettings = {
+    let channelExtraSettings = {};
+    if (localInputs.setting) {
+      try {
+        const parsed = JSON.parse(localInputs.setting);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          channelExtraSettings = parsed;
+        }
+      } catch (error) {
+        console.error('解析渠道设置失败:', error);
+      }
+    }
+    Object.assign(channelExtraSettings, {
       force_format: localInputs.force_format || false,
       thinking_to_content: localInputs.thinking_to_content || false,
       proxy: localInputs.proxy || '',
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
       system_prompt_override: localInputs.system_prompt_override || false,
-    };
+    });
+    if (UPSTREAM_GZIP_SUPPORTED_CHANNEL_TYPES.has(localInputs.type)) {
+      channelExtraSettings.upstream_request_gzip_enabled =
+        localInputs.upstream_request_gzip_enabled !== false;
+      channelExtraSettings.upstream_request_gzip_min_bytes =
+        Number(localInputs.upstream_request_gzip_min_bytes) || 1 << 20;
+    } else {
+      delete channelExtraSettings.upstream_request_gzip_enabled;
+      delete channelExtraSettings.upstream_request_gzip_min_bytes;
+    }
     localInputs.setting = JSON.stringify(channelExtraSettings);
 
     // 处理 settings 字段（包括企业账户设置和字段透传控制）
@@ -1835,6 +1894,8 @@ const EditChannelModal = (props) => {
     delete localInputs.pass_through_body_enabled;
     delete localInputs.system_prompt;
     delete localInputs.system_prompt_override;
+    delete localInputs.upstream_request_gzip_enabled;
+    delete localInputs.upstream_request_gzip_min_bytes;
     delete localInputs.is_enterprise_account;
     // 顶层的 vertex_key_type 不应发送给后端
     delete localInputs.vertex_key_type;

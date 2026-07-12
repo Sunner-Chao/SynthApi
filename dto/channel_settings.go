@@ -10,12 +10,33 @@ import (
 var importedAccountQuotaPercentPattern = regexp.MustCompile(`(?i)(5\s*h|5-hour|5\s*hour|7\s*d|7-day|7\s*day|weekly)\D{0,12}([0-9]+(?:\.[0-9]+)?)\s*%`)
 
 type ChannelSettings struct {
-	ForceFormat            bool   `json:"force_format,omitempty"`
-	ThinkingToContent      bool   `json:"thinking_to_content,omitempty"`
-	Proxy                  string `json:"proxy"`
-	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
-	SystemPrompt           string `json:"system_prompt,omitempty"`
-	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
+	ForceFormat                 bool   `json:"force_format,omitempty"`
+	ThinkingToContent           bool   `json:"thinking_to_content,omitempty"`
+	Proxy                       string `json:"proxy"`
+	PassThroughBodyEnabled      bool   `json:"pass_through_body_enabled,omitempty"`
+	SystemPrompt                string `json:"system_prompt,omitempty"`
+	SystemPromptOverride        bool   `json:"system_prompt_override,omitempty"`
+	UpstreamRequestGzipEnabled  *bool  `json:"upstream_request_gzip_enabled,omitempty"`
+	UpstreamRequestGzipMinBytes int64  `json:"upstream_request_gzip_min_bytes,omitempty"`
+}
+
+const (
+	DefaultUpstreamRequestGzipMinBytes int64 = 1 << 20
+	MinimumUpstreamRequestGzipMinBytes int64 = 1 << 10
+)
+
+func (s ChannelSettings) EffectiveUpstreamRequestGzipMinBytes() int64 {
+	if s.UpstreamRequestGzipMinBytes <= 0 {
+		return DefaultUpstreamRequestGzipMinBytes
+	}
+	return s.UpstreamRequestGzipMinBytes
+}
+
+func (s ChannelSettings) EffectiveUpstreamRequestGzipEnabled(defaultEnabled bool) bool {
+	if s.UpstreamRequestGzipEnabled == nil {
+		return defaultEnabled
+	}
+	return *s.UpstreamRequestGzipEnabled
 }
 
 type VertexKeyType string

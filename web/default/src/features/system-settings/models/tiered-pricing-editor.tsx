@@ -31,6 +31,14 @@ import {
 import { ChevronDown, Copy, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useSystemConfigStore } from '@/stores/system-config-store'
+import {
+  convertBillingCurrencyToUSD,
+  convertUSDToBillingCurrency,
+  formatBillingCurrencyFromUSD,
+  getBillingCurrencyDisplay,
+  type BillingCurrencyDisplay,
+} from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -99,7 +107,13 @@ import {
   tryParseVisualConfig,
 } from '@/features/pricing/lib/tier-expr'
 
-const PRICE_SUFFIX = '/1M tokens'
+const ESTIMATOR_CURRENCY_FORMAT_OPTIONS = {
+  digitsLarge: 8,
+  digitsSmall: 8,
+  abbreviate: false,
+  minimumNonZero: 0.00000001,
+  preservePrecision: true,
+}
 const CACHE_PRICE_VARS = BILLING_EXTRA_VARS.filter(
   (variable) => variable.group === 'cache'
 )
@@ -311,12 +325,31 @@ const PRESET_GROUPS: PresetGroup[] = [
   },
 ]
 
-function unitCostToPrice(uc: number | string): number {
-  return Number(uc) || 0
+function normalizeBillingPrice(value: number): number {
+  if (!Number.isFinite(value) || value === 0) return 0
+  return Number(value.toPrecision(12))
 }
 
-function priceToUnitCost(price: number | string): number {
-  return Number(price) || 0
+function unitCostToPrice(
+  unitCost: number | string,
+  billingCurrency: BillingCurrencyDisplay
+): number {
+  const usdAmount = Number(unitCost)
+  if (!Number.isFinite(usdAmount)) return 0
+  return normalizeBillingPrice(
+    convertUSDToBillingCurrency(usdAmount, billingCurrency)
+  )
+}
+
+function priceToUnitCost(
+  price: number | string,
+  billingCurrency: BillingCurrencyDisplay
+): number {
+  const displayAmount = Number(price)
+  if (!Number.isFinite(displayAmount)) return 0
+  return normalizeBillingPrice(
+    convertBillingCurrencyToUSD(displayAmount, billingCurrency)
+  )
 }
 
 function formatTokenHint(n: number | string | null | undefined): string {
@@ -540,6 +573,7 @@ type VisualTierCardProps = {
   tier: VisualTier
   index: number
   total: number
+  billingCurrency: BillingCurrencyDisplay
   onChange: (next: VisualTier) => void
   onRemove: () => void
   onAddCondition: () => void
@@ -549,6 +583,7 @@ function VisualTierCard({
   tier,
   index,
   total,
+  billingCurrency,
   onChange,
   onRemove,
   onAddCondition,
@@ -585,11 +620,19 @@ function VisualTierCard({
     })
   }
 
-  const inputUnitPrice = unitCostToPrice(tier.input_unit_cost)
-  const outputUnitPrice = unitCostToPrice(tier.output_unit_cost)
+  const inputUnitPrice = unitCostToPrice(tier.input_unit_cost, billingCurrency)
+  const outputUnitPrice = unitCostToPrice(
+    tier.output_unit_cost,
+    billingCurrency
+  )
   const hasMediaPricing = MEDIA_PRICE_VARS.some((variable) => {
     const fieldKey = variable.tierField as keyof VisualTier
-    return unitCostToPrice((tier[fieldKey] as number | undefined) ?? 0) > 0
+    return (
+      unitCostToPrice(
+        (tier[fieldKey] as number | undefined) ?? 0,
+        billingCurrency
+      ) > 0
+    )
   })
   const [mediaOpen, setMediaOpen] = useState(hasMediaPricing)
 
@@ -601,14 +644,19 @@ function VisualTierCard({
     variable: (typeof BILLING_EXTRA_VARS)[number]
   ) => {
     const fieldKey = variable.tierField as keyof VisualTier
-    const value = unitCostToPrice((tier[fieldKey] as number | undefined) ?? 0)
+    const value = unitCostToPrice(
+      (tier[fieldKey] as number | undefined) ?? 0,
+      billingCurrency
+    )
 
     return (
       <PriceField
         key={variable.key}
         label={t(variable.label)}
         value={value}
-        onChange={(next) => handlePriceChange(fieldKey, priceToUnitCost(next))}
+        onChange={(next) =>
+          handlePriceChange(fieldKey, priceToUnitCost(next, billingCurrency))
+        }
       />
     )
   }
@@ -678,7 +726,7 @@ function VisualTierCard({
         <div className='flex items-center justify-between gap-3'>
           <Label className='text-sm font-semibold'>{t('Token prices')}</Label>
           <span className='bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs'>
-            {PRICE_SUFFIX}
+            {billingCurrency.label} / 1M tokens
           </span>
         </div>
 
@@ -688,14 +736,20 @@ function VisualTierCard({
               label={t('Input price')}
               value={inputUnitPrice}
               onChange={(value) =>
-                handlePriceChange('input_unit_cost', priceToUnitCost(value))
+                handlePriceChange(
+                  'input_unit_cost',
+                  priceToUnitCost(value, billingCurrency)
+                )
               }
             />
             <PriceField
               label={t('Output price')}
               value={outputUnitPrice}
               onChange={(value) =>
-                handlePriceChange('output_unit_cost', priceToUnitCost(value))
+                handlePriceChange(
+                  'output_unit_cost',
+                  priceToUnitCost(value, billingCurrency)
+                )
               }
             />
           </div>
@@ -769,10 +823,15 @@ function VisualTierCard({
 
 type VisualEditorProps = {
   visualConfig: VisualConfig | null
+  billingCurrency: BillingCurrencyDisplay
   onChange: (next: VisualConfig) => void
 }
 
-function VisualEditor({ visualConfig, onChange }: VisualEditorProps) {
+function VisualEditor({
+  visualConfig,
+  billingCurrency,
+  onChange,
+}: VisualEditorProps) {
   const { t } = useTranslation()
   const config = useMemo(
     () => normalizeVisualConfig(visualConfig),
@@ -851,6 +910,7 @@ function VisualEditor({ visualConfig, onChange }: VisualEditorProps) {
           tier={tier}
           index={index}
           total={config.tiers.length}
+          billingCurrency={billingCurrency}
           onChange={(next) => handleTierChange(index, next)}
           onRemove={() => handleRemoveTier(index)}
           onAddCondition={() => handleAddCondition(index)}
@@ -1455,7 +1515,11 @@ function CostEstimator({ effectiveExpr }: EstimatorProps) {
         ) : (
           <div className='flex items-center gap-2'>
             <span className='font-medium'>
-              {t('Estimated quota cost')}: {result.cost.toLocaleString()}
+              {t('Estimated quota cost')}:{' '}
+              {formatBillingCurrencyFromUSD(
+                result.cost / 1_000_000,
+                ESTIMATOR_CURRENCY_FORMAT_OPTIONS
+              )}
             </span>
             {result.matchedTier && (
               <Badge variant='outline' className='text-xs'>
@@ -1639,6 +1703,8 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
   onRequestRuleExprChange,
 }: TieredPricingEditorProps) {
   const { t } = useTranslation()
+  const currencyConfig = useSystemConfigStore((state) => state.config.currency)
+  const billingCurrency = getBillingCurrencyDisplay(currencyConfig)
   const [editorMode, setEditorMode] = useState<EditorMode>('visual')
   const [visualConfig, setVisualConfig] = useState<VisualConfig | null>(() =>
     tryParseVisualConfig(currentExpr)
@@ -1804,6 +1870,7 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
         {editorMode === 'visual' ? (
           <VisualEditor
             visualConfig={visualConfig}
+            billingCurrency={billingCurrency}
             onChange={handleVisualChange}
           />
         ) : (

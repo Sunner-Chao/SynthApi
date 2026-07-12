@@ -985,6 +985,26 @@ func (channel *Channel) ValidateSettings() error {
 			return err
 		}
 	}
+	if channelParams.UpstreamRequestGzipMinBytes < 0 {
+		return fmt.Errorf("upstream_request_gzip_min_bytes cannot be negative")
+	}
+	if channelParams.UpstreamRequestGzipEnabled != nil &&
+		*channelParams.UpstreamRequestGzipEnabled &&
+		!constant.SupportsUpstreamRequestGzip(channel.Type) {
+		return fmt.Errorf("upstream request gzip is not supported for channel type %d", channel.Type)
+	}
+	if channelParams.UpstreamRequestGzipMinBytes > 0 &&
+		channelParams.UpstreamRequestGzipMinBytes < dto.MinimumUpstreamRequestGzipMinBytes {
+		return fmt.Errorf("upstream_request_gzip_min_bytes must be at least %d bytes", dto.MinimumUpstreamRequestGzipMinBytes)
+	}
+	maxRequestBodyMB := constant.MaxRequestBodyMB
+	if maxRequestBodyMB <= 0 {
+		maxRequestBodyMB = 128
+	}
+	maxRequestBodyBytes := int64(maxRequestBodyMB) << 20
+	if channelParams.UpstreamRequestGzipMinBytes > maxRequestBodyBytes {
+		return fmt.Errorf("upstream_request_gzip_min_bytes cannot exceed the maximum request body size (%d bytes)", maxRequestBodyBytes)
+	}
 	return nil
 }
 

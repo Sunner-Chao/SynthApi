@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -15,7 +16,8 @@ import (
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan              model.SubscriptionPlan `json:"plan"`
+	UpgradeGroupRatio float64                `json:"upgrade_group_ratio"`
 }
 
 type BillingPreferenceRequest struct {
@@ -49,15 +51,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
-		p.NormalizeDefaults()
-		if strings.TrimSpace(p.UpgradeGroup) != "" &&
-			strings.TrimSpace(p.BillingDiscountGroup) == strings.TrimSpace(p.UpgradeGroup) &&
-			topupGroupExists(p.UpgradeGroup) {
-			p.UpgradeGroup = ""
-		}
-		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
-		})
+		result = append(result, buildSubscriptionPlanDTO(p))
 	}
 	common.ApiSuccess(c, result)
 }
@@ -168,16 +162,48 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
-		p.NormalizeDefaults()
-		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
-		})
+		result = append(result, buildSubscriptionPlanDTO(p))
 	}
 	common.ApiSuccess(c, result)
 }
 
+func buildSubscriptionPlanDTO(plan model.SubscriptionPlan) SubscriptionPlanDTO {
+	plan.NormalizeDefaults()
+	return SubscriptionPlanDTO{
+		Plan:              plan,
+		UpgradeGroupRatio: getSubscriptionUpgradeGroupRatio(plan),
+	}
+}
+
+func getSubscriptionUpgradeGroupRatio(plan model.SubscriptionPlan) float64 {
+	group := strings.TrimSpace(plan.UpgradeGroup)
+	if group == "" {
+		return 1
+	}
+
+	discountGroup := strings.TrimSpace(plan.BillingDiscountGroup)
+	topupRatios := common.GetTopupGroupRatioCopy()
+	if discountGroup == group {
+		if ratio, ok := topupRatios[group]; ok {
+			return ratio
+		}
+	}
+
+	if ratio, ok := ratio_setting.GetGroupRatioCopy()[group]; ok {
+		return ratio
+	}
+	if ratio, ok := topupRatios[group]; ok {
+		return ratio
+	}
+	if model.IsUnlimitedSubscriptionGroup(group) {
+		return 0
+	}
+	return 1
+}
+
 type AdminUpsertSubscriptionPlanRequest struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan              model.SubscriptionPlan `json:"plan"`
+	UpgradeGroupRatio *float64               `json:"upgrade_group_ratio,omitempty"`
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
@@ -224,7 +250,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if !subscriptionUpgradeGroupExists(req.Plan.UpgradeGroup) {
-			common.ApiErrorMsg(c, "升级分组不存在")
+			common.ApiErrorMsg(c, "升级分组名称不能包含逗号、制表符或换行")
 			return
 		}
 	}
@@ -235,6 +261,12 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.BillingDiscountGroup != "" {
 		if !topupGroupExists(req.Plan.BillingDiscountGroup) {
 			common.ApiErrorMsg(c, "折扣分组不存在")
+			return
+		}
+	}
+	if req.Plan.UpgradeGroup != "" {
+		if err := syncSubscriptionUpgradeGroupRatio(req.Plan, req.UpgradeGroupRatio); err != nil {
+			common.ApiError(c, err)
 			return
 		}
 	}
@@ -299,7 +331,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if !subscriptionUpgradeGroupExists(req.Plan.UpgradeGroup) {
-			common.ApiErrorMsg(c, "升级分组不存在")
+			common.ApiErrorMsg(c, "升级分组名称不能包含逗号、制表符或换行")
 			return
 		}
 	}
@@ -310,6 +342,12 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.BillingDiscountGroup != "" {
 		if !topupGroupExists(req.Plan.BillingDiscountGroup) {
 			common.ApiErrorMsg(c, "折扣分组不存在")
+			return
+		}
+	}
+	if req.Plan.UpgradeGroup != "" {
+		if err := syncSubscriptionUpgradeGroupRatio(req.Plan, req.UpgradeGroupRatio); err != nil {
+			common.ApiError(c, err)
 			return
 		}
 	}
@@ -383,10 +421,170 @@ func subscriptionUpgradeGroupExists(group string) bool {
 	if group == "" {
 		return true
 	}
-	if _, ok := ratio_setting.GetGroupRatioCopy()[group]; ok {
-		return true
+	if len([]rune(group)) > 64 {
+		return false
 	}
-	return topupGroupExists(group)
+	return !strings.ContainsAny(group, ",\r\n\t")
+}
+
+func syncSubscriptionUpgradeGroupRatio(plan model.SubscriptionPlan, ratio *float64) error {
+	group := strings.TrimSpace(plan.UpgradeGroup)
+	if group == "" {
+		return nil
+	}
+	groupRatios := ratio_setting.GetGroupRatioCopy()
+	topupRatios := common.GetTopupGroupRatioCopy()
+	targetRatio := 1.0
+	if model.IsUnlimitedSubscriptionGroup(group) {
+		targetRatio = 0
+	}
+	discountGroup := strings.TrimSpace(plan.BillingDiscountGroup)
+	if discountGroup == group {
+		if existing, ok := topupRatios[group]; ok {
+			targetRatio = existing
+		}
+	} else if existing, ok := groupRatios[group]; ok {
+		targetRatio = existing
+	} else if existing, ok := topupRatios[group]; ok {
+		targetRatio = existing
+	}
+	if ratio != nil {
+		if *ratio < 0 {
+			return fmt.Errorf("升级分组倍率不能小于0")
+		}
+		targetRatio = *ratio
+	}
+
+	updateTopupRatio := discountGroup == group
+	if !updateTopupRatio {
+		_, hasGroupRatio := groupRatios[group]
+		_, hasTopupRatio := topupRatios[group]
+		updateTopupRatio = hasTopupRatio && !hasGroupRatio
+	}
+
+	updates := map[string]string{}
+	if updateTopupRatio {
+		if existing, ok := topupRatios[group]; !ok || existing != targetRatio {
+			topupRatios[group] = targetRatio
+			raw, err := common.Marshal(topupRatios)
+			if err != nil {
+				return err
+			}
+			updates["TopupGroupRatio"] = string(raw)
+		}
+		if _, ok := groupRatios[group]; !ok {
+			return model.UpdateOptionsBulk(updates)
+		}
+	}
+
+	if existing, ok := groupRatios[group]; !ok || existing != targetRatio {
+		groupRatios[group] = targetRatio
+		raw, err := common.Marshal(groupRatios)
+		if err != nil {
+			return err
+		}
+		updates["GroupRatio"] = string(raw)
+	}
+	return model.UpdateOptionsBulk(updates)
+}
+
+type unlimitedSubscriptionPreset struct {
+	Title         string
+	Subtitle      string
+	UpgradeGroup  string
+	DurationUnit  string
+	DurationValue int
+	SortOrder     int
+}
+
+var unlimitedSubscriptionPresets = []unlimitedSubscriptionPreset{
+	{
+		Title:         "日卡无限量",
+		Subtitle:      "24小时不限量使用，适合短期高频调用",
+		UpgradeGroup:  "unlimited_day",
+		DurationUnit:  model.SubscriptionDurationDay,
+		DurationValue: 1,
+		SortOrder:     300,
+	},
+	{
+		Title:         "周卡无限量",
+		Subtitle:      "7天不限量使用，适合阶段性项目冲刺",
+		UpgradeGroup:  "unlimited_week",
+		DurationUnit:  model.SubscriptionDurationDay,
+		DurationValue: 7,
+		SortOrder:     290,
+	},
+	{
+		Title:         "月卡无限量",
+		Subtitle:      "自然月维度不限量使用，适合长期稳定调用",
+		UpgradeGroup:  "unlimited_month",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+		SortOrder:     280,
+	},
+}
+
+func AdminEnsureUnlimitedSubscriptionPlanPresets(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+
+	for _, preset := range unlimitedSubscriptionPresets {
+		zeroRatio := 0.0
+		if err := syncSubscriptionUpgradeGroupRatio(model.SubscriptionPlan{UpgradeGroup: preset.UpgradeGroup}, &zeroRatio); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+
+	allowBalancePay := true
+	plans := make([]model.SubscriptionPlan, 0, len(unlimitedSubscriptionPresets))
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		for _, preset := range unlimitedSubscriptionPresets {
+			var plan model.SubscriptionPlan
+			query := tx.Where("title = ? OR upgrade_group = ?", preset.Title, preset.UpgradeGroup).
+				Order("id asc").
+				Limit(1).
+				Find(&plan)
+			if query.Error != nil {
+				return query.Error
+			}
+			if query.RowsAffected == 0 {
+				plan = model.SubscriptionPlan{
+					Title:              preset.Title,
+					Subtitle:           preset.Subtitle,
+					PriceAmount:        0,
+					Currency:           operation_setting.GetQuotaDisplayType(),
+					BillingDiscount:    1,
+					DurationUnit:       preset.DurationUnit,
+					DurationValue:      preset.DurationValue,
+					Enabled:            false,
+					SortOrder:          preset.SortOrder,
+					AllowBalancePay:    &allowBalancePay,
+					MaxPurchasePerUser: 0,
+					UpgradeGroup:       preset.UpgradeGroup,
+					TotalAmount:        0,
+					QuotaResetPeriod:   model.SubscriptionResetNever,
+				}
+				if err := tx.Create(&plan).Error; err != nil {
+					return err
+				}
+			}
+			plans = append(plans, plan)
+		}
+		return nil
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	result := make([]SubscriptionPlanDTO, 0, len(plans))
+	for _, p := range plans {
+		model.InvalidateSubscriptionPlanCache(p.Id)
+		result = append(result, buildSubscriptionPlanDTO(p))
+	}
+	common.ApiSuccess(c, result)
 }
 
 type AdminUpdateSubscriptionPlanStatusRequest struct {

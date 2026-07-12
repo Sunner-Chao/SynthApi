@@ -193,6 +193,12 @@ var RelayTimeout int // unit is second
 
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
+var RelayIdleConnTimeout int
+var RelayDialTimeout int
+var RelayDialKeepAlive int
+var RelayTLSHandshakeTimeout int
+var RelayExpectContinueTimeout int
+var RelayStageLogThresholdMs int
 
 var GeminiSafetySetting string
 

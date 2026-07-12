@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { z } from 'zod'
 import type { TFunction } from 'i18next'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
-import { normalizeSubscriptionDisplayAmount } from './format'
 import type { SubscriptionPlan, PlanPayload } from '../types'
+import { normalizeSubscriptionDisplayAmount } from './format'
 
 export function getPlanFormSchema(t: TFunction) {
   return z.object({
@@ -45,6 +45,7 @@ export function getPlanFormSchema(t: TFunction) {
     max_purchase_per_user: z.coerce.number().min(0),
     total_amount: z.coerce.number().min(0),
     upgrade_group: z.string().optional(),
+    upgrade_group_ratio: z.coerce.number().min(0).optional(),
     stripe_price_id: z.string().optional(),
     creem_product_id: z.string().optional(),
     waffo_pancake_product_id: z.string().optional(),
@@ -69,12 +70,16 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   max_purchase_per_user: 0,
   total_amount: 0,
   upgrade_group: '',
+  upgrade_group_ratio: 1,
   stripe_price_id: '',
   creem_product_id: '',
   waffo_pancake_product_id: '',
 }
 
-export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
+export function planToFormValues(
+  plan: SubscriptionPlan,
+  upgradeGroupRatio = 1
+): PlanFormValues {
   return {
     title: plan.title || '',
     subtitle: plan.subtitle || '',
@@ -93,6 +98,10 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
       quotaUnitsToDollars(Number(plan.total_amount || 0))
     ),
     upgrade_group: plan.upgrade_group || '',
+    upgrade_group_ratio:
+      upgradeGroupRatio === undefined || upgradeGroupRatio === null
+        ? 1
+        : Number(upgradeGroupRatio),
     stripe_price_id: plan.stripe_price_id || '',
     creem_product_id: plan.creem_product_id || '',
     waffo_pancake_product_id: plan.waffo_pancake_product_id || '',
@@ -117,5 +126,11 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),
       upgrade_group: values.upgrade_group || '',
     },
+    upgrade_group_ratio: values.upgrade_group
+      ? values.upgrade_group_ratio === undefined ||
+        values.upgrade_group_ratio === null
+        ? 1
+        : Number(values.upgrade_group_ratio)
+      : undefined,
   }
 }

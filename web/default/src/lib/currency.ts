@@ -118,6 +118,15 @@ type DisplayMeta =
       quotaPerUnit: number
     }
 
+export interface BillingCurrencyDisplay {
+  /** Label shown next to editable billing prices (for example USD or CNY). */
+  label: string
+  /** Symbol used when formatting the selected billing currency. */
+  symbol: string
+  /** Multiplier from canonical USD amounts to the selected display currency. */
+  exchangeRate: number
+}
+
 const DEFAULT_FORMAT_OPTIONS: Required<CurrencyFormatOptions> = {
   digitsLarge: 2,
   digitsSmall: 2,
@@ -148,29 +157,35 @@ export function parseCurrencyDisplayType(
   return isCurrencyDisplayType(value) ? value : fallback
 }
 
-function getConfig(): CurrencyConfig {
-  const { config } = useSystemConfigStore.getState()
-  const currency = config?.currency ?? DEFAULT_CURRENCY_CONFIG
+function normalizeCurrencyConfig(
+  currency: Partial<CurrencyConfig> | null | undefined
+): CurrencyConfig {
+  const resolved = currency ?? DEFAULT_CURRENCY_CONFIG
   return {
     ...DEFAULT_CURRENCY_CONFIG,
-    ...currency,
+    ...resolved,
     quotaPerUnit:
-      currency?.quotaPerUnit && currency.quotaPerUnit > 0
-        ? currency.quotaPerUnit
+      resolved.quotaPerUnit && resolved.quotaPerUnit > 0
+        ? resolved.quotaPerUnit
         : DEFAULT_CURRENCY_CONFIG.quotaPerUnit,
     usdExchangeRate:
-      currency?.usdExchangeRate && currency.usdExchangeRate > 0
-        ? currency.usdExchangeRate
+      resolved.usdExchangeRate && resolved.usdExchangeRate > 0
+        ? resolved.usdExchangeRate
         : DEFAULT_CURRENCY_CONFIG.usdExchangeRate,
     customCurrencyExchangeRate:
-      currency?.customCurrencyExchangeRate &&
-      currency.customCurrencyExchangeRate > 0
-        ? currency.customCurrencyExchangeRate
+      resolved.customCurrencyExchangeRate &&
+      resolved.customCurrencyExchangeRate > 0
+        ? resolved.customCurrencyExchangeRate
         : DEFAULT_CURRENCY_CONFIG.customCurrencyExchangeRate,
     customCurrencySymbol:
-      currency?.customCurrencySymbol?.trim() ||
+      resolved.customCurrencySymbol?.trim() ||
       DEFAULT_CURRENCY_CONFIG.customCurrencySymbol,
   }
+}
+
+function getConfig(): CurrencyConfig {
+  const { config } = useSystemConfigStore.getState()
+  return normalizeCurrencyConfig(config?.currency)
 }
 
 function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
@@ -215,6 +230,50 @@ function getBillingDisplayMeta(config: CurrencyConfig): DisplayMeta {
     }
   }
   return meta
+}
+
+/**
+ * Get the real-currency display used by billing editors and price displays.
+ * Token-only quota display intentionally falls back to USD for monetary values.
+ */
+export function getBillingCurrencyDisplay(
+  config: CurrencyConfig = getConfig()
+): BillingCurrencyDisplay {
+  const meta = getBillingDisplayMeta(normalizeCurrencyConfig(config))
+
+  if (meta.kind === 'currency') {
+    return {
+      label: meta.currencyCode,
+      symbol: meta.symbol,
+      exchangeRate: meta.exchangeRate,
+    }
+  }
+
+  if (meta.kind === 'custom') {
+    return {
+      label: meta.symbol,
+      symbol: meta.symbol,
+      exchangeRate: meta.exchangeRate,
+    }
+  }
+
+  return { label: 'USD', symbol: '$', exchangeRate: 1 }
+}
+
+/** Convert a canonical USD amount to the configured billing display amount. */
+export function convertUSDToBillingCurrency(
+  amountUSD: number,
+  display: BillingCurrencyDisplay = getBillingCurrencyDisplay()
+): number {
+  return amountUSD * display.exchangeRate
+}
+
+/** Convert an editable billing display amount back to canonical USD. */
+export function convertBillingCurrencyToUSD(
+  displayAmount: number,
+  display: BillingCurrencyDisplay = getBillingCurrencyDisplay()
+): number {
+  return displayAmount / display.exchangeRate
 }
 
 function mergeOptions(
@@ -310,7 +369,11 @@ function normalizePrecisionNoise(
   }
 
   const maxDigits = Math.min(
-    Math.max(options.digitsLarge, options.digitsSmall, options.maximumFractionDigits),
+    Math.max(
+      options.digitsLarge,
+      options.digitsSmall,
+      options.maximumFractionDigits
+    ),
     8
   )
   const tolerance = 3e-7

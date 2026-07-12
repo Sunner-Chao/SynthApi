@@ -65,6 +65,13 @@ export async function patchPlanStatus(
   return res.data
 }
 
+export async function ensureUnlimitedPlanPresets(): Promise<
+  ApiResponse<PlanRecord[]>
+> {
+  const res = await api.post('/api/subscription/admin/plans/unlimited-presets')
+  return res.data
+}
+
 // ============================================================================
 // Admin User Subscription Management
 // ============================================================================

@@ -109,7 +109,9 @@ export function SubscriptionsMutateDrawer({
   useEffect(() => {
     if (open) {
       if (currentRow?.plan) {
-        form.reset(planToFormValues(currentRow.plan))
+        form.reset(
+          planToFormValues(currentRow.plan, currentRow.upgrade_group_ratio)
+        )
       } else {
         form.reset(PLAN_FORM_DEFAULTS)
       }
@@ -146,8 +148,14 @@ export function SubscriptionsMutateDrawer({
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
   const upgradeGroupOptions = useMemo(() => {
-    return Array.from(new Set([...groupOptions, ...topupGroupOptions]))
-  }, [groupOptions, topupGroupOptions])
+    return Array.from(
+      new Set([
+        ...groupOptions,
+        ...topupGroupOptions,
+        currentRow?.plan?.upgrade_group || '',
+      ])
+    ).filter(Boolean)
+  }, [groupOptions, topupGroupOptions, currentRow?.plan?.upgrade_group])
   // Gate "+ Create on Pancake" on the same checks the mint handler runs.
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
@@ -375,40 +383,21 @@ export function SubscriptionsMutateDrawer({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('Upgrade Group')}</FormLabel>
-                      <Select
-                        items={[
-                          { value: '__none__', label: t('No Upgrade') },
-                          ...upgradeGroupOptions.map((g) => ({
-                            value: g,
-                            label: g,
-                          })),
-                        ]}
-                        onValueChange={(v) =>
-                          field.onChange(v === '__none__' ? '' : v)
-                        }
-                        value={field.value || ''}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={t('No Upgrade')} />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            <SelectItem value='__none__'>
-                              {t('No Upgrade')}
-                            </SelectItem>
-                            {upgradeGroupOptions.map((g) => (
-                              <SelectItem key={g} value={g}>
-                                {g}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          list='subscription-upgrade-group-options'
+                          placeholder='unlimited_month'
+                        />
+                      </FormControl>
+                      <datalist id='subscription-upgrade-group-options'>
+                        {upgradeGroupOptions.map((g) => (
+                          <option key={g} value={g} />
+                        ))}
+                      </datalist>
                       <FormDescription>
                         {t(
-                          'You can select API groups or subscription / top-up discount groups here. Discount-only groups apply subscription billing discounts without changing channel routing.'
+                          'After purchase, the user is upgraded to this group. To make channels exclusive, assign channels to the same group and do not add it to global usable groups.'
                         )}
                       </FormDescription>
                       <FormMessage />
@@ -416,6 +405,36 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name='upgrade_group_ratio'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Upgrade Group Ratio')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          step='0.01'
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value)
+                            field.onChange(Number.isFinite(value) ? value : 1)
+                          }}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Synced with group pricing. Subscription discount groups update top-up ratios; API channel groups update group ratios.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
                   name='billing_discount_group'
@@ -437,9 +456,7 @@ export function SubscriptionsMutateDrawer({
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue
-                              placeholder={t('No Discount Group')}
-                            />
+                            <SelectValue placeholder={t('No Discount Group')} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent alignItemWithTrigger={false}>

@@ -68,7 +68,7 @@ normalize_version_tag() {
         return
     fi
     
-    local normalized=$(ech/home/sunner/demo_vscode/LS-ZGTo "$input_version" | tr -d '[:space:]')
+    local normalized=$(echo "$input_version" | tr -d '[:space:]')
     if [ -z "$normalized" ]; then
         echo ""
         return
@@ -250,17 +250,28 @@ fi
 
 echo -e "\033[33m[push-github] 当前分支: $branch\033[0m"
 echo -e "\033[36m[push-github] 获取远端当前分支信息...\033[0m"
-git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1
-remote_branch_exists=$?
-if [ $remote_branch_exists -eq 0 ]; then
-    git fetch origin "$branch"
-    if [ $? -ne 0 ]; then
-        echo "git fetch 当前分支失败。请检查远端仓库地址、SSH/网络，或确认远端分支状态是否异常。" >&2
-        exit 1
+remote_probe_output=$(git ls-remote --exit-code --heads origin "$branch" 2>&1) || remote_probe_status=$?
+remote_probe_status=${remote_probe_status:-0}
+remote_branch_exists=1
+if [ "$remote_probe_status" -eq 0 ]; then
+    remote_branch_exists=0
+elif [ "$remote_probe_status" -eq 2 ]; then
+    echo -e "\033[33m[push-github] 远端可访问，但不存在分支 $branch，后续将创建远端分支。\033[0m"
+else
+    echo "获取远端分支信息失败（git ls-remote 返回 $remote_probe_status）：" >&2
+    if [ -n "$remote_probe_output" ]; then
+        echo "$remote_probe_output" >&2
     fi
+    echo "请检查远端仓库地址、SSH 配置、GitHub 权限或网络连接。" >&2
+    exit 1
 fi
 
 if [ $remote_branch_exists -eq 0 ]; then
+    if ! git fetch origin "$branch"; then
+        echo "git fetch 当前分支失败。请检查远端仓库地址、SSH/网络，或确认远端分支状态是否异常。" >&2
+        exit 1
+    fi
+
     if git rev-parse HEAD >/dev/null 2>&1; then
         local_has_commits=true
     else
@@ -301,8 +312,6 @@ if [ $remote_branch_exists -eq 0 ]; then
             force_push=true
         fi
     fi
-else
-    echo -e "\033[33m[push-github] 远端不存在分支 $branch，后续将创建远端分支。\033[0m"
 fi
 
 echo -e "\033[37m[push-github] 当前推送模式: $(if [ "$push_mode" = "full_override" ]; then echo '全量推（覆盖远端）'; else echo '仅推更新内容'; fi)\033[0m"

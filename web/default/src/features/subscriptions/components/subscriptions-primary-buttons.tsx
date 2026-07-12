@@ -16,16 +16,47 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { ensureUnlimitedPlanPresets } from '../api'
 import { useSubscriptions } from './subscriptions-provider'
 
 export function SubscriptionsPrimaryButtons() {
   const { t } = useTranslation()
-  const { setOpen, complianceConfirmed } = useSubscriptions()
+  const { setOpen, complianceConfirmed, triggerRefresh } = useSubscriptions()
+  const [ensuringPresets, setEnsuringPresets] = useState(false)
+
+  const handleEnsureUnlimitedPresets = async () => {
+    setEnsuringPresets(true)
+    try {
+      const res = await ensureUnlimitedPlanPresets()
+      if (res.success) {
+        toast.success(t('Unlimited plans are ready'))
+        triggerRefresh()
+      } else {
+        toast.error(res.message || t('Request failed'))
+      }
+    } catch {
+      toast.error(t('Request failed'))
+    } finally {
+      setEnsuringPresets(false)
+    }
+  }
+
   return (
     <div className='flex gap-2'>
+      <Button
+        size='sm'
+        variant='outline'
+        onClick={handleEnsureUnlimitedPresets}
+        disabled={!complianceConfirmed || ensuringPresets}
+      >
+        <Plus className='h-4 w-4' />
+        {t('Add Unlimited Plans')}
+      </Button>
       <Button
         size='sm'
         onClick={() => setOpen('create')}

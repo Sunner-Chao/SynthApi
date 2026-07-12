@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Crown, RefreshCw, Sparkles, Check, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -85,13 +86,20 @@ interface SubscriptionPlansCardProps {
   onPurchaseSuccess?: () => void | Promise<void>
 }
 
+const UNLIMITED_SUBSCRIPTION_GROUPS = new Set([
+  'unlimited_day',
+  'unlimited_week',
+  'unlimited_month',
+])
+
+function isUnlimitedSubscriptionGroup(group?: string | null): boolean {
+  return UNLIMITED_SUBSCRIPTION_GROUPS.has((group || '').trim())
+}
+
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
   return payMethods.filter(
     (m) =>
-      m?.type &&
-      m.type !== 'stripe' &&
-      m.type !== 'creem' &&
-      m.type !== 'xpay'
+      m?.type && m.type !== 'stripe' && m.type !== 'creem' && m.type !== 'xpay'
   )
 }
 
@@ -120,6 +128,7 @@ export function SubscriptionPlansCard({
   onPurchaseSuccess,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
 
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [activeSubscriptions, setActiveSubscriptions] = useState<
@@ -176,6 +185,19 @@ export function SubscriptionPlansCard({
       // ignore
     }
   }, [])
+
+  const refreshUserAccessState = useCallback(async () => {
+    await Promise.all([
+      fetchSelfSubscription(),
+      onPurchaseSuccess?.(),
+      queryClient.invalidateQueries({ queryKey: ['user-groups'] }),
+      queryClient.invalidateQueries({ queryKey: ['user-self-groups'] }),
+      queryClient.invalidateQueries({ queryKey: ['playground-groups'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['user-group-channel-status'],
+      }),
+    ])
+  }, [fetchSelfSubscription, onPurchaseSuccess, queryClient])
 
   useEffect(() => {
     const init = async () => {
@@ -235,7 +257,7 @@ export function SubscriptionPlansCard({
           })
         )
         setCancelTarget(null)
-        await Promise.all([fetchSelfSubscription(), onPurchaseSuccess?.()])
+        await refreshUserAccessState()
       } else {
         toast.error(res.message || t('Cancel failed'))
       }
@@ -311,6 +333,16 @@ export function SubscriptionPlansCard({
           p.plan.id,
           normalizeSubscriptionBillingDiscount(p.plan.billing_discount)
         )
+      }
+    }
+    return map
+  }, [plans])
+
+  const planUpgradeGroupMap = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const p of plans) {
+      if (p?.plan?.id) {
+        map.set(p.plan.id, p.plan.upgrade_group || '')
       }
     }
     return map
@@ -503,7 +535,8 @@ export function SubscriptionPlansCard({
                       planDiscountMap.get(subscription?.plan_id || 0)
                   )
                   const rateLabel = formatSubscriptionDiscountPercent(discount)
-                  const offLabel = formatSubscriptionDiscountOffPercent(discount)
+                  const offLabel =
+                    formatSubscriptionDiscountOffPercent(discount)
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
                   const now = Date.now() / 1000
@@ -511,6 +544,11 @@ export function SubscriptionPlansCard({
                   const isCancelled = subscription?.status === 'cancelled'
                   const isActive =
                     subscription?.status === 'active' && !isExpired
+                  const upgradeGroup =
+                    subscription?.upgrade_group ||
+                    planUpgradeGroupMap.get(subscription?.plan_id || 0) ||
+                    ''
+                  const isUnlimited = isUnlimitedSubscriptionGroup(upgradeGroup)
 
                   return (
                     <div
@@ -553,6 +591,13 @@ export function SubscriptionPlansCard({
                           >
                             {t('Discount Rate')}: {rateLabel}
                           </span>
+                          {isUnlimited && (
+                            <StatusBadge
+                              label={t('Non-refundable')}
+                              variant='warning'
+                              copyable={false}
+                            />
+                          )}
                         </div>
                         {isActive && (
                           <span className='text-muted-foreground'>
@@ -611,22 +656,31 @@ export function SubscriptionPlansCard({
                           </span>
                         )}
                       </div>
+                      {isActive && isUnlimited && (
+                        <div className='mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-medium text-amber-700 dark:text-amber-300'>
+                          {t(
+                            'Unlimited subscriptions are non-refundable after purchase.'
+                          )}
+                        </div>
+                      )}
                       {totalAmount > 0 && isActive && (
                         <Progress value={usagePercent} className='mt-2 h-1.5' />
                       )}
-                      {isActive && subscription?.source !== 'admin' && (
-                        <div className='mt-3 flex justify-end'>
-                          <Button
-                            type='button'
-                            variant='outline'
-                            size='sm'
-                            onClick={() => setCancelTarget(sub)}
-                            disabled={cancelling}
-                          >
-                            {t('Cancel Subscription')}
-                          </Button>
-                        </div>
-                      )}
+                      {isActive &&
+                        subscription?.source !== 'admin' &&
+                        !isUnlimited && (
+                          <div className='mt-3 flex justify-end'>
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              onClick={() => setCancelTarget(sub)}
+                              disabled={cancelling}
+                            >
+                              {t('Cancel Subscription')}
+                            </Button>
+                          </div>
+                        )}
                       {!isActive && (
                         <div className='mt-3 flex justify-end'>
                           <Button
@@ -672,6 +726,9 @@ export function SubscriptionPlansCard({
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
+              const isUnlimitedPlan = isUnlimitedSubscriptionGroup(
+                plan.upgrade_group
+              )
 
               const benefits = [
                 `${t('Validity Period')}: ${formatDuration(plan, t)}`,
@@ -685,6 +742,7 @@ export function SubscriptionPlansCard({
                 plan.upgrade_group
                   ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
                   : null,
+                isUnlimitedPlan ? t('Non-refundable after purchase') : null,
               ].filter(Boolean) as string[]
 
               return (
@@ -707,16 +765,25 @@ export function SubscriptionPlansCard({
                           </p>
                         )}
                       </div>
-                      {isPopular && (
-                        <StatusBadge
-                          variant='info'
-                          copyable={false}
-                          className='shrink-0'
-                        >
-                          <Sparkles className='h-3 w-3' />
-                          {t('Recommended')}
-                        </StatusBadge>
-                      )}
+                      <div className='flex shrink-0 flex-wrap justify-end gap-1.5'>
+                        {isUnlimitedPlan && (
+                          <StatusBadge
+                            label={t('Non-refundable')}
+                            variant='warning'
+                            copyable={false}
+                          />
+                        )}
+                        {isPopular && (
+                          <StatusBadge
+                            variant='info'
+                            copyable={false}
+                            className='shrink-0'
+                          >
+                            <Sparkles className='h-3 w-3' />
+                            {t('Recommended')}
+                          </StatusBadge>
+                        )}
+                      </div>
                     </div>
 
                     <div className='py-2'>
@@ -732,10 +799,10 @@ export function SubscriptionPlansCard({
                               : 'border-border bg-muted/40 text-muted-foreground'
                           )}
                         >
-                          <div className='text-[10px] font-medium uppercase leading-none tracking-normal'>
+                          <div className='text-[10px] leading-none font-medium tracking-normal uppercase'>
                             {t('Discount Rate')}
                           </div>
-                          <div className='mt-1 text-base font-bold leading-none'>
+                          <div className='mt-1 text-base leading-none font-bold'>
                             {rateLabel}
                           </div>
                           <div className='mt-1 text-[11px] leading-none'>
@@ -812,7 +879,7 @@ export function SubscriptionPlansCard({
         enableOnlineTopUp={enableOnlineTopUp}
         epayMethods={epayMethods}
         userQuota={userQuota}
-        onPurchaseSuccess={onPurchaseSuccess}
+        onPurchaseSuccess={refreshUserAccessState}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user
             ? Number(selectedPlan.plan.max_purchase_per_user)
@@ -865,7 +932,9 @@ export function SubscriptionPlansCard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('Delete Subscription Record?')}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('Delete Subscription Record?')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {t(
                 'This only removes the finished subscription record from your list and will not change wallet balance or usage logs.'

@@ -115,6 +115,92 @@ export interface ChannelAffinityInfo {
   using_group?: string
 }
 
+export interface RelayTraceServerTimingMetric {
+  name: string
+  duration_ms?: number
+}
+
+export interface RelayTraceClient {
+  user_agent?: string
+  http_protocol?: string
+  cf_ray?: string
+  cf_colo?: string
+  country?: string
+  region?: string
+  region_code?: string
+  city?: string
+  timezone?: string
+  body_observed?: boolean
+  body_read_ms?: number
+  request_bytes?: number
+  body_storage?: string
+  first_write_ms?: number
+  stream_span_ms?: number
+  write_blocked_ms?: number
+  response_bytes?: number
+}
+
+export interface RelayTraceGateway {
+  ingress_before_relay_ms?: number
+  validate_ms?: number
+  relay_info_ms?: number
+  preprocess_ms?: number
+  pricing_ms?: number
+  pre_consume_ms?: number
+  select_channel_ms?: number
+  refresh_billing_ms?: number
+  body_storage_ms?: number
+  upstream_relay_ms?: number
+  first_event_ms?: number
+  attempts?: number
+}
+
+export interface RelayTraceAttempt {
+  attempt?: number
+  route?: string
+  direct?: boolean
+  conn_reused?: boolean
+  conn_was_idle?: boolean
+  conn_idle_ms?: number
+  http_protocol?: string
+  dns_observed?: boolean
+  dns_ms?: number
+  tcp_observed?: boolean
+  tcp_ms?: number
+  tls_observed?: boolean
+  tls_ms?: number
+  tls_resumed?: boolean
+  request_write_approx_ms?: number
+  ttfb_ms?: number
+  application_first_body_read_ms?: number
+  upstream_to_first_event_ms?: number
+  application_body_read_span_ms?: number
+  application_stream_after_first_event_ms?: number
+  got_conn_events?: number
+  wrote_request_events?: number
+  request_bytes_total?: number
+  request_content_encoding?: string
+  request_original_bytes?: number
+  request_compression_queue_ms?: number
+  request_compression_ms?: number
+  request_compression_level?: number
+  response_bytes?: number
+  cf_ray?: string
+  cf_colo?: string
+  server_timing?: RelayTraceServerTimingMetric[]
+}
+
+export interface RelayTrace {
+  version?: number
+  coverage?: string
+  affinity_fingerprint?: string
+  total_ms?: number
+  client?: RelayTraceClient
+  gateway?: RelayTraceGateway
+  attempts?: RelayTraceAttempt[]
+  attempt_overflow?: number
+}
+
 export interface LogOtherData {
   admin_info?: {
     is_multi_key?: boolean
@@ -213,6 +299,7 @@ export interface LogOtherData {
   subscription_remain?: number
   subscription_total?: number
   subscription_discount?: number
+  relay_trace?: RelayTrace
 }
 
 /**

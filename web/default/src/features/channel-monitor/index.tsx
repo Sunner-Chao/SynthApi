@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -24,6 +24,7 @@ import {
   CircleAlert,
   CircleCheck,
   Clock3,
+  KeyRound,
   RadioTower,
   RefreshCw,
   Route,
@@ -78,6 +79,7 @@ const CHANNEL_STATUS = {
   AUTO_DISABLED: 3,
 } as const
 const DEFAULT_MONITOR_MODEL = 'gpt-5.5'
+const MONITOR_REFRESH_INTERVAL_MS = 60 * 1000
 
 function formatLatency(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return '-'
@@ -154,14 +156,29 @@ export function ChannelMonitor() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MONITOR_MODEL)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const [nextRefreshAt, setNextRefreshAt] = useState(
+    () => Date.now() + MONITOR_REFRESH_INTERVAL_MS
+  )
 
   const monitorQuery = useQuery({
     queryKey: ['channel-monitor', 'page', selectedModel],
     queryFn: () => getChannelMonitor({ limit: 200, model: selectedModel }),
     staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
+    refetchInterval: MONITOR_REFRESH_INTERVAL_MS,
     retry: false,
   })
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!monitorQuery.isFetching && monitorQuery.dataUpdatedAt > 0) {
+      setNextRefreshAt(Date.now() + MONITOR_REFRESH_INTERVAL_MS)
+    }
+  }, [monitorQuery.dataUpdatedAt, monitorQuery.isFetching])
 
   const summary = monitorQuery.data?.data?.summary
   const allItems = monitorQuery.data?.data?.items ?? []
@@ -196,6 +213,17 @@ export function ChannelMonitor() {
     (summary?.auto_disabled ?? 0) + (summary?.manual_disabled ?? 0)
   const exceptionClass =
     exceptionCount > 0 ? 'text-destructive' : 'text-success'
+  const refreshRemainingMs = Math.max(0, nextRefreshAt - nowMs)
+  const refreshRemainingSeconds = Math.ceil(refreshRemainingMs / 1000)
+  const refreshProgress = Math.max(
+    0,
+    Math.min(
+      100,
+      ((MONITOR_REFRESH_INTERVAL_MS - refreshRemainingMs) /
+        MONITOR_REFRESH_INTERVAL_MS) *
+        100
+    )
+  )
 
   return (
     <SectionPageLayout>
@@ -211,7 +239,9 @@ export function ChannelMonitor() {
               label: model,
             }))}
             value={selectedModel}
-            onValueChange={setSelectedModel}
+            onValueChange={(value) => {
+              if (value) setSelectedModel(value)
+            }}
           >
             <SelectTrigger size='sm' className='w-[180px]'>
               <SelectValue placeholder={DEFAULT_MONITOR_MODEL} />
@@ -226,6 +256,21 @@ export function ChannelMonitor() {
               </SelectGroup>
             </SelectContent>
           </Select>
+        </div>
+        <div className='border-border bg-muted/40 text-muted-foreground hidden h-7 min-w-36 flex-col justify-center rounded-md border px-2 text-[11px] sm:flex'>
+          <div className='flex items-center justify-between gap-2 leading-none'>
+            <span>{t('Auto refresh')}</span>
+            <span className='font-mono tabular-nums'>
+              {refreshRemainingSeconds}
+              {t('s')}
+            </span>
+          </div>
+          <div className='bg-muted mt-1 h-0.5 overflow-hidden rounded-full'>
+            <div
+              className='bg-primary h-full rounded-full transition-[width] duration-1000'
+              style={{ width: `${refreshProgress}%` }}
+            />
+          </div>
         </div>
         <Button
           variant='outline'
@@ -364,6 +409,9 @@ export function ChannelMonitor() {
                       <TableHead className='text-right'>
                         {t('Current users')}
                       </TableHead>
+                      <TableHead className='text-right'>
+                        {t('Actions')}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -372,7 +420,7 @@ export function ChannelMonitor() {
                     ) : showError ? (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={9}
                           className='text-destructive h-24 text-center'
                         >
                           {t('Failed to load group monitor')}
@@ -381,7 +429,7 @@ export function ChannelMonitor() {
                     ) : filteredItems.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={9}
                           className='text-muted-foreground h-24 text-center'
                         >
                           {t('No groups configured')}
@@ -520,6 +568,18 @@ function ChannelMonitorTableRow(props: { item: ChannelMonitorItem }) {
           copyable={false}
         />
       </TableCell>
+      <TableCell className='text-right'>
+        <Button
+          size='sm'
+          variant='outline'
+          render={
+            <Link to='/keys' search={{ create: true, group: groupName }} />
+          }
+        >
+          <KeyRound className='size-3.5' aria-hidden='true' />
+          {t('Create API Key')}
+        </Button>
+      </TableCell>
     </TableRow>
   )
 }
@@ -527,7 +587,7 @@ function ChannelMonitorTableRow(props: { item: ChannelMonitorItem }) {
 function MonitorTableSkeleton() {
   return Array.from({ length: 8 }).map((_, index) => (
     <TableRow key={index}>
-      {Array.from({ length: 8 }).map((__, cellIndex) => (
+      {Array.from({ length: 9 }).map((__, cellIndex) => (
         <TableCell key={cellIndex}>
           <Skeleton className='h-5 w-full min-w-16' />
         </TableCell>

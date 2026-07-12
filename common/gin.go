@@ -19,6 +19,39 @@ import (
 
 const KeyRequestBody = "key_request_body"
 const KeyBodyStorage = "key_body_storage"
+const KeyRequestBodyMetrics = "key_request_body_metrics"
+
+type RequestBodyMetrics struct {
+	Bytes    int64
+	ReadTime time.Duration
+	Disk     bool
+}
+
+func setRequestBodyMetrics(c *gin.Context, storage BodyStorage, readTime time.Duration) {
+	if c == nil || storage == nil {
+		return
+	}
+	if _, exists := c.Get(KeyRequestBodyMetrics); exists {
+		return
+	}
+	c.Set(KeyRequestBodyMetrics, RequestBodyMetrics{
+		Bytes:    storage.Size(),
+		ReadTime: readTime,
+		Disk:     storage.IsDisk(),
+	})
+}
+
+func GetRequestBodyMetrics(c *gin.Context) (RequestBodyMetrics, bool) {
+	if c == nil {
+		return RequestBodyMetrics{}, false
+	}
+	value, exists := c.Get(KeyRequestBodyMetrics)
+	if !exists {
+		return RequestBodyMetrics{}, false
+	}
+	metrics, ok := value.(RequestBodyMetrics)
+	return metrics, ok
+}
 
 var ErrRequestBodyTooLarge = errors.New("request body too large")
 
@@ -37,6 +70,7 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 	// 首先检查是否有 BodyStorage 缓存
 	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {
 		if bs, ok := storage.(BodyStorage); ok {
+			setRequestBodyMetrics(c, bs, 0)
 			if _, err := bs.Seek(0, io.SeekStart); err != nil {
 				return nil, fmt.Errorf("failed to seek body storage: %w", err)
 			}
@@ -53,6 +87,7 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 				return nil, err
 			}
 			c.Set(KeyBodyStorage, bs)
+			setRequestBodyMetrics(c, bs, 0)
 			return bs, nil
 		}
 	}
@@ -66,7 +101,9 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 	contentLength := c.Request.ContentLength
 
 	// 使用新的存储系统
+	readStart := time.Now()
 	storage, err := CreateBodyStorageFromReader(c.Request.Body, contentLength, maxBytes)
+	readTime := time.Since(readStart)
 	_ = c.Request.Body.Close()
 
 	if err != nil {
@@ -78,6 +115,7 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 
 	// 缓存存储对象
 	c.Set(KeyBodyStorage, storage)
+	setRequestBodyMetrics(c, storage, readTime)
 
 	return storage, nil
 }

@@ -74,6 +74,16 @@ interface Props {
   onPurchaseSuccess?: () => void | Promise<void>
 }
 
+const UNLIMITED_SUBSCRIPTION_GROUPS = new Set([
+  'unlimited_day',
+  'unlimited_week',
+  'unlimited_month',
+])
+
+function isUnlimitedSubscriptionGroup(group?: string | null): boolean {
+  return UNLIMITED_SUBSCRIPTION_GROUPS.has((group || '').trim())
+}
+
 export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
   const [paying, setPaying] = useState(false)
@@ -111,6 +121,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
+  const isUnlimitedPlan = isUnlimitedSubscriptionGroup(plan.upgrade_group)
 
   const handlePayStripe = async () => {
     setPaying(true)
@@ -323,6 +334,23 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </Alert>
           )}
 
+          {isUnlimitedPlan && (
+            <Alert>
+              <AlertDescription>
+                <p>
+                  {t(
+                    'Unlimited subscriptions are non-refundable after purchase.'
+                  )}
+                </p>
+                <p className='text-muted-foreground mt-1.5 text-[11px] leading-4'>
+                  {t(
+                    'Unlimited access applies only to GPT-series models during the subscription period. Service quality is subject to the current availability of this site.'
+                  )}
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className='flex flex-col gap-2 rounded-md border p-3'>
             <div className='flex items-center justify-between gap-2 text-xs'>
               <span className='text-muted-foreground'>{t('Required')}</span>
@@ -351,7 +379,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
               variant='outline'
               onClick={handlePayBalance}
               disabled={
-                paying || limitReached || !allowBalancePay || insufficientBalance
+                paying ||
+                limitReached ||
+                !allowBalancePay ||
+                insufficientBalance
               }
             >
               {t('Pay with Balance')}

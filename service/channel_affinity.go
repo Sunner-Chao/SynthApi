@@ -691,6 +691,22 @@ func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interfa
 	adminInfo["channel_affinity"] = anyInfo
 }
 
+func GetChannelAffinityFingerprint(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	value, ok := c.Get(ginKeyChannelAffinityLogInfo)
+	if !ok || value == nil {
+		return ""
+	}
+	info, ok := value.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	fingerprint, _ := info["key_fp"].(string)
+	return strings.TrimSpace(fingerprint)
+}
+
 func RecordChannelAffinity(c *gin.Context, channelID int) {
 	if channelID <= 0 {
 		return

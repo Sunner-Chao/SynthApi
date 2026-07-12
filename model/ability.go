@@ -130,6 +130,16 @@ func getChannelExcludingDB(group string, model string, retry int, excludeIDs map
 	if err != nil {
 		return nil, err
 	}
+	if len(abilities) > 0 {
+		ready := make([]Ability, 0, len(abilities))
+		for _, ability := range abilities {
+			if IsChannelCoolingDown(ability.ChannelId) {
+				continue
+			}
+			ready = append(ready, ability)
+		}
+		abilities = ready
+	}
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one

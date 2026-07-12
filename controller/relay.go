@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -81,13 +83,18 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
+	stageTrace := newRelayStageTrace(c)
 	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
 	var (
 		newAPIError *types.NewAPIError
+		relayInfo   *relaycommon.RelayInfo
 		ws          *websocket.Conn
 	)
+	defer func() {
+		stageTrace.logIfSlow(c, relayInfo, newAPIError)
+	}()
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
 		var err error
@@ -119,7 +126,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	stageStart := time.Now()
 	request, err := helper.GetAndValidateRequest(c, relayFormat)
+	stageTrace.addSince(&stageTrace.validateRequest, stageStart)
 	if err != nil {
 		// Map "request body too large" to 413 so clients can handle it correctly
 		if common.IsRequestBodyTooLargeError(err) || errors.Is(err, common.ErrRequestBodyTooLarge) {
@@ -130,12 +139,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	stageStart = time.Now()
+	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	stageTrace.addSince(&stageTrace.genRelayInfo, stageStart)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	relayInfo.StageMetricsProvider = stageTrace
 
+	stageStart = time.Now()
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive() && !shouldBypassSensitiveRiskCheck(c, relayInfo)
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
@@ -158,6 +171,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
+	stageTrace.addSince(&stageTrace.preprocess, stageStart)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeCountTokenFailed)
 		return
@@ -165,7 +179,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	relayInfo.SetEstimatePromptTokens(tokens)
 
+	stageStart = time.Now()
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+	stageTrace.addSince(&stageTrace.pricing, stageStart)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
@@ -176,7 +192,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if priceData.FreeModel {
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
 	} else {
+		stageStart = time.Now()
 		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
+		stageTrace.addSince(&stageTrace.preConsume, stageStart)
 		if newAPIError != nil {
 			return
 		}
@@ -208,7 +226,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
+		stageStart = time.Now()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		stageTrace.addSince(&stageTrace.selectChannel, stageStart)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
@@ -217,14 +237,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 			break
 		}
+		stageTrace.setSelected(channel.Id, relayInfo.UsingGroup)
 
+		stageStart = time.Now()
 		if billingErr := refreshBillingForSelectedGroup(c, relayInfo, tokens, meta); billingErr != nil {
+			stageTrace.addSince(&stageTrace.refreshBilling, stageStart)
 			newAPIError = billingErr
 			break
 		}
+		stageTrace.addSince(&stageTrace.refreshBilling, stageStart)
 
 		addUsedChannel(c, channel.Id)
+		stageStart = time.Now()
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
+		stageTrace.addSince(&stageTrace.bodyStorage, stageStart)
 		if bodyErr != nil {
 			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
 			if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
@@ -236,6 +262,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		stageTrace.beginUpstreamRelay()
 		func() {
 			endActiveUse := service.BeginChannelActiveUse(channel.Id, relayInfo.UserId)
 			defer endActiveUse()
@@ -251,6 +278,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				newAPIError = relayHandler(c, relayInfo)
 			}
 		}()
+		stageTrace.endUpstreamRelay()
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
@@ -259,8 +287,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
+		if c.Request.Context().Err() != nil {
+			logger.LogInfo(c, "client disconnected; stop upstream retry and channel failover")
+			break
+		}
 
-		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+		processChannelError(c, relayInfo, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
 		if service.PrepareImportedAccountFailover(c, newAPIError) {
 			retryParam.ResetRetryNextTry()
@@ -429,6 +461,9 @@ func shouldSmartGroupFailover(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 	if c == nil || relayInfo == nil || err == nil || primaryGroup == "" || primaryGroup == "auto" {
 		return false
 	}
+	if c.Request != nil && c.Request.Context().Err() != nil {
+		return false
+	}
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
@@ -479,6 +514,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if openaiErr == nil {
 		return false
 	}
+	if c == nil || (c.Request != nil && c.Request.Context().Err() != nil) {
+		return false
+	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
@@ -507,8 +545,13 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	return operation_setting.ShouldRetryByStatusCode(code)
 }
 
-func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
+func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
+	if cooldown, cooldownClass := channelCooldownDecision(err); cooldown > 0 && !service.IsImportedAccountQuotaError(c, err) {
+		model.MarkChannelCooldown(channelError.ChannelId, cooldown, err.ErrorWithStatusCode())
+		logger.LogWarn(c, fmt.Sprintf("channel #%d cooldown: %s, class=%s, status=%d, code=%s",
+			channelError.ChannelId, cooldown.String(), cooldownClass, err.StatusCode, err.GetErrorCode()))
+	}
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if !service.IsImportedAccountQuotaError(c, err) && service.ShouldDisableChannel(err) && channelError.AutoBan {
@@ -549,6 +592,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
+		service.AppendRelayTraceLogInfo(c, relayInfo, other)
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
@@ -595,6 +639,84 @@ func RelayMidjourney(c *gin.Context) {
 		channelId := c.GetInt("channel_id")
 		logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", channelId, statusCode, fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)))
 	}
+}
+
+func channelCooldownDecision(err *types.NewAPIError) (time.Duration, string) {
+	if err == nil || types.IsSkipRetryError(err) {
+		return 0, ""
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeChannelInvalidKey, types.ErrorCodeChannelNoAvailableKey:
+		return 10 * time.Minute, "credential"
+	case types.ErrorCodeChannelResponseTimeExceeded, types.ErrorCodeChannelAwsClientError:
+		return 3 * time.Minute, "channel_runtime"
+	case types.ErrorCodeDoRequestFailed:
+		switch {
+		case isTimeoutLikeRelayError(err):
+			return 90 * time.Second, "timeout"
+		case isConnectionLikeRelayError(err):
+			return 45 * time.Second, "connectivity"
+		default:
+			return 60 * time.Second, "request_failed"
+		}
+	}
+	if types.IsChannelError(err) {
+		return 3 * time.Minute, "channel"
+	}
+
+	switch err.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return 10 * time.Minute, "auth"
+	case http.StatusTooManyRequests:
+		return 60 * time.Second, "rate_limit"
+	case http.StatusRequestTimeout:
+		return 90 * time.Second, "timeout"
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 522, 524:
+		return 90 * time.Second, "upstream_gateway"
+	case http.StatusInternalServerError:
+		return 60 * time.Second, "upstream_500"
+	}
+	if err.StatusCode >= 525 && err.StatusCode <= 599 {
+		return 2 * time.Minute, "upstream_5xx"
+	}
+	return 0, ""
+}
+
+func channelCooldownDuration(err *types.NewAPIError) time.Duration {
+	duration, _ := channelCooldownDecision(err)
+	return duration
+}
+
+func isTimeoutLikeRelayError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "timeout") ||
+		strings.Contains(lower, "deadline exceeded") ||
+		strings.Contains(lower, "context deadline")
+}
+
+func isConnectionLikeRelayError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "connection refused") ||
+		strings.Contains(lower, "connection reset") ||
+		strings.Contains(lower, "connection closed") ||
+		strings.Contains(lower, "broken pipe") ||
+		strings.Contains(lower, "no such host") ||
+		strings.Contains(lower, "server misbehaving") ||
+		strings.Contains(lower, "tls handshake") ||
+		strings.Contains(lower, "eof")
 }
 
 func RelayNotImplemented(c *gin.Context) {
@@ -788,7 +910,7 @@ func RelayTask(c *gin.Context) {
 		}
 
 		if !taskErr.LocalError {
-			processChannelError(c,
+			processChannelError(c, relayInfo,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))

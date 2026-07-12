@@ -5,11 +5,13 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -18,6 +20,10 @@ import (
 const (
 	smartFailoverMaxCandidates        = 4
 	smartFailoverMaxPriceIncreaseRate = 0.35
+	routePerfHintHours                = 24
+	routePerfHintTTL                  = time.Minute
+	routePerfMinRequests              = 5
+	routeNeutralScore                 = 50.0
 )
 
 type smartFailoverGroupState struct {
@@ -118,7 +124,9 @@ func buildSmartFailoverGroups(c *gin.Context, baseGroup string, modelName string
 		group string
 		ratio float64
 		diff  float64
+		score float64
 	}
+	hints := perfmetrics.GetGroupRouteHints(modelName, routePerfHintHours, routePerfHintTTL)
 	candidates := make([]candidate, 0)
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		group = strings.TrimSpace(group)
@@ -140,10 +148,18 @@ func buildSmartFailoverGroups(c *gin.Context, baseGroup string, modelName string
 			continue
 		}
 		diff := math.Abs(ratio - baseRatio)
-		candidates = append(candidates, candidate{group: group, ratio: ratio, diff: diff})
+		candidates = append(candidates, candidate{
+			group: group,
+			ratio: ratio,
+			diff:  diff,
+			score: routeGroupSelectionScore(hints[group]),
+		})
 	}
 
 	sort.SliceStable(candidates, func(i, j int) bool {
+		if math.Abs(candidates[i].score-candidates[j].score) > 1 {
+			return candidates[i].score > candidates[j].score
+		}
 		if candidates[i].diff == candidates[j].diff {
 			return candidates[i].ratio < candidates[j].ratio
 		}
@@ -212,6 +228,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		if param.TokenGroup == "auto" {
 			autoGroups = GetUserAutoGroup(userGroup)
 		}
+		autoGroups = sortGroupsByRoutePerformance(autoGroups, param.ModelName)
 		if len(autoGroups) == 0 {
 			return nil, selectGroup, errors.New("smart group has no source groups")
 		}
@@ -307,4 +324,41 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		}
 	}
 	return channel, selectGroup, nil
+}
+
+func sortGroupsByRoutePerformance(groups []string, modelName string) []string {
+	if len(groups) < 2 {
+		return groups
+	}
+	hints := perfmetrics.GetGroupRouteHints(modelName, routePerfHintHours, routePerfHintTTL)
+	if len(hints) == 0 {
+		return groups
+	}
+	sortedGroups := append([]string(nil), groups...)
+	sort.SliceStable(sortedGroups, func(i, j int) bool {
+		left := routeGroupSelectionScore(hints[sortedGroups[i]])
+		right := routeGroupSelectionScore(hints[sortedGroups[j]])
+		if math.Abs(left-right) <= 1 {
+			return false
+		}
+		return left > right
+	})
+	return sortedGroups
+}
+
+func routeGroupSelectionScore(hint perfmetrics.GroupRouteHint) float64 {
+	if hint.RequestCount < routePerfMinRequests {
+		return routeNeutralScore
+	}
+	score := hint.SuccessRate
+	if hint.AvgTtftMs > 0 {
+		score -= math.Min(float64(hint.AvgTtftMs)/1000*2, 30)
+	}
+	if hint.AvgLatencyMs > 0 {
+		score -= math.Min(float64(hint.AvgLatencyMs)/1000*0.5, 25)
+	}
+	if hint.RequestCount < routePerfMinRequests*4 {
+		score -= 5
+	}
+	return score
 }

@@ -39,6 +39,8 @@ const ADVANCED_SETTINGS_FIELDS = new Set<FieldPath<ChannelFormValues>>([
   'proxy',
   'system_prompt',
   'system_prompt_override',
+  'upstream_request_gzip_enabled',
+  'upstream_request_gzip_min_mib',
   'allow_service_tier',
   'disable_store',
   'allow_safety_identifier',

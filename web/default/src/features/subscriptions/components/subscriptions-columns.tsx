@@ -24,7 +24,11 @@ import { DataTableColumnHeader } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatDuration, formatResetPeriod, formatSubscriptionPrice } from '../lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  formatSubscriptionPrice,
+} from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -221,7 +225,19 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
               <span className='text-muted-foreground'>{t('No Upgrade')}</span>
             )
           }
-          return <GroupBadge group={group} />
+          return (
+            <div className='flex flex-col gap-1'>
+              <GroupBadge group={group} />
+              <span className='text-muted-foreground text-xs'>
+                {t('Ratio')}:{' '}
+                {row.original.upgrade_group_ratio === undefined ||
+                row.original.upgrade_group_ratio === null
+                  ? 1
+                  : row.original.upgrade_group_ratio}
+                x
+              </span>
+            </div>
+          )
         },
         size: 100,
       },

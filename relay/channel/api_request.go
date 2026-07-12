@@ -310,7 +310,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", fullRequestURL)
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -327,6 +327,9 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	if err := applyPreparedUpstreamRequestCompression(req, info); err != nil {
+		return nil, err
+	}
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -496,6 +499,17 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		client = service.GetHttpClient()
 	}
 
+	trace := common.NewUpstreamRequestTrace(upstreamProxyMode(req, info))
+	trace.SetRequestBodyMetadata(
+		req.Header.Get("Content-Encoding"),
+		info.UpstreamRequestBodyOriginalSize,
+		info.UpstreamRequestCompressionDuration,
+		info.UpstreamRequestCompressionQueueDuration,
+		info.UpstreamRequestCompressionLevel,
+	)
+	info.AddUpstreamTrace(trace)
+	req = trace.Attach(req)
+
 	var stopPinger context.CancelFunc
 	if info.IsStream {
 		helper.SetEventStreamHeaders(c)
@@ -522,6 +536,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if resp == nil {
 		return nil, errors.New("resp is nil")
 	}
+	trace.ObserveResponse(resp)
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
 		c.Set(common2.UpstreamRequestIdKey, upID)
@@ -530,6 +545,22 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	_ = req.Body.Close()
 	_ = c.Request.Body.Close()
 	return resp, nil
+}
+
+func upstreamProxyMode(req *http.Request, info *common.RelayInfo) string {
+	if info != nil && strings.TrimSpace(info.ChannelSetting.Proxy) != "" {
+		proxyURL := strings.ToLower(strings.TrimSpace(info.ChannelSetting.Proxy))
+		if strings.HasPrefix(proxyURL, "socks5://") || strings.HasPrefix(proxyURL, "socks5h://") {
+			return "channel_socks_proxy"
+		}
+		return "channel_http_proxy"
+	}
+	if req != nil {
+		if proxyURL, err := http.ProxyFromEnvironment(req); err == nil && proxyURL != nil {
+			return "environment_proxy"
+		}
+	}
+	return "direct"
 }
 
 func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {

@@ -60,6 +60,7 @@ type channelMonitorGroupAggregate struct {
 	slowestMs      int
 	lastTestTime   int64
 	activeUsers    int
+	activeUserIDs  map[int]struct{}
 	perf           *perfmetrics.GroupResult
 }
 
@@ -126,7 +127,7 @@ func GetDashboardChannelMonitor(c *gin.Context) {
 			break
 		}
 	}
-	activeUserCounts := service.GetChannelActiveUserCounts(channelIDs)
+	activeUserIDsByChannel := service.GetChannelActiveUserIDs(channelIDs)
 	activeUsers, _ := service.GetChannelActiveUserSummaryForChannels(channelIDs)
 
 	groups := make(map[string]*channelMonitorGroupAggregate)
@@ -160,8 +161,9 @@ func GetDashboardChannelMonitor(c *gin.Context) {
 			group := groups[groupName]
 			if group == nil {
 				group = &channelMonitorGroupAggregate{
-					name:   groupName,
-					models: make(map[string]struct{}),
+					name:          groupName,
+					models:        make(map[string]struct{}),
+					activeUserIDs: make(map[int]struct{}),
 				}
 				groups[groupName] = group
 			}
@@ -189,7 +191,9 @@ func GetDashboardChannelMonitor(c *gin.Context) {
 					group.slowestMs = channel.ResponseTime
 				}
 			}
-			group.activeUsers += activeUserCounts[channel.Id]
+			for _, userID := range activeUserIDsByChannel[channel.Id] {
+				group.activeUserIDs[userID] = struct{}{}
+			}
 			for _, modelName := range channel.GetModels() {
 				modelName = strings.TrimSpace(modelName)
 				if modelName != "" {
@@ -255,6 +259,7 @@ func GetDashboardChannelMonitor(c *gin.Context) {
 		if responseTime >= slowResponseMs || group.slowestMs >= slowResponseMs {
 			slow++
 		}
+		group.activeUsers = len(group.activeUserIDs)
 		if group.activeUsers > 0 {
 			activeGroups++
 		}

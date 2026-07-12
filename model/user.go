@@ -583,13 +583,46 @@ func (user *User) Edit(updatePassword bool) error {
 		updates["password"] = newUser.Password
 	}
 
-	DB.First(&user, user.Id)
-	if err = DB.Model(user).Updates(updates).Error; err != nil {
+	var persisted User
+	var cancelledSubscriptions int64
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		var current User
+		if err := tx.Where("id = ?", user.Id).First(&current).Error; err != nil {
+			return err
+		}
+		originalGroup := current.Group
+		if err := tx.Model(&current).Updates(updates).Error; err != nil {
+			return err
+		}
+		if strings.TrimSpace(originalGroup) != strings.TrimSpace(newUser.Group) {
+			cancelledSubscriptions, err = cancelMismatchedActiveUpgradeSubscriptionsTx(
+				tx,
+				user.Id,
+				newUser.Group,
+				common.GetTimestamp(),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return tx.Where("id = ?", user.Id).First(&persisted).Error
+	})
+	if err != nil {
 		return err
 	}
+	*user = persisted
 
 	// Update cache
-	return updateUserCache(*user)
+	if err := updateUserCache(*user); err != nil {
+		return err
+	}
+	if cancelledSubscriptions > 0 {
+		RecordLog(user.Id, LogTypeManage, fmt.Sprintf(
+			"管理员调整用户分组，自动终止 %d 个不匹配的升级订阅",
+			cancelledSubscriptions,
+		))
+	}
+	return nil
 }
 
 func (user *User) ClearBinding(bindingType string) error {

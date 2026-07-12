@@ -86,6 +86,8 @@ export interface ChannelSettings {
   pass_through_body_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean
+  upstream_request_gzip_enabled?: boolean
+  upstream_request_gzip_min_bytes?: number
 }
 
 export interface ChannelOtherSettings {

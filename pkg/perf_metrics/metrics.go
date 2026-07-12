@@ -42,9 +42,11 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 	if generationMs <= 0 {
 		generationMs = latencyMs
 	}
+	model.RecordChannelRuntimeSample(info.ChannelId, ttftMs, latencyMs, hasTtft, success)
 	Record(Sample{
 		Model:        info.OriginModelName,
 		Group:        info.UsingGroup,
+		ChannelId:    info.ChannelId,
 		LatencyMs:    latencyMs,
 		TtftMs:       ttftMs,
 		HasTtft:      hasTtft,
@@ -73,6 +75,18 @@ func Record(sample Sample) {
 	}
 	actual, _ := hotBuckets.LoadOrStore(key, &atomicBucket{})
 	actual.(*atomicBucket).add(sample)
+	model.RecordChannelPerfSample(
+		sample.Model,
+		sample.Group,
+		sample.ChannelId,
+		key.bucketTs,
+		sample.TtftMs,
+		sample.LatencyMs,
+		sample.HasTtft,
+		sample.Success,
+		sample.OutputTokens,
+		sample.GenerationMs,
+	)
 	recordRedis(key, sample)
 }
 

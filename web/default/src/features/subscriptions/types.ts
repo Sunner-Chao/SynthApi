@@ -50,6 +50,7 @@ export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
 
 export interface PlanRecord {
   plan: SubscriptionPlan
+  upgrade_group_ratio?: number
 }
 
 // ============================================================================
@@ -68,6 +69,8 @@ export const userSubscriptionSchema = z.object({
   amount_used: z.number(),
   billing_discount: z.number().optional().default(1),
   billing_discount_group: z.string().optional(),
+  upgrade_group: z.string().optional(),
+  prev_user_group: z.string().optional(),
   next_reset_time: z.number().optional(),
 })
 
@@ -89,6 +92,7 @@ export interface ApiResponse<T = unknown> {
 
 export interface PlanPayload {
   plan: Partial<SubscriptionPlan>
+  upgrade_group_ratio?: number
 }
 
 export interface SubscriptionPayRequest {

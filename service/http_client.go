@@ -34,15 +34,7 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 }
 
 func InitHttpClient() {
-	transport := &http.Transport{
-		MaxIdleConns:        common.RelayMaxIdleConns,
-		MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
-		ForceAttemptHTTP2:   true,
-		Proxy:               http.ProxyFromEnvironment, // Support HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars
-	}
-	if common.TLSInsecureSkipVerify {
-		transport.TLSClientConfig = common.InsecureTLSConfig
-	}
+	transport := newRelayTransport(http.ProxyFromEnvironment, nil)
 
 	if common.RelayTimeout == 0 {
 		httpClient = &http.Client{
@@ -56,6 +48,41 @@ func InitHttpClient() {
 			CheckRedirect: checkRedirect,
 		}
 	}
+}
+
+func newRelayTransport(proxyFunc func(*http.Request) (*url.URL, error), dialContext func(context.Context, string, string) (net.Conn, error)) *http.Transport {
+	if dialContext == nil {
+		dialer := &net.Dialer{
+			Timeout:   nonNegativeSeconds(common.RelayDialTimeout),
+			KeepAlive: seconds(common.RelayDialKeepAlive),
+		}
+		dialContext = dialer.DialContext
+	}
+	transport := &http.Transport{
+		MaxIdleConns:          common.RelayMaxIdleConns,
+		MaxIdleConnsPerHost:   common.RelayMaxIdleConnsPerHost,
+		IdleConnTimeout:       nonNegativeSeconds(common.RelayIdleConnTimeout),
+		TLSHandshakeTimeout:   nonNegativeSeconds(common.RelayTLSHandshakeTimeout),
+		ExpectContinueTimeout: nonNegativeSeconds(common.RelayExpectContinueTimeout),
+		ForceAttemptHTTP2:     true,
+		Proxy:                 proxyFunc,
+		DialContext:           dialContext,
+	}
+	if common.TLSInsecureSkipVerify {
+		transport.TLSClientConfig = common.InsecureTLSConfig
+	}
+	return transport
+}
+
+func seconds(value int) time.Duration {
+	return time.Duration(value) * time.Second
+}
+
+func nonNegativeSeconds(value int) time.Duration {
+	if value <= 0 {
+		return 0
+	}
+	return seconds(value)
 }
 
 func GetHttpClient() *http.Client {
@@ -108,15 +135,7 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 
 	switch parsedURL.Scheme {
 	case "http", "https":
-		transport := &http.Transport{
-			MaxIdleConns:        common.RelayMaxIdleConns,
-			MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
-			ForceAttemptHTTP2:   true,
-			Proxy:               http.ProxyURL(parsedURL),
-		}
-		if common.TLSInsecureSkipVerify {
-			transport.TLSClientConfig = common.InsecureTLSConfig
-		}
+		transport := newRelayTransport(http.ProxyURL(parsedURL), nil)
 		client := &http.Client{
 			Transport:     transport,
 			CheckRedirect: checkRedirect,
@@ -142,22 +161,35 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 
 		// 创建 SOCKS5 代理拨号器
 		// proxy.SOCKS5 使用 tcp 参数，所有 TCP 连接包括 DNS 查询都将通过代理进行。行为与 socks5h 相同
-		dialer, err := proxy.SOCKS5("tcp", parsedURL.Host, auth, proxy.Direct)
+		baseDialer := &net.Dialer{
+			Timeout:   nonNegativeSeconds(common.RelayDialTimeout),
+			KeepAlive: seconds(common.RelayDialKeepAlive),
+		}
+		dialer, err := proxy.SOCKS5("tcp", parsedURL.Host, auth, baseDialer)
 		if err != nil {
 			return nil, err
 		}
 
-		transport := &http.Transport{
-			MaxIdleConns:        common.RelayMaxIdleConns,
-			MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
-			ForceAttemptHTTP2:   true,
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return dialer.Dial(network, addr)
-			},
-		}
-		if common.TLSInsecureSkipVerify {
-			transport.TLSClientConfig = common.InsecureTLSConfig
-		}
+		transport := newRelayTransport(nil, func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
+				return contextDialer.DialContext(ctx, network, addr)
+			}
+			type dialResult struct {
+				conn net.Conn
+				err  error
+			}
+			done := make(chan dialResult, 1)
+			go func() {
+				conn, err := dialer.Dial(network, addr)
+				done <- dialResult{conn: conn, err: err}
+			}()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case result := <-done:
+				return result.conn, result.err
+			}
+		})
 
 		client := &http.Client{Transport: transport, CheckRedirect: checkRedirect}
 		client.Timeout = time.Duration(common.RelayTimeout) * time.Second

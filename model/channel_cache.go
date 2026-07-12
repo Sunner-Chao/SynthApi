@@ -19,6 +19,12 @@ var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
 var channelSyncLock sync.RWMutex
 
+const (
+	channelLatencyNoPenaltyMs = 3000
+	channelLatencyModerateMs  = 8000
+	channelLatencyHighMs      = 15000
+)
+
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		return
@@ -118,6 +124,9 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, e
 		return GetChannel(group, model, retry)
 	}
 
+	logPerfHints := channelLogSelectionHints(model, group)
+	channelPerfHints := channelPerfSelectionHints(model, group)
+
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
 
@@ -139,13 +148,6 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, e
 		return nil, nil
 	}
 
-	if len(channels) == 1 {
-		if channel, ok := channelsIDM[channels[0]]; ok {
-			return channel, nil
-		}
-		return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channels[0])
-	}
-
 	uniquePriorities := make(map[int]bool)
 	for _, channelId := range channels {
 		if channel, ok := channelsIDM[channelId]; ok {
@@ -163,24 +165,24 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, e
 	if retry >= len(uniquePriorities) {
 		retry = len(uniquePriorities) - 1
 	}
-	targetPriority := int64(sortedUniquePriorities[retry])
+	targetPriorityIndex := retry
+	targetPriority := int64(sortedUniquePriorities[targetPriorityIndex])
 
-	// get the priority for the given retry number
-	var sumWeight = 0
-	var targetChannels []*Channel
-	for _, channelId := range channels {
-		if channel, ok := channelsIDM[channelId]; ok {
-			if channel.GetPriority() == targetPriority {
-				sumWeight += channel.GetWeight()
-				targetChannels = append(targetChannels, channel)
-			}
-		} else {
-			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
-		}
+	targetChannels, err := getChannelsByPriority(channels, targetPriority)
+	if err != nil {
+		return nil, err
 	}
-
 	if len(targetChannels) == 0 {
 		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
+	}
+	targetChannels = preferNonCoolingChannels(targetChannels, channels, sortedUniquePriorities, targetPriorityIndex)
+	if len(targetChannels) == 0 {
+		return nil, nil
+	}
+
+	var sumWeight = 0
+	for _, channel := range targetChannels {
+		sumWeight += channel.GetWeight()
 	}
 
 	// smoothing factor and adjustment
@@ -197,21 +199,135 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, e
 		smoothingFactor = 100
 	}
 
-	// Calculate the total weight of all channels up to endIdx
-	totalWeight := sumWeight * smoothingFactor
+	weightedChannels := make([]weightedChannel, 0, len(targetChannels))
+	totalWeight := 0
+	for _, channel := range targetChannels {
+		baseWeight := channel.GetWeight()*smoothingFactor + smoothingAdjustment
+		effectiveWeight := adjustedChannelSelectionWeight(channel, baseWeight, logPerfHints, channelPerfHints)
+		if effectiveWeight <= 0 {
+			continue
+		}
+		totalWeight += effectiveWeight
+		weightedChannels = append(weightedChannels, weightedChannel{
+			channel: channel,
+			weight:  effectiveWeight,
+		})
+	}
+	if totalWeight <= 0 {
+		return nil, errors.New("channel not found")
+	}
 
 	// Generate a random value in the range [0, totalWeight)
 	randomWeight := rand.Intn(totalWeight)
 
 	// Find a channel based on its weight
-	for _, channel := range targetChannels {
-		randomWeight -= channel.GetWeight()*smoothingFactor + smoothingAdjustment
+	for _, candidate := range weightedChannels {
+		randomWeight -= candidate.weight
 		if randomWeight < 0 {
-			return channel, nil
+			return candidate.channel, nil
 		}
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+type weightedChannel struct {
+	channel *Channel
+	weight  int
+}
+
+func adjustedChannelSelectionWeight(channel *Channel, baseWeight int, logPerfHints map[int]ChannelLogLatencyHint, channelPerfHints map[int]ChannelPerfRouteHint) int {
+	if channel == nil || baseWeight <= 0 {
+		return 0
+	}
+	percent := channelResponseTimeWeightPercent(channel.ResponseTime)
+	runtimePercent := channelRuntimeSelectionWeightPercent(channel.Id)
+	if runtimePercent < percent {
+		percent = runtimePercent
+	}
+	if hint, ok := logPerfHints[channel.Id]; ok && hint.SelectionWeightPct > 0 && hint.SelectionWeightPct < percent {
+		percent = hint.SelectionWeightPct
+	}
+	if hint, ok := channelPerfHints[channel.Id]; ok && hint.SelectionWeightPct > 0 && hint.SelectionWeightPct < percent {
+		percent = hint.SelectionWeightPct
+	}
+	adjusted := baseWeight * percent / 100
+	if adjusted <= 0 {
+		return 1
+	}
+	return adjusted
+}
+
+func getChannelsByPriority(channelIDs []int, targetPriority int64) ([]*Channel, error) {
+	targetChannels := make([]*Channel, 0)
+	for _, channelId := range channelIDs {
+		channel, ok := channelsIDM[channelId]
+		if !ok {
+			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
+		}
+		if channel.GetPriority() == targetPriority {
+			targetChannels = append(targetChannels, channel)
+		}
+	}
+	return targetChannels, nil
+}
+
+func preferNonCoolingChannels(targetChannels []*Channel, allChannelIDs []int, sortedPriorities []int, targetPriorityIndex int) []*Channel {
+	if len(targetChannels) == 0 {
+		return targetChannels
+	}
+	if ready := filterCoolingChannels(targetChannels); len(ready) > 0 {
+		return ready
+	}
+
+	for i := targetPriorityIndex + 1; i < len(sortedPriorities); i++ {
+		lowerPriorityChannels, err := getChannelsByPriority(allChannelIDs, int64(sortedPriorities[i]))
+		if err != nil {
+			return targetChannels
+		}
+		if ready := filterCoolingChannels(lowerPriorityChannels); len(ready) > 0 {
+			return ready
+		}
+	}
+	return nil
+}
+
+func filterCoolingChannels(channels []*Channel) []*Channel {
+	if len(channels) == 0 {
+		return nil
+	}
+	ready := make([]*Channel, 0, len(channels))
+	for _, channel := range channels {
+		if channel == nil || IsChannelCoolingDown(channel.Id) {
+			continue
+		}
+		ready = append(ready, channel)
+	}
+	return ready
+}
+
+func channelResponseTimeWeightPercent(responseTimeMs int) int {
+	if responseTimeMs <= 0 || responseTimeMs <= channelLatencyNoPenaltyMs {
+		return 100
+	}
+	if responseTimeMs <= channelLatencyModerateMs {
+		return interpolatePercent(responseTimeMs, channelLatencyNoPenaltyMs, channelLatencyModerateMs, 100, 60)
+	}
+	if responseTimeMs <= channelLatencyHighMs {
+		return interpolatePercent(responseTimeMs, channelLatencyModerateMs, channelLatencyHighMs, 60, 25)
+	}
+	return 15
+}
+
+func interpolatePercent(value int, start int, end int, startPercent int, endPercent int) int {
+	if value <= start {
+		return startPercent
+	}
+	if value >= end || end <= start {
+		return endPercent
+	}
+	delta := startPercent - endPercent
+	return startPercent - delta*(value-start)/(end-start)
 }
 
 func filterExcludedChannelIDs(channels []int, excludeIDs map[int]struct{}) []int {
