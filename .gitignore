@@ -31,6 +31,9 @@ web/classic/dist
 web/node_modules
 web/dist
 .env
+.env.*
+!.env.example
+*.log
 one-api
 new-api
 synthapi
