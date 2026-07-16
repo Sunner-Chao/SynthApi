@@ -2,9 +2,11 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,9 +27,30 @@ func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
-	if !complianceConfirmed {
-		payMethods = []map[string]string{}
+	payMethods := make([]map[string]string, 0, len(operation_setting.PayMethods)+1)
+	if complianceConfirmed && isEpayTopUpEnabled() {
+		for _, configuredMethod := range operation_setting.PayMethods {
+			method := make(map[string]string, len(configuredMethod)+1)
+			for key, value := range configuredMethod {
+				method[key] = value
+			}
+			if method["provider"] == "" {
+				method["provider"] = model.PaymentProviderEpay
+			}
+			payMethods = append(payMethods, method)
+		}
+	}
+
+	enableAlipayDirect := service.IsAlipayDirectTopUpEnabled()
+	if enableAlipayDirect {
+		payMethods = append([]map[string]string{{
+			"name":        "支付宝（官方）",
+			"type":        model.PaymentMethodAlipay,
+			"provider":    model.PaymentProviderAlipayDirect,
+			"color":       "#1677FF",
+			"min_topup":   strconv.FormatFloat(service.GetAlipayDirectMinTopUp(), 'f', -1, 64),
+			"recommended": "true",
+		}}, payMethods...)
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
@@ -45,6 +68,7 @@ func GetTopUpInfo(c *gin.Context) {
 			stripeMethod := map[string]string{
 				"name":      "Stripe",
 				"type":      "stripe",
+				"provider":  model.PaymentProviderStripe,
 				"color":     "rgba(var(--semi-purple-5), 1)",
 				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
 			}
@@ -67,6 +91,7 @@ func GetTopUpInfo(c *gin.Context) {
 			payMethods = append(payMethods, map[string]string{
 				"name":      "Waffo Pancake",
 				"type":      model.PaymentMethodWaffoPancake,
+				"provider":  model.PaymentProviderWaffoPancake,
 				"color":     "rgba(var(--semi-orange-5), 1)",
 				"min_topup": strconv.Itoa(setting.WaffoPancakeMinTopUp),
 			})
@@ -87,6 +112,7 @@ func GetTopUpInfo(c *gin.Context) {
 			xpayMethod := map[string]string{
 				"name":      "XPay",
 				"type":      model.PaymentMethodXPay,
+				"provider":  model.PaymentProviderXPay,
 				"color":     "#6366F1",
 				"min_topup": strconv.FormatFloat(setting.XPayMinTopUp, 'f', -1, 64),
 			}
@@ -94,18 +120,37 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 	if enableMPay {
-		hasAlipay := false
+		hasMPayAlipay := false
+		hasMPayWechat := false
 		for _, method := range payMethods {
-			if method["type"] == "alipay" {
-				hasAlipay = true
-				break
+			if method["provider"] != model.PaymentProviderMPay {
+				continue
+			}
+			switch method["type"] {
+			case model.PaymentMethodAlipay:
+				hasMPayAlipay = true
+			case model.PaymentMethodWechat:
+				hasMPayWechat = true
 			}
 		}
-		if !hasAlipay {
+		// Official Alipay remains the single Alipay entry when it is enabled.
+		// MPay still provides the independent WeChat entry.
+		if !enableAlipayDirect && !hasMPayAlipay {
 			payMethods = append(payMethods, map[string]string{
-				"name":      "支付宝",
-				"type":      "alipay",
-				"color":     "#1677FF",
+				"name":        "支付宝",
+				"type":        model.PaymentMethodAlipay,
+				"provider":    model.PaymentProviderMPay,
+				"color":       "#1677FF",
+				"min_topup":   strconv.FormatFloat(service.GetMPayMinTopup(), 'f', -1, 64),
+				"recommended": "true",
+			})
+		}
+		if !hasMPayWechat {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "微信支付",
+				"type":      model.PaymentMethodWechat,
+				"provider":  model.PaymentProviderMPay,
+				"color":     "#07C160",
 				"min_topup": strconv.FormatFloat(service.GetMPayMinTopup(), 'f', -1, 64),
 			})
 		}
@@ -126,6 +171,7 @@ func GetTopUpInfo(c *gin.Context) {
 			waffoMethod := map[string]string{
 				"name":      "Waffo (Global Payment)",
 				"type":      model.PaymentMethodWaffo,
+				"provider":  model.PaymentProviderWaffo,
 				"color":     "rgba(var(--semi-blue-5), 1)",
 				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
 			}
@@ -141,6 +187,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
 		"enable_xpay_topup":                enableXPay,
 		"enable_mpay_topup":                enableMPay,
+		"enable_alipay_direct_topup":       enableAlipayDirect,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
@@ -158,6 +205,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"xpay_min_topup":          setting.XPayMinTopUp,
 		"mpay_min_topup":          service.GetMPayMinTopup(),
+		"alipay_direct_min_topup": service.GetAlipayDirectMinTopUp(),
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
@@ -171,7 +219,8 @@ type EpayRequest struct {
 }
 
 type AmountRequest struct {
-	Amount int64 `json:"amount"`
+	Amount          float64 `json:"amount"`
+	PaymentProvider string  `json:"payment_provider"`
 }
 
 func GetEpayClient() *epay.Client {
@@ -517,28 +566,66 @@ func EpayNotify(c *gin.Context) {
 
 func RequestAmount(c *gin.Context) {
 	var req AmountRequest
-	err := c.ShouldBindJSON(&req)
-	if err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || req.Amount <= 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
-
-	if req.Amount < getMinTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+	normalizedAmount, err := service.NormalizePaymentTopUpAmount(req.Amount)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
 	}
+	req.Amount = normalizedAmount
 	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group)
-	if payMoney <= 0.01 {
+
+	provider := strings.TrimSpace(req.PaymentProvider)
+	var payMoney float64
+	var minTopUp float64
+	switch provider {
+	case model.PaymentProviderAlipayDirect:
+		minTopUp = service.GetAlipayDirectMinTopUp()
+		payMoney, err = service.GetAlipayDirectMoney(req.Amount, group)
+	case model.PaymentProviderMPay:
+		minTopUp = service.GetMPayMinTopup()
+		payMoney = service.GetMPayMoney(req.Amount, group)
+	case model.PaymentProviderXPay:
+		minTopUp = service.GetXPayMinTopup()
+		payMoney = service.GetXPayMoney(req.Amount, group)
+	case "", model.PaymentProviderEpay:
+		minTopUp = float64(getMinTopup())
+		if req.Amount != math.Trunc(req.Amount) || req.Amount > math.MaxInt64 {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "该支付方式仅支持整数充值数量"})
+			return
+		}
+		payMoney = getPayMoney(int64(req.Amount), group)
+	default:
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "不支持的支付渠道"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return
+	}
+	if req.Amount < minTopUp {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "error",
+			"data":    fmt.Sprintf("充值数量不能小于 %.2f", minTopUp),
+		})
+		return
+	}
+	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data":    decimal.NewFromFloat(payMoney).Round(2).StringFixed(2),
+	})
 }
 
 func GetUserTopUps(c *gin.Context) {

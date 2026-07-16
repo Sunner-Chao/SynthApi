@@ -110,6 +110,24 @@ func InitEnv() {
 	RelayTLSHandshakeTimeout = GetEnvOrDefault("RELAY_TLS_HANDSHAKE_TIMEOUT", 10)
 	RelayExpectContinueTimeout = GetEnvOrDefault("RELAY_EXPECT_CONTINUE_TIMEOUT", 1)
 	RelayStageLogThresholdMs = GetEnvOrDefault("RELAY_STAGE_LOG_THRESHOLD_MS", 8000)
+	RelayForceHTTP2 = GetEnvOrDefaultBool("RELAY_FORCE_HTTP2", true)
+	ModelRequestMaxConcurrencyPerUser = GetEnvOrDefault("MODEL_REQUEST_MAX_CONCURRENCY_PER_USER", 10)
+	ModelRequestMaxConcurrencyPerToken = GetEnvOrDefault("MODEL_REQUEST_MAX_CONCURRENCY_PER_TOKEN", 5)
+	ModelRequestDefaultChannelMaxConcurrency = GetEnvOrDefault("MODEL_REQUEST_DEFAULT_CHANNEL_MAX_CONCURRENCY", 15)
+	ModelRequestDefaultChannelMaxConcurrencyPerUser = GetEnvOrDefault("MODEL_REQUEST_DEFAULT_CHANNEL_MAX_CONCURRENCY_PER_USER", 6)
+	ModelRequestLargeBodyThresholdMB = GetEnvOrDefault("MODEL_REQUEST_LARGE_BODY_THRESHOLD_MB", 10)
+	ModelRequestMaxLargeConcurrencyPerUser = GetEnvOrDefault("MODEL_REQUEST_MAX_LARGE_CONCURRENCY_PER_USER", 2)
+	ModelRequestSmallFailoverBodyMB = GetEnvOrDefault("MODEL_REQUEST_SMALL_FAILOVER_BODY_MB", 1)
+	ModelRequestSmallFailoverTimeoutSeconds = GetEnvOrDefault("MODEL_REQUEST_SMALL_FAILOVER_TIMEOUT_SECONDS", 8)
+	ModelRequestConcurrencyExemptUserIDs = make(map[int]struct{})
+	for _, rawUserID := range strings.Split(os.Getenv("MODEL_REQUEST_CONCURRENCY_EXEMPT_USER_IDS"), ",") {
+		userID, err := strconv.Atoi(strings.TrimSpace(rawUserID))
+		if err == nil && userID > 0 {
+			ModelRequestConcurrencyExemptUserIDs[userID] = struct{}{}
+		}
+	}
+	ModelTextRequestBodyMB = GetEnvOrDefault("MODEL_TEXT_REQUEST_BODY_MB", 0)
+	ModelTextRequestBodyReadTimeout = GetEnvOrDefault("MODEL_TEXT_REQUEST_BODY_READ_TIMEOUT", 0)
 
 	// Initialize string variables with GetEnvOrDefaultString
 	GeminiSafetySetting = GetEnvOrDefaultString("GEMINI_SAFETY_SETTING", "BLOCK_NONE")

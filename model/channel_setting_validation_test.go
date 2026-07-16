@@ -46,3 +46,13 @@ func TestChannelValidateSettingsUpstreamRequestGzipCapability(t *testing.T) {
 	require.ErrorContains(t, (&Channel{Type: constant.ChannelTypeAws, Setting: &enabledSetting}).ValidateSettings(), "not supported")
 	require.NoError(t, (&Channel{Type: constant.ChannelTypeAws, Setting: &disabledSetting}).ValidateSettings())
 }
+
+func TestChannelValidateSettingsConcurrencyLimits(t *testing.T) {
+	valid := `{"max_concurrency":15,"max_concurrency_per_user":6,"large_request_eligible":true}`
+	channel := &Channel{Setting: &valid}
+	require.NoError(t, channel.ValidateSettings())
+
+	invalid := `{"max_concurrency_per_user":1001}`
+	channel.Setting = &invalid
+	require.ErrorContains(t, channel.ValidateSettings(), "max_concurrency_per_user")
+}

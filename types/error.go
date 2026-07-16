@@ -64,6 +64,7 @@ const (
 	ErrorCodeReadRequestBodyFailed ErrorCode = "read_request_body_failed"
 	ErrorCodeConvertRequestFailed  ErrorCode = "convert_request_failed"
 	ErrorCodeAccessDenied          ErrorCode = "access_denied"
+	ErrorCodeConcurrencyLimit      ErrorCode = "concurrency_limit"
 
 	// request error
 	ErrorCodeBadRequestBody ErrorCode = "bad_request_body"
@@ -376,6 +377,76 @@ func IsSkipRetryError(err *NewAPIError) bool {
 	}
 
 	return err.skipRetry
+}
+
+func IsContextWindowExceededError(err *NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+
+	code := strings.ToLower(strings.TrimSpace(string(err.GetErrorCode())))
+	switch code {
+	case "context_length_exceeded", "context_window_exceeded", "max_context_length_exceeded":
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"exceeds the context window",
+		"exceeded the context window",
+		"maximum context length",
+		"context length exceeded",
+		"prompt is too long",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func IsDeterministicRequestError(err *NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if IsContextWindowExceededError(err) {
+		return true
+	}
+
+	code := strings.ToLower(strings.TrimSpace(string(err.GetErrorCode())))
+	switch code {
+	case string(ErrorCodeInvalidRequest),
+		string(ErrorCodeBadRequestBody),
+		string(ErrorCodeReadRequestBodyFailed),
+		string(ErrorCodeConvertRequestFailed),
+		string(ErrorCodePromptBlocked),
+		"invalid_request_error",
+		"invalid_argument",
+		"request_too_large",
+		"payload_too_large",
+		"unprocessable_entity":
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"invalid request",
+		"unsupported parameter",
+		"unknown parameter",
+		"missing required parameter",
+		"invalid parameter",
+		"invalid value for",
+		"invalid type for",
+		"request is too large",
+		"request body is too large",
+		"input is too long",
+		"could not parse the request",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func ErrOptionWithSkipRetry() NewAPIErrorOptions {

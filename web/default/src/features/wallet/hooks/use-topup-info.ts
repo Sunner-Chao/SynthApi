@@ -22,6 +22,7 @@ import {
   generatePresetAmounts,
   mergePresetAmounts,
   getMinTopupAmount,
+  normalizeTopupAmount,
 } from '../lib'
 import type {
   TopupInfo,
@@ -65,6 +66,10 @@ function parsePaymentMethods(
       const rawMinTopup = Number(item.min_topup)
       const normalizedMinTopup = Number.isFinite(rawMinTopup) ? rawMinTopup : 0
       const type = typeof item.type === 'string' ? item.type : ''
+      const recommended =
+        item.recommended === true ||
+        (typeof item.recommended === 'string' &&
+          item.recommended.toLowerCase() === 'true')
 
       return {
         name: typeof item.name === 'string' ? item.name : '',
@@ -74,6 +79,9 @@ function parsePaymentMethods(
           type === 'stripe' && normalizedMinTopup <= 0
             ? stripeMinTopup
             : normalizedMinTopup,
+        icon: typeof item.icon === 'string' ? item.icon : undefined,
+        provider: typeof item.provider === 'string' ? item.provider : undefined,
+        recommended,
       }
     })
     .filter(
@@ -124,9 +132,10 @@ function parseCreemProducts(data: unknown): CreemProduct[] {
 }
 
 function parseAmountOptions(data: unknown): number[] {
-  return parseJsonArray(data)
-    .map((item) => Number(item))
-    .filter((item) => Number.isFinite(item) && item > 0)
+  const amounts = parseJsonArray(data)
+    .map((item) => normalizeTopupAmount(Number(item)))
+    .filter((item) => item > 0)
+  return [...new Set(amounts)]
 }
 
 function parseDiscountMap(data: unknown): Record<number, number> {

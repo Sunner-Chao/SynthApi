@@ -59,6 +59,7 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData, UsageLog } from '../../types'
+import { ApiLineBadge } from '../api-line-badge'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
@@ -267,19 +268,29 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         const timestamp = row.getValue('created_at') as number
         const config = getLogTypeConfig(log.type)
+        const other = parseLogOther(log.other)
 
         return (
           <div className='flex flex-col gap-0.5'>
             <span className='font-mono text-xs tabular-nums'>
               {formatTimestampToDate(timestamp)}
             </span>
-            <StatusBadge
-              label={t(config.label)}
-              variant={config.color as StatusBadgeProps['variant']}
-              size='sm'
-              copyable={false}
-              className='!text-xs [&_span]:!text-xs'
-            />
+            <div className='flex flex-wrap items-center gap-1'>
+              <StatusBadge
+                label={t(config.label)}
+                variant={config.color as StatusBadgeProps['variant']}
+                size='sm'
+                copyable={false}
+                className='!text-xs [&_span]:!text-xs'
+              />
+              {isTimingLogType(log.type) && (
+                <ApiLineBadge
+                  line={other?.ingress_line}
+                  host={other?.ingress_host}
+                  className='!text-xs [&_span]:!text-xs'
+                />
+              )}
+            </div>
           </div>
         )
       },

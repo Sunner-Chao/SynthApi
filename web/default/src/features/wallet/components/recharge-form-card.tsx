@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -34,13 +35,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { PAYMENT_TYPES } from '../constants'
+import { PAYMENT_PROVIDERS, PAYMENT_TYPES } from '../constants'
 import {
   formatCurrency,
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
+  getPaymentMethodDisplayName,
+  getPaymentMethodKey,
+  isAlipayDirectPayment,
+  normalizeTopupAmount,
+  sortPaymentMethods,
 } from '../lib'
 import type {
   PaymentMethod,
@@ -124,7 +130,7 @@ export function RechargeFormCard({
   }, [topupAmount])
 
   const handleAmountChange = (value: string) => {
-    if (!/^\d*\.?\d*$/.test(value)) {
+    if (!/^\d*(?:\.\d{0,2})?$/.test(value)) {
       return
     }
 
@@ -136,37 +142,80 @@ export function RechargeFormCard({
 
     const numValue = parseFloat(value)
     if (Number.isFinite(numValue) && numValue > 0) {
-      onTopupAmountChange(numValue)
+      onTopupAmountChange(normalizeTopupAmount(numValue))
     }
   }
 
   const hasConfigurableTopup =
     topupInfo?.enable_online_topup ||
     topupInfo?.enable_stripe_topup ||
+    topupInfo?.enable_alipay_direct_topup ||
     topupInfo?.enable_mpay_topup ||
     topupInfo?.enable_xpay_topup ||
     enableWaffoTopup ||
     enableWaffoPancakeTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
-  const standardPaymentMethods = (
+  const configuredPaymentMethods =
     topupInfo?.pay_methods?.filter(
       (method) => method.type !== PAYMENT_TYPES.XPAY
     ) || []
-  ).concat(
-    (topupInfo?.enable_mpay_topup || topupInfo?.enable_xpay_topup) &&
-      !topupInfo?.pay_methods?.some(
-        (method) => method.type === PAYMENT_TYPES.ALIPAY
-      )
-      ? [
-          {
-            type: PAYMENT_TYPES.ALIPAY,
-            name: t('Alipay'),
-            min_topup:
-              topupInfo.mpay_min_topup || topupInfo.xpay_min_topup || 0,
-          },
-        ]
-      : []
-  )
+  const fallbackPaymentMethods: PaymentMethod[] = []
+  const hasProvider = (provider: string) =>
+    configuredPaymentMethods.some((method) => method.provider === provider)
+  const hasProviderType = (provider: string, type: string) =>
+    configuredPaymentMethods.some(
+      (method) => method.provider === provider && method.type === type
+    )
+
+  if (
+    topupInfo?.enable_alipay_direct_topup &&
+    !hasProvider(PAYMENT_PROVIDERS.ALIPAY_DIRECT)
+  ) {
+    fallbackPaymentMethods.push({
+      type: PAYMENT_TYPES.ALIPAY,
+      provider: PAYMENT_PROVIDERS.ALIPAY_DIRECT,
+      name: t('Alipay (Official)'),
+      min_topup: topupInfo.alipay_direct_min_topup || 0,
+      recommended: true,
+    })
+  }
+
+  if (topupInfo?.enable_mpay_topup) {
+    if (
+      !topupInfo.enable_alipay_direct_topup &&
+      !hasProviderType(PAYMENT_PROVIDERS.MPAY, PAYMENT_TYPES.ALIPAY)
+    ) {
+      fallbackPaymentMethods.push({
+        type: PAYMENT_TYPES.ALIPAY,
+        provider: PAYMENT_PROVIDERS.MPAY,
+        name: t('Alipay'),
+        min_topup: topupInfo.mpay_min_topup || 0,
+        recommended: true,
+      })
+    }
+    if (!hasProviderType(PAYMENT_PROVIDERS.MPAY, PAYMENT_TYPES.WECHAT)) {
+      fallbackPaymentMethods.push({
+        type: PAYMENT_TYPES.WECHAT,
+        provider: PAYMENT_PROVIDERS.MPAY,
+        name: t('WeChat Pay'),
+        min_topup: topupInfo.mpay_min_topup || 0,
+      })
+    }
+  }
+
+  if (topupInfo?.enable_xpay_topup && !hasProvider(PAYMENT_PROVIDERS.XPAY)) {
+    fallbackPaymentMethods.push({
+      type: PAYMENT_TYPES.ALIPAY,
+      provider: PAYMENT_PROVIDERS.XPAY,
+      name: t('Alipay (XPay backup)'),
+      min_topup: topupInfo.xpay_min_topup || 0,
+    })
+  }
+
+  const standardPaymentMethods = sortPaymentMethods([
+    ...configuredPaymentMethods,
+    ...fallbackPaymentMethods,
+  ])
   const hasVisibleStandardPaymentMethods = standardPaymentMethods.length > 0
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
@@ -346,35 +395,66 @@ export function RechargeFormCard({
                   {t('Payment Method')}
                 </Label>
                 {hasVisibleStandardPaymentMethods ? (
-                  <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
+                  <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3'>
                     {standardPaymentMethods.map((method) => {
                       const minTopup = method.min_topup || 0
                       const disabled = minTopup > topupAmount
+                      const methodKey = getPaymentMethodKey(method)
+                      const methodName = getPaymentMethodDisplayName(method, t)
+                      const isDirect = isAlipayDirectPayment(method)
+                      const isBackup =
+                        method.provider === PAYMENT_PROVIDERS.XPAY
 
                       const button = (
                         <Button
-                          key={method.type}
-                          variant='outline'
+                          key={methodKey}
+                          variant={isDirect ? 'default' : 'outline'}
                           onClick={() => onPaymentMethodSelect(method)}
                           disabled={disabled || !!paymentLoading}
-                          className='h-9 min-w-0 justify-start gap-2 rounded-lg px-3'
+                          className='h-auto min-h-14 min-w-0 justify-start px-3 py-2'
                         >
-                          {paymentLoading === method.type ? (
-                            <Loader2 className='h-4 w-4 animate-spin' />
+                          {paymentLoading === methodKey ? (
+                            <Loader2
+                              data-icon='inline-start'
+                              className='animate-spin'
+                            />
                           ) : (
                             getPaymentIcon(
                               method.type,
                               'h-4 w-4',
                               method.icon,
-                              method.name
+                              methodName
                             )
                           )}
-                          <span className='truncate'>{method.name}</span>
+                          <span className='flex min-w-0 flex-1 flex-col items-start gap-0.5'>
+                            <span className='flex w-full min-w-0 items-center gap-1.5'>
+                              <span className='truncate'>{methodName}</span>
+                              {(method.recommended || isDirect) && (
+                                <Badge variant='secondary'>
+                                  {t('Recommended')}
+                                </Badge>
+                              )}
+                            </span>
+                            {(isDirect || isBackup) && (
+                              <span
+                                className={cn(
+                                  'text-left text-xs leading-4 font-normal whitespace-normal',
+                                  isDirect
+                                    ? 'text-primary-foreground/80'
+                                    : 'text-muted-foreground'
+                                )}
+                              >
+                                {isDirect
+                                  ? t('Official direct payment, more stable')
+                                  : t('Backup payment method')}
+                              </span>
+                            )}
+                          </span>
                         </Button>
                       )
 
                       return disabled ? (
-                        <TooltipProvider key={method.type}>
+                        <TooltipProvider key={methodKey}>
                           <Tooltip>
                             <TooltipTrigger render={button}></TooltipTrigger>
                             <TooltipContent>

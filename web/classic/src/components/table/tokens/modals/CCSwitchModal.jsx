@@ -52,6 +52,8 @@ const APP_CONFIGS = {
   },
 };
 
+const FAST_API_BASE_URL = 'https://116.62.113.242';
+
 function getServerAddress() {
   try {
     const raw = localStorage.getItem('status');
@@ -65,7 +67,8 @@ function getServerAddress() {
 
 function buildCCSwitchURL(app, name, models, apiKey) {
   const serverAddress = getServerAddress();
-  const endpoint = app === 'codex' ? serverAddress + '/v1' : serverAddress;
+  const endpoint =
+    app === 'codex' ? FAST_API_BASE_URL + '/v1' : FAST_API_BASE_URL;
   const params = new URLSearchParams();
   params.set('resource', 'provider');
   params.set('app', app);

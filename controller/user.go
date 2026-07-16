@@ -308,6 +308,7 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	user.ModelRequestMaxConcurrency = user.GetSetting().ModelRequestMaxConcurrency
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -604,6 +605,10 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
+	if updatedUser.ModelRequestMaxConcurrency < 0 || updatedUser.ModelRequestMaxConcurrency > 1000 {
+		common.ApiError(c, fmt.Errorf("model request concurrency must be between 0 and 1000"))
+		return
+	}
 	if !canManageTargetRole(myRole, updatedUser.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
@@ -611,6 +616,9 @@ func UpdateUser(c *gin.Context) {
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
+	updatedSetting := originUser.GetSetting()
+	updatedSetting.ModelRequestMaxConcurrency = updatedUser.ModelRequestMaxConcurrency
+	updatedUser.SetSetting(updatedSetting)
 	updatePassword := updatedUser.Password != ""
 	if err := updatedUser.Edit(updatePassword); err != nil {
 		common.ApiError(c, err)

@@ -1,10 +1,15 @@
 package controller
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -166,4 +171,48 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
+}
+
+func TestGetTopUpInfoOnlyIncludesConfiguredEpayMethods(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalPayAddress := operation_setting.PayAddress
+	originalEpayID := operation_setting.EpayId
+	originalEpayKey := operation_setting.EpayKey
+	originalPayMethods := operation_setting.PayMethods
+	t.Cleanup(func() {
+		operation_setting.PayAddress = originalPayAddress
+		operation_setting.EpayId = originalEpayID
+		operation_setting.EpayKey = originalEpayKey
+		operation_setting.PayMethods = originalPayMethods
+	})
+
+	operation_setting.PayAddress = "https://pay.example.com"
+	operation_setting.EpayId = "epay_id"
+	operation_setting.EpayKey = ""
+	operation_setting.PayMethods = []map[string]string{{"name": "Legacy Alipay", "type": "alipay"}}
+	require.NotContains(t, getTopUpInfoPaymentProviders(t), model.PaymentProviderEpay)
+
+	operation_setting.EpayKey = "epay_key"
+	require.Contains(t, getTopUpInfoPaymentProviders(t), model.PaymentProviderEpay)
+}
+
+func getTopUpInfoPaymentProviders(t *testing.T) []string {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/topup/info", nil)
+
+	GetTopUpInfo(context)
+
+	var response struct {
+		Data struct {
+			PayMethods []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	providers := make([]string, 0, len(response.Data.PayMethods))
+	for _, method := range response.Data.PayMethods {
+		providers = append(providers, method["provider"])
+	}
+	return providers
 }

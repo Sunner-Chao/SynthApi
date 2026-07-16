@@ -18,15 +18,26 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   PAYMENT_TYPES,
+  PAYMENT_PROVIDERS,
   DEFAULT_PRESET_MULTIPLIERS,
   DEFAULT_PAYMENT_TYPE,
   DEFAULT_MIN_TOPUP,
 } from '../constants'
-import type { PresetAmount, TopupInfo } from '../types'
+import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
 
 // ============================================================================
 // Payment Processing Functions
 // ============================================================================
+
+/**
+ * Canonical top-up amount used by both pricing previews and order creation.
+ */
+export function normalizeTopupAmount(amount: number): number {
+  if (!Number.isFinite(amount)) return 0
+  const normalized = Math.round((amount + Number.EPSILON) * 100) / 100
+  if (!Number.isFinite(normalized)) return 0
+  return Object.is(normalized, -0) ? 0 : normalized
+}
 
 /**
  * Check if browser is Safari
@@ -90,8 +101,107 @@ export function isXPayPayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.XPAY
 }
 
-export function isXPayRoutedPayment(paymentType: string): boolean {
-  return paymentType === PAYMENT_TYPES.XPAY || paymentType === PAYMENT_TYPES.ALIPAY
+export function isXPayRoutedPayment(
+  paymentType: string,
+  paymentProvider?: string
+): boolean {
+  if (paymentProvider) {
+    return paymentProvider === PAYMENT_PROVIDERS.XPAY
+  }
+  return paymentType === PAYMENT_TYPES.XPAY
+}
+
+/**
+ * Resolve the gateway for both provider-aware responses and older backends.
+ * An explicit provider always wins so MPay/XPay cannot intercept Alipay Direct.
+ */
+export function resolvePaymentProvider(
+  method: PaymentMethod,
+  topupInfo: TopupInfo | null
+): string | undefined {
+  if (method.provider) {
+    return method.provider
+  }
+
+  if (method.type === PAYMENT_TYPES.XPAY) {
+    return PAYMENT_PROVIDERS.XPAY
+  }
+
+  if (
+    topupInfo?.enable_mpay_topup &&
+    !topupInfo.pay_methods?.some(
+      (paymentMethod) => paymentMethod.provider === PAYMENT_PROVIDERS.MPAY
+    ) &&
+    (method.type === PAYMENT_TYPES.ALIPAY ||
+      method.type === PAYMENT_TYPES.WECHAT)
+  ) {
+    return PAYMENT_PROVIDERS.MPAY
+  }
+
+  if (
+    topupInfo?.enable_xpay_topup &&
+    !topupInfo.pay_methods?.some(
+      (paymentMethod) => paymentMethod.provider === PAYMENT_PROVIDERS.XPAY
+    ) &&
+    method.type === PAYMENT_TYPES.ALIPAY
+  ) {
+    return PAYMENT_PROVIDERS.XPAY
+  }
+
+  return undefined
+}
+
+export function isAlipayDirectPayment(method?: PaymentMethod): boolean {
+  return method?.provider === PAYMENT_PROVIDERS.ALIPAY_DIRECT
+}
+
+export function getPaymentMethodKey(method: PaymentMethod): string {
+  return `${method.provider || 'default'}:${method.type}`
+}
+
+export function getPaymentMethodDisplayName(
+  method: PaymentMethod,
+  translate: (key: string) => string
+): string {
+  if (method.provider === PAYMENT_PROVIDERS.ALIPAY_DIRECT) {
+    return translate('Alipay (Official)')
+  }
+  if (method.provider === PAYMENT_PROVIDERS.MPAY) {
+    return method.type === PAYMENT_TYPES.WECHAT
+      ? translate('WeChat Pay')
+      : translate('Alipay')
+  }
+  if (
+    method.provider === PAYMENT_PROVIDERS.XPAY &&
+    method.type === PAYMENT_TYPES.ALIPAY
+  ) {
+    return translate('Alipay (XPay backup)')
+  }
+  return translate(method.name)
+}
+
+/**
+ * Keep the official direct gateway first and legacy notification gateways last.
+ */
+export function sortPaymentMethods(methods: PaymentMethod[]): PaymentMethod[] {
+  const priority = (method: PaymentMethod) => {
+    if (isAlipayDirectPayment(method)) return 0
+    if (method.recommended) return 1
+    if (
+      method.provider === PAYMENT_PROVIDERS.MPAY ||
+      method.provider === PAYMENT_PROVIDERS.XPAY
+    ) {
+      return 3
+    }
+    return 2
+  }
+
+  return methods
+    .map((method, index) => ({ method, index }))
+    .sort(
+      (a, b) => priority(a.method) - priority(b.method) || a.index - b.index
+    )
+    .map(({ method }) => method)
 }
 
 /**
@@ -102,7 +212,11 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
     return DEFAULT_PAYMENT_TYPE
   }
 
-  if (topupInfo.enable_mpay_topup || topupInfo.enable_xpay_topup) {
+  if (
+    topupInfo.enable_alipay_direct_topup ||
+    topupInfo.enable_mpay_topup ||
+    topupInfo.enable_xpay_topup
+  ) {
     return PAYMENT_TYPES.ALIPAY
   }
 
@@ -129,12 +243,45 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
   return DEFAULT_PAYMENT_TYPE
 }
 
+export function getDefaultPaymentProvider(
+  topupInfo: TopupInfo | null
+): string | undefined {
+  if (!topupInfo) return undefined
+
+  const defaultType = getDefaultPaymentType(topupInfo)
+  const configuredMethod = sortPaymentMethods(topupInfo.pay_methods || []).find(
+    (method) => method.type === defaultType
+  )
+  if (configuredMethod) {
+    return resolvePaymentProvider(configuredMethod, topupInfo)
+  }
+
+  if (topupInfo.enable_alipay_direct_topup) {
+    return PAYMENT_PROVIDERS.ALIPAY_DIRECT
+  }
+  if (topupInfo.enable_mpay_topup) {
+    return PAYMENT_PROVIDERS.MPAY
+  }
+  if (topupInfo.enable_xpay_topup) {
+    return PAYMENT_PROVIDERS.XPAY
+  }
+  if (topupInfo.enable_waffo_topup) {
+    return PAYMENT_PROVIDERS.WAFFO
+  }
+
+  return undefined
+}
+
 /**
  * Get minimum topup amount from topup info
  */
 export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
   if (!topupInfo) {
     return DEFAULT_MIN_TOPUP
+  }
+
+  if (topupInfo.enable_alipay_direct_topup) {
+    return topupInfo.alipay_direct_min_topup || DEFAULT_MIN_TOPUP
   }
 
   if (topupInfo.enable_mpay_topup) {
@@ -169,7 +316,7 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
  */
 export function generatePresetAmounts(minAmount: number): PresetAmount[] {
   return DEFAULT_PRESET_MULTIPLIERS.map((multiplier) => ({
-    value: minAmount * multiplier,
+    value: normalizeTopupAmount(minAmount * multiplier),
   }))
 }
 
@@ -184,8 +331,11 @@ export function mergePresetAmounts(
     return []
   }
 
-  return amountOptions.map((amount) => ({
-    value: amount,
-    discount: discounts[amount] || 1.0,
-  }))
+  return amountOptions.map((amount) => {
+    const value = normalizeTopupAmount(amount)
+    return {
+      value,
+      discount: discounts[value] || discounts[amount] || 1.0,
+    }
+  })
 }

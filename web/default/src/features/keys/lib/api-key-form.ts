@@ -71,7 +71,7 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   model_limits: [],
   allow_ips: '',
   group: DEFAULT_GROUP,
-  cross_group_retry: true,
+  cross_group_retry: false,
   tokenCount: 1,
 }
 
@@ -81,7 +81,7 @@ export function getApiKeyFormDefaultValues(
   return {
     ...API_KEY_FORM_DEFAULT_VALUES,
     group: defaultUseAutoGroup ? 'auto' : DEFAULT_GROUP,
-    cross_group_retry: defaultUseAutoGroup,
+    cross_group_retry: false,
   }
 }
 
@@ -108,7 +108,7 @@ export function transformFormDataToPayload(
     model_limits: data.model_limits.join(','),
     allow_ips: data.allow_ips || '',
     group: data.group || '',
-    cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
+    cross_group_retry: !!data.cross_group_retry,
   }
 }
 

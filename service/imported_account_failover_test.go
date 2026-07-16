@@ -46,13 +46,23 @@ func TestPrepareImportedAccountFailoverMarksChannelExcluded(t *testing.T) {
 	common.SetContextKey(ctx, constant.ContextKeyChannelId, 0)
 	err := types.NewOpenAIError(errors.New("usage limit reached for 5h window"), types.ErrorCodeBadResponseStatusCode, http.StatusTooManyRequests)
 
-	require.False(t, PrepareImportedAccountFailover(ctx, err))
+	require.False(t, PrepareImportedAccountFailover(ctx, err, 1))
 	common.SetContextKey(ctx, constant.ContextKeyChannelId, 123)
 
-	require.True(t, PrepareImportedAccountFailover(ctx, err))
+	require.True(t, PrepareImportedAccountFailover(ctx, err, 1))
 	excluded := ImportedAccountExcludedChannelIDs(ctx)
 	_, exists := excluded[123]
 	require.True(t, exists)
+}
+
+func TestPrepareImportedAccountFailoverRecordsExclusionWithoutRetryBudget(t *testing.T) {
+	ctx := importedAccountFailoverContext(dto.ChannelOtherSettings{
+		ImportedAccountPlatform: "codex",
+	})
+	err := types.NewOpenAIError(errors.New("usage limit reached for 5h window"), types.ErrorCodeBadResponseStatusCode, http.StatusTooManyRequests)
+	require.False(t, PrepareImportedAccountFailover(ctx, err, 0))
+	_, excluded := ImportedAccountExcludedChannelIDs(ctx)[123]
+	require.True(t, excluded)
 }
 
 func TestShouldSkipChannelForImportedAccountFailover(t *testing.T) {

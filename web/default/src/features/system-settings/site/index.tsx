@@ -39,6 +39,7 @@ const defaultSiteSettings: SiteSettings = {
   'legal.privacy_policy': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
+  PublicBusinessPreviewEnabled: false,
 }
 
 export function SiteSettings() {

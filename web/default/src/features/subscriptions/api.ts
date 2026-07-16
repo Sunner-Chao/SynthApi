@@ -146,6 +146,15 @@ export async function paySubscriptionBalance(
   return res.data
 }
 
+export async function paySubscriptionAlipayDirect(
+  data: SubscriptionPayRequest
+): Promise<SubscriptionPayResponse> {
+  const res = await api.post('/api/subscription/alipay/pay', data, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
 // Mints a Pancake OnetimeProduct (see controller for the OnetimeProduct vs
 // SubscriptionProduct rationale) using persisted creds + StoreID.
 export async function createWaffoPancakeSubscriptionProduct(data: {

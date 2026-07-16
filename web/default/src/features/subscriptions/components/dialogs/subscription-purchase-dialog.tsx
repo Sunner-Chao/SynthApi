@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -45,6 +46,7 @@ import {
   paySubscriptionEpay,
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
+  paySubscriptionAlipayDirect,
 } from '../../api'
 import {
   displaySubscriptionAmountToQuota,
@@ -57,6 +59,8 @@ import type { PlanRecord } from '../../types'
 interface PaymentMethod {
   type: string
   name?: string
+  provider?: string
+  recommended?: boolean
 }
 
 interface Props {
@@ -68,6 +72,7 @@ interface Props {
   enableWaffoPancake?: boolean
   enableOnlineTopUp?: boolean
   epayMethods?: PaymentMethod[]
+  alipayDirectMethod?: PaymentMethod
   purchaseLimit?: number
   purchaseCount?: number
   userQuota?: number
@@ -106,7 +111,13 @@ export function SubscriptionPurchaseDialog(props: Props) {
     props.enableWaffoPancake && !!plan.waffo_pancake_product_id
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
-  const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
+  const hasAlipayDirect =
+    !!props.alipayDirectMethod &&
+    String(plan.currency || '')
+      .trim()
+      .toUpperCase() === 'CNY'
+  const hasAnyPayment =
+    hasAlipayDirect || hasStripe || hasCreem || hasWaffoPancake || hasEpay
   const selectedEpayMethodLabel =
     (props.epayMethods || []).find((m) => m.type === selectedEpayMethod)
       ?.name ||
@@ -264,9 +275,30 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
+  const handlePayAlipayDirect = async () => {
+    setPaying(true)
+    try {
+      const res = await paySubscriptionAlipayDirect({ plan_id: plan.id })
+      if ((res.success || res.message === 'success') && res.data?.pay_url) {
+        toast.success(t('Redirecting to payment page...'))
+        window.location.assign(res.data.pay_url)
+      } else {
+        toast.error(
+          res.message && res.message !== 'success'
+            ? res.message
+            : t('Payment request failed')
+        )
+      }
+    } catch {
+      toast.error(t('Payment request failed'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'>
+      <DialogContent className='max-h-[calc(100dvh-1.5rem)] overflow-y-auto max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
             <Crown className='h-5 w-5' />
@@ -394,6 +426,23 @@ export function SubscriptionPurchaseDialog(props: Props) {
               <p className='text-muted-foreground text-xs'>
                 {t('Select payment method')}
               </p>
+              {hasAlipayDirect && (
+                <Button
+                  className='h-auto min-h-14 w-full justify-between py-2'
+                  onClick={handlePayAlipayDirect}
+                  disabled={paying || limitReached}
+                >
+                  <span className='flex min-w-0 flex-1 flex-col items-start gap-0.5'>
+                    <span className='truncate font-medium'>
+                      {props.alipayDirectMethod?.name || t('Alipay (Official)')}
+                    </span>
+                    <span className='text-primary-foreground/80 text-left text-xs leading-4 font-normal whitespace-normal'>
+                      {t('Official direct payment, more stable')}
+                    </span>
+                  </span>
+                  <Badge variant='secondary'>{t('Recommended')}</Badge>
+                </Button>
+              )}
               {(hasStripe || hasCreem || hasWaffoPancake) && (
                 <div className='grid grid-cols-2 gap-2 sm:flex'>
                   {hasStripe && (

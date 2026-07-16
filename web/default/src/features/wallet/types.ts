@@ -68,6 +68,17 @@ export type XPayPaymentResponse = ApiResponse<{
   status: string
   pay_url?: string
   created_at: number
+  payment_provider?: string
+}>
+export type AlipayDirectPaymentResponse = ApiResponse<{
+  trade_no: string
+  pay_url?: string
+  status: string
+  kind?: string
+  amount: number
+  money: number
+  payment_method: string
+  payment_provider: string
 }>
 
 /**
@@ -110,6 +121,10 @@ export interface PaymentMethod {
   min_topup?: number
   /** Optional icon URL provided by backend (preferred over built-in icons) */
   icon?: string
+  /** Gateway provider used to disambiguate methods with the same type */
+  provider?: string
+  /** Whether the gateway should be highlighted as the preferred choice */
+  recommended?: boolean
 }
 
 /**
@@ -168,6 +183,10 @@ export interface TopupInfo {
   enable_mpay_topup?: boolean
   /** Minimum topup amount for MPay */
   mpay_min_topup?: number
+  /** Whether official Alipay direct topup is enabled */
+  enable_alipay_direct_topup?: boolean
+  /** Minimum topup amount for official Alipay direct topup */
+  alipay_direct_min_topup?: number
   /** Whether redemption code usage is enabled */
   enable_redemption?: boolean
   /** Whether compliance confirmation has been completed */
@@ -228,6 +247,8 @@ export interface WaffoPancakePaymentRequest {
 export interface AmountRequest {
   /** Topup amount to calculate */
   amount: number
+  /** Gateway whose server-side pricing formula should be used */
+  payment_provider?: string
 }
 
 /**

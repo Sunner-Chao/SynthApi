@@ -201,6 +201,8 @@ export interface RelayTrace {
   attempt_overflow?: number
 }
 
+export type ApiIngressLine = 'official' | 'fast'
+
 export interface LogOtherData {
   admin_info?: {
     is_multi_key?: boolean
@@ -299,6 +301,8 @@ export interface LogOtherData {
   subscription_remain?: number
   subscription_total?: number
   subscription_discount?: number
+  ingress_host?: string
+  ingress_line?: ApiIngressLine
   relay_trace?: RelayTrace
 }
 

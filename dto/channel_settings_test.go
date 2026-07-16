@@ -49,6 +49,17 @@ func TestChannelSettingsPreservesExplicitFalseGzipOverride(t *testing.T) {
 	require.False(t, *decoded.UpstreamRequestGzipEnabled)
 }
 
+func TestChannelSettingsEffectiveConcurrencyLimits(t *testing.T) {
+	settings := ChannelSettings{}
+	require.Equal(t, 15, settings.EffectiveMaxConcurrency(15))
+	require.Equal(t, 6, settings.EffectiveMaxConcurrencyPerUser(6))
+
+	settings.MaxConcurrency = 20
+	settings.MaxConcurrencyPerUser = 8
+	require.Equal(t, 20, settings.EffectiveMaxConcurrency(15))
+	require.Equal(t, 8, settings.EffectiveMaxConcurrencyPerUser(6))
+}
+
 func TestImportedAccountMonitorLowQuota(t *testing.T) {
 	settings := ChannelOtherSettings{
 		ImportedAccountPlatform: "codex",

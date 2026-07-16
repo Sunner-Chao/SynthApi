@@ -25,6 +25,14 @@ import {
 } from './section-registry.tsx'
 
 const defaultSecuritySettings: SecuritySettings = {
+  ModelRequestMaxConcurrencyPerUser: 10,
+  ModelRequestMaxConcurrencyPerToken: 5,
+  ModelRequestDefaultChannelMaxConcurrency: 15,
+  ModelRequestDefaultChannelMaxConcurrencyPerUser: 6,
+  ModelRequestLargeBodyThresholdMB: 10,
+  ModelRequestMaxLargeConcurrencyPerUser: 2,
+  ModelRequestSmallFailoverBodyMB: 1,
+  ModelRequestSmallFailoverTimeoutSeconds: 8,
   ModelRequestRateLimitEnabled: false,
   ModelRequestRateLimitCount: 0,
   ModelRequestRateLimitSuccessCount: 1000,

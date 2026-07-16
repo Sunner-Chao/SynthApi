@@ -869,8 +869,12 @@ export function extractImportItems(payload: unknown): unknown[] {
 }
 
 function looksLikeJsonContent(content: string): boolean {
-  const trimmed = content.trim()
-  return trimmed.startsWith('{') || trimmed.startsWith('[')
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index]
+    if (/\s/.test(char)) continue
+    return char === '{' || char === '['
+  }
+  return false
 }
 
 function flattenImportValues(values: unknown[]): unknown[] {
@@ -888,8 +892,13 @@ function flattenImportValues(values: unknown[]): unknown[] {
 
 function parseAccountImportLines(content: string): unknown[] {
   const values: unknown[] = []
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim()
+  let lineStart = 0
+
+  for (let index = 0; index <= content.length; index += 1) {
+    if (index < content.length && content.charCodeAt(index) !== 10) continue
+
+    const trimmed = content.slice(lineStart, index).trim()
+    lineStart = index + 1
     if (!trimmed) continue
     if (looksLikeJsonContent(trimmed)) {
       values.push(...flattenImportValues([JSON.parse(trimmed) as unknown]))
@@ -901,19 +910,18 @@ function parseAccountImportLines(content: string): unknown[] {
 }
 
 export function parseAccountImportText(content: string): unknown {
-  const trimmed = content.trim()
-  if (!trimmed) return []
+  if (!/\S/.test(content)) return []
 
-  if (looksLikeJsonContent(trimmed)) {
+  if (looksLikeJsonContent(content)) {
     try {
-      return JSON.parse(trimmed) as unknown
+      return JSON.parse(content) as unknown
     } catch (error) {
-      if (trimmed.includes('\n')) return parseAccountImportLines(trimmed)
+      if (content.includes('\n')) return parseAccountImportLines(content)
       throw error
     }
   }
 
-  return parseAccountImportLines(trimmed)
+  return parseAccountImportLines(content)
 }
 
 export function buildImportRequests(

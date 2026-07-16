@@ -77,6 +77,13 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Console'), href: '/dashboard' })
   }
 
+  if (status?.public_business_preview_enabled === true) {
+    links.push({
+      title: t('Wallet & Plans'),
+      href: isAuthed ? '/wallet' : '/business',
+    })
+  }
+
   // Pricing
   const pricing = modules?.pricing
   if (pricing && typeof pricing === 'object' && pricing.enabled) {

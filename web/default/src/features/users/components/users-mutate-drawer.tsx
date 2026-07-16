@@ -358,6 +358,34 @@ export function UsersMutateDrawer({
 
                   <FormField
                     control={form.control}
+                    name='model_request_max_concurrency'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Model request concurrency')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            min={0}
+                            max={1000}
+                            step={1}
+                            {...field}
+                            onChange={(e) =>
+                              field.onChange(parseInt(e.target.value) || 0)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            '0 inherits the system default; use a positive value for a user-specific limit.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name='quota_dollars'
                     render={({ field }) => (
                       <FormItem>

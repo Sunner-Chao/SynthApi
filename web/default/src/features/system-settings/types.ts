@@ -39,6 +39,18 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type AlipayDirectConfigRequest = {
+  enabled: boolean
+  app_id: string
+  seller_id: string
+  private_key: string
+  platform_public_key: string
+  sandbox: boolean
+  notify_url: string
+  return_url: string
+  min_topup: number
+}
+
 export type ConfirmPaymentComplianceResponse = {
   success: boolean
   message: string
@@ -71,6 +83,7 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  PublicBusinessPreviewEnabled: boolean
 }
 
 export type AuthSettings = {
@@ -245,6 +258,15 @@ export type BillingSettings = {
   CreemWebhookSecret: string
   CreemTestMode: boolean
   CreemProducts: string
+  AlipayEnabled: boolean
+  AlipayAppID: string
+  AlipaySellerID: string
+  AlipayPrivateKey: string
+  AlipayPlatformPublicKey: string
+  AlipaySandbox: boolean
+  AlipayNotifyURL: string
+  AlipayReturnURL: string
+  AlipayMinTopUp: number
   WaffoEnabled: boolean
   WaffoApiKey: string
   WaffoPrivateKey: string
@@ -333,6 +355,14 @@ export type OperationsSettings = {
 }
 
 export type SecuritySettings = {
+  ModelRequestMaxConcurrencyPerUser: number
+  ModelRequestMaxConcurrencyPerToken: number
+  ModelRequestDefaultChannelMaxConcurrency: number
+  ModelRequestDefaultChannelMaxConcurrencyPerUser: number
+  ModelRequestLargeBodyThresholdMB: number
+  ModelRequestMaxLargeConcurrencyPerUser: number
+  ModelRequestSmallFailoverBodyMB: number
+  ModelRequestSmallFailoverTimeoutSeconds: number
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number
   ModelRequestRateLimitSuccessCount: number

@@ -46,6 +46,7 @@ import {
   RefreshCw,
   Server,
   Tag,
+  Trash2,
   UploadCloud,
   ChevronDown,
 } from 'lucide-react'
@@ -78,12 +79,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import {
+  batchDeleteChannels,
   batchSetChannelGroup,
   completeCodexOAuth,
   createChannel,
+  deleteChannel,
   getCodexUsage,
   getGroups,
   getImportedAccountChannels,
@@ -115,6 +120,16 @@ type ImportRunResult = {
   created: number
   failed: number
   errors: AccountImportError[]
+}
+
+type ImportProgress = {
+  completed: number
+  total: number
+}
+
+type ImportAttemptResult = {
+  channel?: ImportedChannelCheck
+  error?: AccountImportError
 }
 
 type OpenAIOAuthImportState = {
@@ -161,6 +176,8 @@ const OPENAI_OAUTH_DEFAULT_GROUP = 'default'
 const CHECK_DELAY_MS = 300
 const MONITOR_INTERVAL_MS = 5 * 60 * 1000
 const IMPORTED_CHANNEL_PAGE_SIZE = 100
+const ACCOUNT_IMPORT_CONCURRENCY = 8
+const IMPORT_EDITOR_PREVIEW_LIMIT = 200_000
 const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
   pending: 'Pending',
   running: 'Running',
@@ -215,6 +232,29 @@ async function readFileAsText(file: File): Promise<string> {
   if (typeof file.text === 'function') return file.text()
   const buffer = await file.arrayBuffer()
   return new TextDecoder().decode(buffer)
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  task: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let cursor = 0
+
+  const workers = Array.from(
+    { length: Math.min(Math.max(1, concurrency), items.length) },
+    async () => {
+      while (cursor < items.length) {
+        const index = cursor
+        cursor += 1
+        results[index] = await task(items[index], index)
+      }
+    }
+  )
+
+  await Promise.all(workers)
+  return results
 }
 
 function sleep(ms: number) {
@@ -444,7 +484,9 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   const queryClient = useQueryClient()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const fileSourceRef = useRef('')
   const [fileName, setFileName] = useState('')
+  const [filePreviewTruncated, setFilePreviewTruncated] = useState(false)
   const [content, setContent] = useState('')
   const [openAIOAuthImport, setOpenAIOAuthImport] =
     useState<OpenAIOAuthImportState>(() => createEmptyOpenAIOAuthImportState())
@@ -454,14 +496,20 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   const [checkItems, setCheckItems] = useState<ImportedChannelCheck[]>([])
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState<ImportProgress>({
+    completed: 0,
+    total: 0,
+  })
   const [checking, setChecking] = useState(false)
   const [loadingImported, setLoadingImported] = useState(false)
   const [autoMonitor, setAutoMonitor] = useState(false)
   const [applyingGroup, setApplyingGroup] = useState(false)
+  const [deletingImported, setDeletingImported] = useState(false)
+  const [deleteTargets, setDeleteTargets] = useState<ImportedChannelCheck[]>([])
   const [selectedImportedKeys, setSelectedImportedKeys] = useState<Set<string>>(
     () => new Set()
   )
-  const [mobileTab, setMobileTab] = useState<'import' | 'channels'>('import')
+  const [activeTab, setActiveTab] = useState<'import' | 'channels'>('import')
 
   const { data: groupsData } = useQuery({
     queryKey: ['groups'],
@@ -474,9 +522,12 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
 
   const reset = () => {
     setFileName('')
+    setFilePreviewTruncated(false)
+    fileSourceRef.current = ''
     setContent('')
     setBuildResult(null)
     setRunResult(null)
+    setImportProgress({ completed: 0, total: 0 })
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -593,6 +644,74 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     [checkItems]
   )
 
+  const requestDeleteImported = useCallback(
+    (items: ImportedChannelCheck[]) => {
+      const targets = items.filter((item) => item.channelId)
+      if (targets.length === 0) {
+        toast.error(t('Select imported channels first'))
+        return
+      }
+      setDeleteTargets(targets)
+    },
+    [t]
+  )
+
+  const handleConfirmDeleteImported = useCallback(async () => {
+    const ids = Array.from(
+      new Set(
+        deleteTargets
+          .map((item) => item.channelId)
+          .filter((id): id is number => id !== undefined)
+      )
+    )
+    if (ids.length === 0) return
+
+    setDeletingImported(true)
+    try {
+      const response =
+        ids.length === 1
+          ? await deleteChannel(ids[0])
+          : await batchDeleteChannels({ ids })
+      if (!response.success) {
+        throw new Error(
+          response.message || t('Failed to delete imported channels')
+        )
+      }
+
+      const deletedIds = new Set(ids)
+      const deletedKeys = new Set(deleteTargets.map((item) => item.key))
+      setCheckItems((previous) =>
+        previous.filter(
+          (item) => !item.channelId || !deletedIds.has(item.channelId)
+        )
+      )
+      setSelectedImportedKeys((previous) => {
+        const next = new Set(previous)
+        deletedKeys.forEach((key) => next.delete(key))
+        return next
+      })
+      setDeleteTargets([])
+      await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
+      props.onImported?.()
+      toast.success(
+        t('{{count}} channel(s) deleted', {
+          count:
+            'data' in response && typeof response.data === 'number'
+              ? response.data
+              : ids.length,
+        })
+      )
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to delete imported channels')
+      )
+    } finally {
+      setDeletingImported(false)
+    }
+  }, [deleteTargets, props, queryClient, t])
+
   const persistMonitorSnapshot = useCallback(
     async (
       item: ImportedChannelCheck,
@@ -634,11 +753,10 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     )
   }
 
-  const parseContent = (
+  const parseContent = async (
     nextContent: string
-  ): AccountImportBuildResult | null => {
-    const trimmed = nextContent.trim()
-    if (!trimmed) {
+  ): Promise<AccountImportBuildResult | null> => {
+    if (!/\S/.test(nextContent)) {
       toast.error(t('Paste or choose credentials first'))
       return null
     }
@@ -646,7 +764,10 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     setParsing(true)
     setRunResult(null)
     try {
-      const nextBuildResult = buildImportRequestsFromText(trimmed)
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve())
+      )
+      const nextBuildResult = buildImportRequestsFromText(nextContent)
       setBuildResult(nextBuildResult)
       showParseToast(nextBuildResult)
       return nextBuildResult
@@ -668,6 +789,9 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   const handleContentChange = (
     event: React.ChangeEvent<HTMLTextAreaElement>
   ) => {
+    fileSourceRef.current = ''
+    setFileName('')
+    setFilePreviewTruncated(false)
     setContent(event.target.value)
     setBuildResult(null)
     setRunResult(null)
@@ -684,11 +808,21 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
     setFileName(file.name)
     try {
       const text = await readFileAsText(file)
-      setContent(text)
+      fileSourceRef.current = text
+      const previewTruncated = text.length > IMPORT_EDITOR_PREVIEW_LIMIT
+      setFilePreviewTruncated(previewTruncated)
+      setContent(
+        previewTruncated ? text.slice(0, IMPORT_EDITOR_PREVIEW_LIMIT) : text
+      )
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve())
+      )
       const nextBuildResult = buildImportRequestsFromText(text)
       setBuildResult(nextBuildResult)
+      if (previewTruncated) fileSourceRef.current = ''
       showParseToast(nextBuildResult)
     } catch (error) {
+      fileSourceRef.current = ''
       setBuildResult(null)
       let message = t('Failed to parse import file')
       if (error instanceof SyntaxError) {
@@ -923,104 +1057,154 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   }, [autoMonitor, checkItems, persistMonitorSnapshot, runPostImportChecks, t])
 
   const handleImport = async () => {
-    const currentBuildResult = buildResult ?? parseContent(content)
+    const currentBuildResult =
+      buildResult ?? (await parseContent(fileSourceRef.current || content))
     if (!currentBuildResult || currentBuildResult.requests.length === 0) {
       toast.error(t('No importable accounts found'))
       return
     }
 
     setImporting(true)
-    const errors: AccountImportError[] = [...currentBuildResult.errors]
-    const importedChannels: ImportedChannelCheck[] = []
-    let created = 0
+    const total = currentBuildResult.requests.length
+    setImportProgress({ completed: 0, total })
 
-    for (const [index, request] of currentBuildResult.requests.entries()) {
-      const name = String(request.channel.name || `Account ${index + 1}`)
-      const preview = currentBuildResult.previews.find(
-        (item) => item.index === index
-      )
-      try {
-        const response = await createChannel(request)
-        if (response.success) {
-          created += 1
-          const channelInfo = response.data?.channels?.[0]
-          const channelId = channelInfo?.id ?? response.data?.ids?.[0]
-          const statusValue = Number(
-            channelInfo?.status ?? request.channel.status
-          )
-          importedChannels.push({
-            key: getImportedChannelKey(index, channelId),
-            index,
-            name: channelInfo?.name || name,
-            platform: preview?.platform || String(request.channel.type || ''),
-            channelId,
-            type: Number(channelInfo?.type ?? request.channel.type),
-            models: channelInfo?.models || String(request.channel.models || ''),
-            group: channelInfo?.group || String(request.channel.group || ''),
-            status: Number.isFinite(statusValue) ? statusValue : undefined,
-            balance: Number(channelInfo?.balance ?? 0),
-            balanceUpdatedTime: Number(channelInfo?.balance_updated_time ?? 0),
-            usedQuota: Number(channelInfo?.used_quota ?? 0),
-            remark: channelInfo?.remark || String(request.channel.remark || ''),
-            createdTime: Number(channelInfo?.created_time ?? 0),
-            monitorEnabled: autoMonitor,
-            quotaStatus: 'pending',
-            channelStatus: 'pending',
-          })
-        } else {
-          errors.push({
-            index,
-            name,
-            message: response.message || t('Create failed'),
-          })
-        }
-      } catch (error) {
-        errors.push({
-          index,
-          name,
-          message: error instanceof Error ? error.message : t('Create failed'),
-        })
+    const entries = currentBuildResult.requests.map((request, requestIndex) => {
+      const preview = currentBuildResult.previews[requestIndex]
+      return {
+        request,
+        preview,
+        sourceIndex: preview?.index ?? requestIndex,
       }
-    }
+    })
+    let completed = 0
+    const progressStep = Math.max(1, Math.ceil(total / 100))
 
-    const failed = errors.length
-    setRunResult({ created, failed, errors })
-    setCheckItems((previous) => {
-      const importedIds = new Set(
-        importedChannels.map((item) => item.channelId).filter(Boolean)
+    try {
+      const attempts = await mapWithConcurrency(
+        entries,
+        ACCOUNT_IMPORT_CONCURRENCY,
+        async ({
+          request,
+          preview,
+          sourceIndex,
+        }): Promise<ImportAttemptResult> => {
+          const name = String(
+            request.channel.name || `Account ${sourceIndex + 1}`
+          )
+          try {
+            const response = await createChannel(request)
+            if (!response.success) {
+              return {
+                error: {
+                  index: sourceIndex,
+                  name,
+                  message: response.message || t('Create failed'),
+                } satisfies AccountImportError,
+              }
+            }
+
+            const channelInfo = response.data?.channels?.[0]
+            const channelId = channelInfo?.id ?? response.data?.ids?.[0]
+            const statusValue = Number(
+              channelInfo?.status ?? request.channel.status
+            )
+            return {
+              channel: {
+                key: getImportedChannelKey(sourceIndex, channelId),
+                index: sourceIndex,
+                name: channelInfo?.name || name,
+                platform:
+                  preview?.platform || String(request.channel.type || ''),
+                channelId,
+                type: Number(channelInfo?.type ?? request.channel.type),
+                models:
+                  channelInfo?.models || String(request.channel.models || ''),
+                group:
+                  channelInfo?.group || String(request.channel.group || ''),
+                status: Number.isFinite(statusValue) ? statusValue : undefined,
+                balance: Number(channelInfo?.balance ?? 0),
+                balanceUpdatedTime: Number(
+                  channelInfo?.balance_updated_time ?? 0
+                ),
+                usedQuota: Number(channelInfo?.used_quota ?? 0),
+                remark:
+                  channelInfo?.remark || String(request.channel.remark || ''),
+                createdTime: Number(channelInfo?.created_time ?? 0),
+                monitorEnabled: autoMonitor,
+                quotaStatus: 'pending',
+                channelStatus: 'pending',
+              } satisfies ImportedChannelCheck,
+            }
+          } catch (error) {
+            return {
+              error: {
+                index: sourceIndex,
+                name,
+                message:
+                  error instanceof Error ? error.message : t('Create failed'),
+              } satisfies AccountImportError,
+            }
+          } finally {
+            completed += 1
+            if (completed === total || completed % progressStep === 0) {
+              setImportProgress({ completed, total })
+            }
+          }
+        }
       )
-      return [
-        ...importedChannels,
-        ...previous.filter(
-          (item) => !item.channelId || !importedIds.has(item.channelId)
+
+      const importedChannels = attempts.flatMap((attempt) =>
+        attempt.channel ? [attempt.channel] : []
+      )
+      const errors = [
+        ...currentBuildResult.errors,
+        ...attempts.flatMap((attempt) =>
+          attempt.error ? [attempt.error] : []
         ),
       ]
-    })
-    await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
-    setImporting(false)
+      const created = importedChannels.length
+      const failed = errors.length
 
-    if (created > 0) {
-      setSelectedImportedKeys(
-        new Set(
-          importedChannels
-            .filter((item) => item.channelId)
-            .map((item) => item.key)
+      setRunResult({ created, failed, errors })
+      setCheckItems((previous) => {
+        const importedIds = new Set(
+          importedChannels.map((item) => item.channelId).filter(Boolean)
         )
-      )
-      props.onImported?.()
-      void runPostImportChecks(importedChannels)
-    }
-    if (failed > 0) {
-      toast.warning(
-        t('Import finished: {{created}} created, {{failed}} failed', {
-          created,
-          failed,
-        })
-      )
-      return
-    }
+        return [
+          ...importedChannels,
+          ...previous.filter(
+            (item) => !item.channelId || !importedIds.has(item.channelId)
+          ),
+        ]
+      })
+      void queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
 
-    toast.success(t('Imported {{count}} account(s)', { count: created }))
+      if (created > 0) {
+        setSelectedImportedKeys(
+          new Set(
+            importedChannels
+              .filter((item) => item.channelId)
+              .map((item) => item.key)
+          )
+        )
+        setActiveTab('channels')
+        props.onImported?.()
+        if (autoMonitor) void runPostImportChecks(importedChannels)
+      }
+      if (failed > 0) {
+        toast.warning(
+          t('Import finished: {{created}} created, {{failed}} failed', {
+            created,
+            failed,
+          })
+        )
+        return
+      }
+
+      toast.success(t('Imported {{count}} account(s)', { count: created }))
+    } finally {
+      setImporting(false)
+    }
   }
 
   const handleStartOpenAIOAuth = async () => {
@@ -1159,6 +1343,7 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
 
       await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
       props.onImported?.()
+      setActiveTab('channels')
       toast.success(t('OpenAI OAuth account imported'))
 
       setOpenAIOAuthImport((previous) => ({
@@ -1222,44 +1407,41 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
         </div>
       </div>
 
-      {/* Mobile tab switcher — hidden on xl+ */}
-      <div className='xl:hidden'>
-        <div className='bg-muted flex rounded-lg p-1'>
-          <button
-            type='button'
-            onClick={() => setMobileTab('import')}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-              mobileTab === 'import'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as 'import' | 'channels')}
+        className='gap-4'
+      >
+        <TabsList className='bg-muted/95 sticky top-0 z-20 grid h-auto w-full grid-cols-2 gap-1 rounded-lg border p-1 shadow-sm'>
+          <TabsTrigger
+            value='import'
+            className='h-10 min-w-0 gap-1.5 rounded-md px-2 sm:px-4'
           >
-            <ClipboardList className='size-3.5' />
-            {t('Credentials')}
-          </button>
-          <button
-            type='button'
-            onClick={() => setMobileTab('channels')}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-              mobileTab === 'channels'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+            <ClipboardList className='size-4' />
+            <span className='truncate'>{t('Import Accounts')}</span>
+            {readyCount > 0 && (
+              <span className='bg-primary/15 text-primary rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums'>
+                {readyCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger
+            value='channels'
+            className='h-10 min-w-0 gap-1.5 rounded-md px-2 sm:px-4'
           >
-            <Database className='size-3.5' />
-            {t('Imported Channels')}
+            <Database className='size-4' />
+            <span className='truncate'>{t('Imported Accounts')}</span>
             {checkItems.length > 0 && (
               <span className='bg-primary/15 text-primary rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums'>
                 {checkItems.length}
               </span>
             )}
-          </button>
-        </div>
-      </div>
+          </TabsTrigger>
+        </TabsList>
 
-      <div className='grid gap-4 xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.12fr)]'>
-        <div
-          className={`space-y-4 ${mobileTab !== 'import' ? 'hidden xl:block' : ''}`}
+        <TabsContent
+          value='import'
+          className='grid gap-4 outline-none xl:grid-cols-2'
         >
           <div className='bg-background overflow-hidden rounded-lg border shadow-sm'>
             <div className='border-border/70 flex items-center justify-between gap-3 border-b px-4 py-3'>
@@ -1450,9 +1632,16 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                 </h4>
               </div>
               {fileName && (
-                <span className='text-muted-foreground max-w-48 truncate rounded-md border px-2 py-0.5 font-mono text-xs'>
-                  {fileName}
-                </span>
+                <div className='flex min-w-0 items-center gap-2'>
+                  {filePreviewTruncated && (
+                    <Badge variant='secondary' className='shrink-0 rounded-md'>
+                      {t('Preview truncated')}
+                    </Badge>
+                  )}
+                  <span className='text-muted-foreground max-w-48 truncate rounded-md border px-2 py-0.5 font-mono text-xs'>
+                    {fileName}
+                  </span>
+                </div>
               )}
             </div>
 
@@ -1473,6 +1662,7 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                 onChange={handleContentChange}
                 rows={18}
                 spellCheck={false}
+                readOnly={filePreviewTruncated}
                 className='min-h-[430px] resize-y font-mono text-xs leading-relaxed sm:text-sm'
                 placeholder={t(
                   'Paste JSON, an array, mixed JSON lines, or one accessToken per line'
@@ -1497,8 +1687,12 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                   <Button
                     type='button'
                     variant='outline'
-                    onClick={() => parseContent(content)}
-                    disabled={parsing || importing || !content.trim()}
+                    onClick={() =>
+                      void parseContent(fileSourceRef.current || content)
+                    }
+                    disabled={
+                      parsing || importing || filePreviewTruncated || !content
+                    }
                   >
                     {parsing ? (
                       <Loader2 className='size-4 animate-spin' />
@@ -1525,7 +1719,8 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                     importing ||
                     checking ||
                     parsing ||
-                    (!content.trim() && !buildResult?.requests.length)
+                    (filePreviewTruncated && !buildResult?.requests.length) ||
+                    (!content && !buildResult?.requests.length)
                   }
                   className='sm:min-w-40'
                 >
@@ -1534,7 +1729,9 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                   ) : (
                     <FileUp className='size-4' />
                   )}
-                  {importing ? t('Importing...') : t('Import Accounts')}
+                  {importing
+                    ? `${t('Importing...')} ${importProgress.completed}/${importProgress.total}`
+                    : t('Import Accounts')}
                 </Button>
               </div>
 
@@ -1552,15 +1749,16 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
               />
             </div>
           </div>
-        </div>
+        </TabsContent>
 
-        <div className={mobileTab !== 'channels' ? 'hidden xl:block' : ''}>
+        <TabsContent value='channels' className='outline-none'>
           <ImportedChannelsPanel
             items={checkItems}
             checking={checking}
             loading={loadingImported}
             autoMonitor={autoMonitor}
             applyingGroup={applyingGroup}
+            deleting={deletingImported}
             groupOptions={groupOptions}
             selectedKeys={selectedImportedKeys}
             onRefresh={() => loadImportedChannels()}
@@ -1569,9 +1767,38 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
             onToggleSelected={handleToggleImportedSelected}
             onToggleAll={handleToggleAllImported}
             onApplyGroup={handleApplyGroup}
+            onDeleteItem={(item) => requestDeleteImported([item])}
+            onDeleteSelected={() =>
+              requestDeleteImported(
+                checkItems.filter((item) => selectedImportedKeys.has(item.key))
+              )
+            }
           />
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
+
+      <ConfirmDialog
+        open={deleteTargets.length > 0}
+        onOpenChange={(open) => !open && setDeleteTargets([])}
+        title={
+          deleteTargets.length === 1
+            ? t('Delete imported channel?')
+            : t('Delete {{count}} imported channels?', {
+                count: deleteTargets.length,
+              })
+        }
+        desc={
+          deleteTargets.length === 1
+            ? t('This will permanently delete "{{name}}".', {
+                name: deleteTargets[0]?.name || '',
+              })
+            : t('This will permanently delete the selected channels.')
+        }
+        confirmText={t('Delete')}
+        destructive
+        handleConfirm={() => void handleConfirmDeleteImported()}
+        isLoading={deletingImported}
+      />
     </section>
   )
 }
@@ -1714,6 +1941,7 @@ function ImportedChannelsPanel({
   loading,
   autoMonitor,
   applyingGroup,
+  deleting,
   groupOptions,
   selectedKeys,
   onRefresh,
@@ -1722,12 +1950,15 @@ function ImportedChannelsPanel({
   onToggleSelected,
   onToggleAll,
   onApplyGroup,
+  onDeleteItem,
+  onDeleteSelected,
 }: {
   items: ImportedChannelCheck[]
   checking: boolean
   loading: boolean
   autoMonitor: boolean
   applyingGroup: boolean
+  deleting: boolean
   groupOptions: string[]
   selectedKeys: Set<string>
   onRefresh: () => void
@@ -1736,6 +1967,8 @@ function ImportedChannelsPanel({
   onToggleSelected: (key: string, selected: boolean) => void
   onToggleAll: (selected: boolean) => void
   onApplyGroup: (group: string) => Promise<void>
+  onDeleteItem: (item: ImportedChannelCheck) => void
+  onDeleteSelected: () => void
 }) {
   const { t } = useTranslation()
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
@@ -1944,6 +2177,23 @@ function ImportedChannelsPanel({
                     ? t('Apply to {{count}} channels', { count: selectedCount })
                     : t('Apply to all')}
               </Button>
+              <Button
+                type='button'
+                variant='destructive'
+                size='sm'
+                disabled={
+                  deleting || applyingGroup || checking || selectedCount === 0
+                }
+                onClick={onDeleteSelected}
+                className='shrink-0 gap-1.5'
+              >
+                {deleting ? (
+                  <Loader2 className='size-3.5 animate-spin' />
+                ) : (
+                  <Trash2 className='size-3.5' />
+                )}
+                {t('Delete selected ({{count}})', { count: selectedCount })}
+              </Button>
             </div>
 
             {/* Progress bar while applying */}
@@ -1973,7 +2223,7 @@ function ImportedChannelsPanel({
               {t('No imported channels yet')}
             </p>
             <p className='text-muted-foreground mt-1 text-xs'>
-              {t('Import credentials on the left to get started')}
+              {t('Import credentials to get started')}
             </p>
           </div>
         </div>
@@ -2008,6 +2258,8 @@ function ImportedChannelsPanel({
                     onSelectedChange={(selected) =>
                       onToggleSelected(item.key, selected)
                     }
+                    onDelete={() => onDeleteItem(item)}
+                    deleting={deleting}
                   />
                 ))}
               </TableBody>
@@ -2022,6 +2274,8 @@ function ImportedChannelsPanel({
                 onSelectedChange={(selected) =>
                   onToggleSelected(item.key, selected)
                 }
+                onDelete={() => onDeleteItem(item)}
+                deleting={deleting}
               />
             ))}
           </div>
@@ -2035,10 +2289,14 @@ function ImportedChannelRow({
   item,
   selected,
   onSelectedChange,
+  onDelete,
+  deleting,
 }: {
   item: ImportedChannelCheck
   selected: boolean
   onSelectedChange: (selected: boolean) => void
+  onDelete: () => void
+  deleting: boolean
 }) {
   const { t } = useTranslation()
 
@@ -2065,7 +2323,20 @@ function ImportedChannelRow({
         <ModelsCell models={item.models} />
       </TableCell>
       <TableCell className='text-right'>
-        <OpenChannelButton item={item} />
+        <div className='flex items-center justify-end gap-1'>
+          <OpenChannelButton item={item} />
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            onClick={onDelete}
+            disabled={!item.channelId || deleting}
+            aria-label={t('Delete imported channel')}
+            title={t('Delete imported channel')}
+          >
+            <Trash2 className='text-destructive size-4' />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   )
@@ -2075,10 +2346,14 @@ function ImportedChannelCard({
   item,
   selected,
   onSelectedChange,
+  onDelete,
+  deleting,
 }: {
   item: ImportedChannelCheck
   selected: boolean
   onSelectedChange: (selected: boolean) => void
+  onDelete: () => void
+  deleting: boolean
 }) {
   const { t } = useTranslation()
 
@@ -2098,7 +2373,20 @@ function ImportedChannelCard({
           />
           <ChannelIdentity item={item} />
         </div>
-        <OpenChannelButton item={item} compact />
+        <div className='flex shrink-0 items-center gap-1'>
+          <OpenChannelButton item={item} compact />
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            onClick={onDelete}
+            disabled={!item.channelId || deleting}
+            aria-label={t('Delete imported channel')}
+            title={t('Delete imported channel')}
+          >
+            <Trash2 className='text-destructive size-4' />
+          </Button>
+        </div>
       </div>
       <div className='grid gap-3 text-xs'>
         <AccountInfoLine

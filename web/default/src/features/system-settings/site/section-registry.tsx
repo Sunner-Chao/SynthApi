@@ -28,6 +28,7 @@ import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { BusinessPreviewSection } from './business-preview-section'
 
 const SITE_SECTIONS = [
   {
@@ -73,6 +74,15 @@ const SITE_SECTIONS = [
         />
       )
     },
+  },
+  {
+    id: 'business-preview',
+    titleKey: 'Public business preview',
+    build: (settings: SiteSettings) => (
+      <BusinessPreviewSection
+        defaultValue={Boolean(settings.PublicBusinessPreviewEnabled)}
+      />
+    ),
   },
   {
     id: 'sidebar-modules',

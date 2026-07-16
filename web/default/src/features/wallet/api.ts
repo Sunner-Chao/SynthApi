@@ -39,6 +39,7 @@ import type {
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
   XPayPaymentResponse,
+  AlipayDirectPaymentResponse,
 } from './types'
 
 // ============================================================================
@@ -124,9 +125,9 @@ export async function requestQRCodePayment(
 /**
  * Create XPay order
  */
-export async function createXPayOrder(request: PaymentRequest): Promise<
-  XPayPaymentResponse
-> {
+export async function createXPayOrder(
+  request: PaymentRequest
+): Promise<XPayPaymentResponse> {
   const res = await api.post('/api/user/xpay/create', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
@@ -136,10 +137,22 @@ export async function createXPayOrder(request: PaymentRequest): Promise<
 /**
  * Create MPay order
  */
-export async function createMPayOrder(request: PaymentRequest): Promise<
-  XPayPaymentResponse
-> {
+export async function createMPayOrder(
+  request: PaymentRequest
+): Promise<XPayPaymentResponse> {
   const res = await api.post('/api/user/mpay/create', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Create an order through the official Alipay direct integration.
+ */
+export async function createAlipayDirectOrder(
+  request: AmountRequest
+): Promise<AlipayDirectPaymentResponse> {
+  const res = await api.post('/api/user/alipay/pay', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
   return res.data
@@ -220,6 +233,18 @@ export async function requestWaffoPayment(
   request: WaffoPaymentRequest
 ): Promise<WaffoPaymentResponse> {
   const res = await api.post('/api/user/waffo/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Calculate payment amount for standard Waffo payment.
+ */
+export async function calculateWaffoAmount(
+  request: AmountRequest
+): Promise<AmountResponse> {
+  const res = await api.post('/api/user/waffo/amount', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
   return res.data

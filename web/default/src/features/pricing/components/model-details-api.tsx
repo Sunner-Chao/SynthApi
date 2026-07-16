@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { BundledLanguage } from 'shiki/bundle/web'
+import { FAST_API_BASE_URL } from '@/lib/api-routes'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { Badge } from '@/components/ui/badge'
@@ -559,6 +560,16 @@ function CodeSamplesSection(props: {
             ))}
           </TabsList>
         </Tabs>
+      </div>
+
+      <div className='mt-3 flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2'>
+        <Badge variant='outline' className='gap-1 border-amber-500/40'>
+          <Zap className='size-3 text-amber-500' />
+          {t('High-speed API route')} · {t('Recommended')}
+        </Badge>
+        <code className='min-w-0 font-mono text-xs break-all'>
+          {FAST_API_BASE_URL}
+        </code>
       </div>
 
       <div className='mt-3'>

@@ -66,6 +66,18 @@ const isValidJSON = (value: string | undefined) => {
 
 const createRateLimitSchema = (t: (key: string) => string) =>
   z.object({
+    ModelRequestMaxConcurrencyPerUser: z.number().int().min(0).max(1000),
+    ModelRequestMaxConcurrencyPerToken: z.number().int().min(0).max(1000),
+    ModelRequestDefaultChannelMaxConcurrency: z.number().int().min(0).max(1000),
+    ModelRequestDefaultChannelMaxConcurrencyPerUser: z
+      .number()
+      .int()
+      .min(0)
+      .max(1000),
+    ModelRequestLargeBodyThresholdMB: z.number().int().min(0).max(1024),
+    ModelRequestMaxLargeConcurrencyPerUser: z.number().int().min(0).max(1000),
+    ModelRequestSmallFailoverBodyMB: z.number().int().min(0).max(1024),
+    ModelRequestSmallFailoverTimeoutSeconds: z.number().int().min(0).max(300),
     ModelRequestRateLimitEnabled: z.boolean(),
     ModelRequestRateLimitDurationMinutes: z.number().min(0),
     ModelRequestRateLimitCount: z.number().min(0).max(100000000),
@@ -143,6 +155,231 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
               </SettingsSwitchItem>
             )}
           />
+
+          <div className='border-border/60 flex flex-col gap-4 border-y py-4'>
+            <div>
+              <h3 className='text-sm font-medium'>{t('Model concurrency')}</h3>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  '0 disables the corresponding limit; user overrides are configured in the user editor and channel overrides in the channel editor.'
+                )}
+              </p>
+            </div>
+            <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+              <FormField
+                control={form.control}
+                name='ModelRequestMaxConcurrencyPerUser'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Default user concurrency')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={1000}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Default maximum active model requests per user')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='ModelRequestMaxConcurrencyPerToken'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Default token concurrency')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={1000}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Default maximum active model requests per token')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='ModelRequestDefaultChannelMaxConcurrency'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Default channel concurrency')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={1000}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Used when a channel has no specific override')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='ModelRequestDefaultChannelMaxConcurrencyPerUser'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Per-user channel concurrency')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={1000}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Default maximum requests one user may occupy on one channel'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <div className='border-border/60 flex flex-col gap-4 border-b pb-4'>
+            <h3 className='text-sm font-medium'>
+              {t('Large request isolation')}
+            </h3>
+            <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+              <FormField
+                control={form.control}
+                name='ModelRequestLargeBodyThresholdMB'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Large request threshold')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={1024}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Request body size in MB')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='ModelRequestMaxLargeConcurrencyPerUser'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Large requests per user')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={1000}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Maximum active large requests')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='ModelRequestSmallFailoverBodyMB'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Failover request size')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={1024}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Maximum body size eligible for failover in MB')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='ModelRequestSmallFailoverTimeoutSeconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Failover time budget')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={300}
+                        step={1}
+                        {...field}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Maximum additional seconds for one alternate channel'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
 
           <div className='grid gap-4 md:grid-cols-3'>
             <FormField

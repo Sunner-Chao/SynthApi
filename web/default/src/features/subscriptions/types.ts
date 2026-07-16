@@ -108,6 +108,14 @@ export interface SubscriptionPayResponse {
     pay_link?: string
     // Waffo Pancake / Creem hosted checkout URL.
     checkout_url?: string
+    // Official Alipay direct hosted payment URL.
+    pay_url?: string
+    trade_no?: string
+    status?: string
+    amount?: number
+    money?: number
+    payment_method?: string
+    payment_provider?: string
     // Pancake-only: order metadata + self-service buyer session token,
     // surfaced for future flows (refund / cancel from new-api's own UI).
     session_id?: string

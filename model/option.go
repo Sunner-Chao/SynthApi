@@ -3,6 +3,7 @@ package model
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -20,6 +21,11 @@ type Option struct {
 	Value string `json:"value"`
 }
 
+// optionsApplyMu serializes database reads/writes with publication to runtime
+// settings. Without it, SyncOptions can publish a stale snapshot after a newer
+// admin save has already committed.
+var optionsApplyMu sync.Mutex
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
@@ -30,6 +36,7 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
+	alipayConfig := setting.GetAlipayDirectConfig()
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -45,6 +52,7 @@ func InitOptionMap() {
 	common.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(common.WeChatAuthEnabled)
 	common.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(common.TurnstileCheckEnabled)
 	common.OptionMap["RegisterEnabled"] = strconv.FormatBool(common.RegisterEnabled)
+	common.OptionMap["PublicBusinessPreviewEnabled"] = strconv.FormatBool(setting.IsPublicBusinessPreviewEnabled())
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
@@ -102,6 +110,9 @@ func InitOptionMap() {
 	common.OptionMap["MPayUnitPrice"] = strconv.FormatFloat(setting.MPayUnitPrice, 'f', -1, 64)
 	common.OptionMap["MPayMinTopUp"] = strconv.FormatFloat(setting.MPayMinTopUp, 'f', -1, 64)
 	common.OptionMap["MPayNotifySuccess"] = setting.MPayNotifySuccess
+	for key, value := range setting.AlipayDirectConfigToOptions(alipayConfig) {
+		common.OptionMap[key] = value
+	}
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
@@ -162,6 +173,14 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
+	common.OptionMap["ModelRequestMaxConcurrencyPerUser"] = strconv.Itoa(common.ModelRequestMaxConcurrencyPerUser)
+	common.OptionMap["ModelRequestMaxConcurrencyPerToken"] = strconv.Itoa(common.ModelRequestMaxConcurrencyPerToken)
+	common.OptionMap["ModelRequestDefaultChannelMaxConcurrency"] = strconv.Itoa(common.ModelRequestDefaultChannelMaxConcurrency)
+	common.OptionMap["ModelRequestDefaultChannelMaxConcurrencyPerUser"] = strconv.Itoa(common.ModelRequestDefaultChannelMaxConcurrencyPerUser)
+	common.OptionMap["ModelRequestLargeBodyThresholdMB"] = strconv.Itoa(common.ModelRequestLargeBodyThresholdMB)
+	common.OptionMap["ModelRequestMaxLargeConcurrencyPerUser"] = strconv.Itoa(common.ModelRequestMaxLargeConcurrencyPerUser)
+	common.OptionMap["ModelRequestSmallFailoverBodyMB"] = strconv.Itoa(common.ModelRequestSmallFailoverBodyMB)
+	common.OptionMap["ModelRequestSmallFailoverTimeoutSeconds"] = strconv.Itoa(common.ModelRequestSmallFailoverTimeoutSeconds)
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
@@ -217,8 +236,20 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
-	options, _ := AllOption()
+	optionsApplyMu.Lock()
+	defer optionsApplyMu.Unlock()
+
+	options, err := AllOption()
+	if err != nil {
+		common.SysLog("failed to load options from database: " + err.Error())
+		return
+	}
+	alipayValues := make(map[string]string)
 	for _, option := range options {
+		if setting.IsAlipayDirectOptionKey(option.Key) {
+			alipayValues[option.Key] = option.Value
+			continue
+		}
 		if isDisplayQuotaOption(option.Key) {
 			continue
 		}
@@ -228,6 +259,9 @@ func loadOptionsFromDatabase() {
 		}
 	}
 	for _, option := range options {
+		if setting.IsAlipayDirectOptionKey(option.Key) {
+			continue
+		}
 		if !isDisplayQuotaOption(option.Key) {
 			continue
 		}
@@ -236,6 +270,7 @@ func loadOptionsFromDatabase() {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
+	publishAlipayOptions(alipayValues)
 }
 
 func SyncOptions(frequency int) {
@@ -247,17 +282,27 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	optionsApplyMu.Lock()
+	defer optionsApplyMu.Unlock()
+	return updateOptionLocked(key, value)
+}
+
+func updateOptionLocked(key string, value string) error {
 	// Save to database first
 	option := Option{
 		Key: key,
 	}
 	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
+	if err := DB.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+		return err
+	}
 	option.Value = value
 	// Save is a combination function.
 	// If save value does not contain primary key, it will execute Create,
 	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
+	if err := DB.Save(&option).Error; err != nil {
+		return err
+	}
 	// Update OptionMap
 	return updateOptionMap(key, value)
 }
@@ -271,6 +316,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	optionsApplyMu.Lock()
+	defer optionsApplyMu.Unlock()
+
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
 			option := Option{Key: k}
@@ -287,12 +335,33 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
+	alipayValues := make(map[string]string)
 	for k, v := range values {
+		if setting.IsAlipayDirectOptionKey(k) {
+			alipayValues[k] = v
+			continue
+		}
 		if err := updateOptionMap(k, v); err != nil {
 			return err
 		}
 	}
+	if len(alipayValues) > 0 {
+		publishAlipayOptions(alipayValues)
+	}
 	return nil
+}
+
+func publishAlipayOptions(values map[string]string) {
+	if len(values) == 0 {
+		return
+	}
+	config := setting.AlipayDirectConfigFromOptions(setting.GetAlipayDirectConfig(), values)
+	common.OptionMapRWMutex.Lock()
+	for key, value := range values {
+		common.OptionMap[key] = value
+	}
+	setting.StoreAlipayDirectConfig(config)
+	common.OptionMapRWMutex.Unlock()
 }
 
 func isDisplayQuotaOption(key string) bool {
@@ -320,6 +389,14 @@ func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 	common.OptionMap[key] = value
+	if setting.IsAlipayDirectOptionKey(key) {
+		config := setting.AlipayDirectConfigFromOptions(
+			setting.GetAlipayDirectConfig(),
+			map[string]string{key: value},
+		)
+		setting.StoreAlipayDirectConfig(config)
+		return nil
+	}
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {
@@ -361,6 +438,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.TurnstileCheckEnabled = boolValue
 		case "RegisterEnabled":
 			common.RegisterEnabled = boolValue
+		case "PublicBusinessPreviewEnabled":
+			setting.SetPublicBusinessPreviewEnabled(boolValue)
 		case "EmailDomainRestrictionEnabled":
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":
@@ -631,6 +710,22 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.ModelRequestRateLimitSuccessCount, _ = strconv.Atoi(value)
 	case "ModelRequestRateLimitGroup":
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
+	case "ModelRequestMaxConcurrencyPerUser":
+		common.ModelRequestMaxConcurrencyPerUser, _ = strconv.Atoi(value)
+	case "ModelRequestMaxConcurrencyPerToken":
+		common.ModelRequestMaxConcurrencyPerToken, _ = strconv.Atoi(value)
+	case "ModelRequestDefaultChannelMaxConcurrency":
+		common.ModelRequestDefaultChannelMaxConcurrency, _ = strconv.Atoi(value)
+	case "ModelRequestDefaultChannelMaxConcurrencyPerUser":
+		common.ModelRequestDefaultChannelMaxConcurrencyPerUser, _ = strconv.Atoi(value)
+	case "ModelRequestLargeBodyThresholdMB":
+		common.ModelRequestLargeBodyThresholdMB, _ = strconv.Atoi(value)
+	case "ModelRequestMaxLargeConcurrencyPerUser":
+		common.ModelRequestMaxLargeConcurrencyPerUser, _ = strconv.Atoi(value)
+	case "ModelRequestSmallFailoverBodyMB":
+		common.ModelRequestSmallFailoverBodyMB, _ = strconv.Atoi(value)
+	case "ModelRequestSmallFailoverTimeoutSeconds":
+		common.ModelRequestSmallFailoverTimeoutSeconds, _ = strconv.Atoi(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
 	case "DataExportInterval":

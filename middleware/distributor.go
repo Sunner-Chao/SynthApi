@@ -115,13 +115,16 @@ func Distribute() func(c *gin.Context) {
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil {
-						if service.ShouldSkipChannelForImportedAccountFailover(c, preferred) {
+						if service.IsLargeModelRequest(c) && !preferred.GetSetting().LargeRequestEligible {
+							// Let large-body routing search for a designated channel first.
+						} else if capacity := service.CheckChannelRequestCapacity(c, preferred); !capacity.Allowed {
+							service.MarkChannelCapacityExcluded(c, preferred.Id)
+						} else if service.IsUserChannelCoolingDown(c, preferred.Id) {
+							service.ClearChannelAffinityCacheForContext(c)
+						} else if service.ShouldSkipChannelForImportedAccountFailover(c, preferred) {
 							service.ClearChannelAffinityCacheForContext(c)
 						} else if preferred.Status != common.ChannelStatusEnabled {
-							if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled))
-								return
-							}
+							service.ClearChannelAffinityCacheForContext(c)
 						} else if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetUserAutoGroup(userGroup)
@@ -150,6 +153,11 @@ func Distribute() func(c *gin.Context) {
 						Retry:      common.GetPointer(0),
 					})
 					if err != nil {
+						if errors.Is(err, service.ErrAllChannelsAtCapacity) {
+							c.Header("Retry-After", "1")
+							abortWithOpenAiMessage(c, http.StatusTooManyRequests, "所有可用渠道当前并发已满，请稍后重试", types.ErrorCodeConcurrencyLimit)
+							return
+						}
 						if failoverChannel, failoverGroup := selectSmartFailoverChannel(c, usingGroup, modelRequest.Model); failoverChannel != nil {
 							channel = failoverChannel
 							selectGroup = failoverGroup

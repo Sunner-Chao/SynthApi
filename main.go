@@ -123,6 +123,8 @@ func main() {
 
 	// XPay v3.1 order status polling for automatic top-up confirmation
 	service.StartXPayOrderPollingTask()
+	// Official Alipay query compensation for notifications that were not delivered.
+	service.StartAlipayDirectOrderPollingTask()
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {

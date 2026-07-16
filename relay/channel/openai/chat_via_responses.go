@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -618,8 +617,7 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, helper.InitialScannerBufferSize), helper.DefaultMaxScannerBufferSize)
+	scanner := helper.NewStreamScanner(resp.Body)
 	for scanner.Scan() {
 		data := strings.TrimSpace(scanner.Text())
 		if data == "" {

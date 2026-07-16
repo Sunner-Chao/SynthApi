@@ -57,6 +57,7 @@ export const userSchema = z.object({
   last_login_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
+  model_request_max_concurrency: z.number().int().min(0).max(1000).optional(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -106,6 +107,7 @@ export interface UserFormData {
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
+  model_request_max_concurrency?: number // 0 inherits the system default
 }
 
 export type ManageUserAction =

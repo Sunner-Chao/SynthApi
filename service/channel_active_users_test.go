@@ -60,6 +60,50 @@ func TestChannelActiveUserTrackerIgnoresInvalidInput(t *testing.T) {
 	assertEqual(t, map[int]int{10: 0}, tracker.counts([]int{10}))
 }
 
+func TestChannelActiveUserTrackerEnforcesChannelLimit(t *testing.T) {
+	tracker := newChannelActiveUserTracker()
+
+	first, capacity := tracker.beginWithLimit(171, 20, 1, 0)
+	if !capacity.Allowed || first == nil {
+		t.Fatal("first request should be admitted")
+	}
+	second, capacity := tracker.beginWithLimit(171, 21, 1, 0)
+	if capacity.Allowed || second != nil {
+		t.Fatal("second request should be rejected at the channel limit")
+	}
+	assertEqual(t, "channel", capacity.LimitedBy)
+
+	first()
+	third, capacity := tracker.beginWithLimit(171, 21, 1, 0)
+	if !capacity.Allowed || third == nil {
+		t.Fatal("request should be admitted after a slot is released")
+	}
+	third()
+}
+
+func TestChannelActiveUserTrackerEnforcesPerUserChannelLimit(t *testing.T) {
+	tracker := newChannelActiveUserTracker()
+
+	first, capacity := tracker.beginWithLimit(171, 20, 10, 1)
+	if !capacity.Allowed || first == nil {
+		t.Fatal("first request should be admitted")
+	}
+	second, capacity := tracker.beginWithLimit(171, 20, 10, 1)
+	if capacity.Allowed || second != nil {
+		t.Fatal("same user should be rejected at the per-user channel limit")
+	}
+	assertEqual(t, "user_channel", capacity.LimitedBy)
+	assertEqual(t, 1, capacity.Active)
+	assertEqual(t, 1, capacity.UserActive)
+
+	otherUser, capacity := tracker.beginWithLimit(171, 21, 10, 1)
+	if !capacity.Allowed || otherUser == nil {
+		t.Fatal("another user should still be admitted")
+	}
+	first()
+	otherUser()
+}
+
 func assertEqual[T any](t *testing.T, expected T, actual T) {
 	t.Helper()
 	if !reflect.DeepEqual(expected, actual) {

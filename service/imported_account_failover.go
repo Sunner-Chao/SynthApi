@@ -17,7 +17,7 @@ import (
 const importedAccountFailoverExcludedChannelsKey = "imported_account_failover_excluded_channels"
 const importedAccountFailoverAttemptsKey = "imported_account_failover_attempts"
 
-const maxImportedAccountFailoverAttempts = 50
+const maxImportedAccountFailoverAttempts = 10
 
 func IsImportedAccountChannel(channel *model.Channel) bool {
 	if channel == nil {
@@ -115,21 +115,21 @@ func importedAccountQuotaErrorMessage(message string) bool {
 	return false
 }
 
-func PrepareImportedAccountFailover(c *gin.Context, err *types.NewAPIError) bool {
+func PrepareImportedAccountFailover(c *gin.Context, err *types.NewAPIError, remainingRetries int) bool {
 	if !IsImportedAccountQuotaError(c, err) {
-		return false
-	}
-	if c.GetInt(importedAccountFailoverAttemptsKey) >= maxImportedAccountFailoverAttempts {
 		return false
 	}
 	channelID := common.GetContextKeyInt(c, constant.ContextKeyChannelId)
 	if channelID <= 0 {
 		return false
 	}
-	c.Set(importedAccountFailoverAttemptsKey, c.GetInt(importedAccountFailoverAttemptsKey)+1)
 	MarkImportedAccountChannelExcluded(c, channelID)
 	persistImportedAccountLowQuota(channelID, err)
 	ClearChannelAffinityCacheForContext(c)
+	if remainingRetries <= 0 || c.GetInt(importedAccountFailoverAttemptsKey) >= maxImportedAccountFailoverAttempts {
+		return false
+	}
+	c.Set(importedAccountFailoverAttemptsKey, c.GetInt(importedAccountFailoverAttemptsKey)+1)
 	return true
 }
 

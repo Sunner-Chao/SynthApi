@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -65,6 +66,46 @@ const (
 	LogTypeError   = 5
 	LogTypeRefund  = 6
 )
+
+const (
+	ingressLineOfficial = "official"
+	ingressLineFast     = "fast"
+)
+
+func appendIngressLogInfo(c *gin.Context, other map[string]interface{}) map[string]interface{} {
+	if c == nil || c.Request == nil {
+		return other
+	}
+	host, line := classifyIngressHost(c.Request.Host)
+	if line == "" {
+		return other
+	}
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	other["ingress_line"] = line
+	if host != "" {
+		other["ingress_host"] = host
+	}
+	return other
+}
+
+func classifyIngressHost(value string) (string, string) {
+	host := strings.ToLower(strings.TrimSpace(value))
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+	host = strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+
+	switch host {
+	case "116.62.113.242":
+		return host, ingressLineFast
+	case "synthapi.asia", "api.synthapi.asia":
+		return host, ingressLineOfficial
+	default:
+		return "", ""
+	}
+}
 
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
@@ -164,6 +205,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
+	other = appendIngressLogInfo(c, other)
 	otherStr := common.MapToJsonStr(other)
 	// 判断是否需要记录 IP
 	needRecordIp := false
@@ -227,6 +269,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
+	params.Other = appendIngressLogInfo(c, params.Other)
 	otherStr := common.MapToJsonStr(params.Other)
 	// 判断是否需要记录 IP
 	needRecordIp := false

@@ -1,6 +1,8 @@
 package helper
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +23,9 @@ import (
 
 func init() {
 	gin.SetMode(gin.TestMode)
+	if constant.StreamingTimeout == 0 {
+		constant.StreamingTimeout = 30
+	}
 }
 
 func setupStreamTest(t *testing.T, body io.Reader) (*gin.Context, *http.Response, *relaycommon.RelayInfo) {
@@ -79,6 +84,22 @@ func TestStreamScannerHandler_NilInputs(t *testing.T) {
 
 	StreamScannerHandler(c, nil, info, func(data string, sr *StreamResult) {})
 	StreamScannerHandler(c, &http.Response{Body: io.NopCloser(strings.NewReader(""))}, info, nil)
+}
+
+func TestNewStreamScannerAllowsLargeStreamLine(t *testing.T) {
+	oldBufferMB := constant.StreamScannerMaxBufferMB
+	constant.StreamScannerMaxBufferMB = 1
+	t.Cleanup(func() {
+		constant.StreamScannerMaxBufferMB = oldBufferMB
+	})
+
+	payload := strings.Repeat("x", 128<<10)
+	scanner := NewStreamScanner(strings.NewReader("data: " + payload + "\n"))
+	scanner.Split(bufio.ScanLines)
+
+	require.True(t, scanner.Scan())
+	assert.Equal(t, "data: "+payload, scanner.Text())
+	require.NoError(t, scanner.Err())
 }
 
 func TestStreamScannerHandler_EmptyBody(t *testing.T) {
@@ -224,6 +245,63 @@ func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
 	})
 
 	assert.Equal(t, "{\"trimmed\":true}", got)
+}
+
+func TestStreamScannerHandlerClientCancelClosesUpstream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pr, pw := io.Pipe()
+	t.Cleanup(func() {
+		_ = pr.Close()
+		_ = pw.Close()
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
+	resp := &http.Response{Body: pr}
+	info := &relaycommon.RelayInfo{
+		DisablePing: true,
+		ChannelMeta: &relaycommon.ChannelMeta{},
+	}
+
+	var count atomic.Int64
+	firstHandled := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+			count.Add(1)
+			_ = StringData(c, data)
+			if data == "first" {
+				close(firstHandled)
+			}
+		})
+		close(done)
+	}()
+
+	_, err := fmt.Fprint(pw, "data: first\n")
+	require.NoError(t, err)
+	select {
+	case <-firstHandled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first chunk")
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not return after client disconnect")
+	}
+
+	_, err = fmt.Fprint(pw, "data: second\n")
+	require.ErrorIs(t, err, io.ErrClosedPipe)
+	assert.Equal(t, int64(1), count.Load())
+	require.NotNil(t, info.StreamStatus)
+	assert.Equal(t, relaycommon.StreamEndReasonClientGone, info.StreamStatus.EndReason)
+	assert.Contains(t, recorder.Body.String(), "first")
+	assert.NotContains(t, recorder.Body.String(), "second")
 }
 
 // ---------- Decoupling ----------
@@ -614,7 +692,7 @@ func TestStreamScannerHandler_StreamStatus_InitializedIfNil(t *testing.T) {
 	assert.NotNil(t, info.StreamStatus)
 }
 
-func TestStreamScannerHandler_StreamStatus_PreInitialized(t *testing.T) {
+func TestStreamScannerHandler_StreamStatus_ReplacesPreInitialized(t *testing.T) {
 	t.Parallel()
 
 	body := buildSSEBody(5)
@@ -626,7 +704,7 @@ func TestStreamScannerHandler_StreamStatus_PreInitialized(t *testing.T) {
 	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
 
 	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
-	assert.Equal(t, 1, info.StreamStatus.TotalErrorCount())
+	assert.Equal(t, 0, info.StreamStatus.TotalErrorCount())
 }
 
 func TestStreamScannerHandler_PingInterleavesWithSlowUpstream(t *testing.T) {

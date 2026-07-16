@@ -2632,6 +2632,97 @@ export function ChannelMutateDrawer({
 
                           <FormField
                             control={form.control}
+                            name='max_concurrency'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>
+                                  {t('Channel concurrency limit')}
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    min={0}
+                                    max={1000}
+                                    step={1}
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseInt(e.target.value) || 0
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t(
+                                    '0 inherits the system default channel limit.'
+                                  )}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name='max_concurrency_per_user'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>
+                                  {t('Per-user channel concurrency')}
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    min={0}
+                                    max={1000}
+                                    step={1}
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseInt(e.target.value) || 0
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t(
+                                    '0 inherits the system per-user channel limit.'
+                                  )}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name='large_request_eligible'
+                            render={({ field }) => (
+                              <FormItem
+                                className={sideDrawerSwitchItemClassName()}
+                              >
+                                <div className='flex flex-col gap-0.5'>
+                                  <FormLabel>
+                                    {t('Large request channel')}
+                                  </FormLabel>
+                                  <FormDescription className='text-xs'>
+                                    {t(
+                                      'Prefer this channel for large request bodies'
+                                    )}
+                                  </FormDescription>
+                                </div>
+                                <FormControl>
+                                  <Switch
+                                    checked={field.value === true}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
                             name='remark'
                             render={({ field }) => (
                               <FormItem>

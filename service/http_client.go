@@ -21,7 +21,24 @@ var (
 	proxyClients    = make(map[string]*http.Client)
 )
 
+type relaySingleHopContextKey struct{}
+
+func MarkRelayRequestSingleHop(req *http.Request) *http.Request {
+	if req == nil {
+		return nil
+	}
+	ctx := context.WithValue(req.Context(), relaySingleHopContextKey{}, true)
+	return req.WithContext(ctx)
+}
+
+func isRelayRequestSingleHop(req *http.Request) bool {
+	return req != nil && req.Context().Value(relaySingleHopContextKey{}) == true
+}
+
 func checkRedirect(req *http.Request, via []*http.Request) error {
+	if isRelayRequestSingleHop(req) {
+		return http.ErrUseLastResponse
+	}
 	fetchSetting := system_setting.GetFetchSetting()
 	urlStr := req.URL.String()
 	if err := common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
@@ -64,7 +81,7 @@ func newRelayTransport(proxyFunc func(*http.Request) (*url.URL, error), dialCont
 		IdleConnTimeout:       nonNegativeSeconds(common.RelayIdleConnTimeout),
 		TLSHandshakeTimeout:   nonNegativeSeconds(common.RelayTLSHandshakeTimeout),
 		ExpectContinueTimeout: nonNegativeSeconds(common.RelayExpectContinueTimeout),
-		ForceAttemptHTTP2:     true,
+		ForceAttemptHTTP2:     common.RelayForceHTTP2,
 		Proxy:                 proxyFunc,
 		DialContext:           dialContext,
 	}
@@ -83,6 +100,103 @@ func nonNegativeSeconds(value int) time.Duration {
 		return 0
 	}
 	return seconds(value)
+}
+
+type lookupIPAddrFunc func(context.Context, string) ([]net.IPAddr, error)
+
+func resolveSOCKS5Targets(
+	ctx context.Context,
+	network string,
+	addr string,
+	lookup lookupIPAddrFunc,
+) ([]string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	if net.ParseIP(host) != nil {
+		return []string{addr}, nil
+	}
+
+	addresses, err := lookup(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolve SOCKS5 target %s: %w", host, err)
+	}
+	targets := make([]string, 0, len(addresses))
+	seen := make(map[string]struct{}, len(addresses))
+	for _, address := range addresses {
+		ip := address.IP
+		if ip == nil || (network == "tcp4" && ip.To4() == nil) ||
+			(network == "tcp6" && (ip.To4() != nil || ip.To16() == nil)) {
+			continue
+		}
+		hostIP := ip.String()
+		if address.Zone != "" {
+			hostIP += "%" + address.Zone
+		}
+		target := net.JoinHostPort(hostIP, port)
+		if _, ok := seen[target]; ok {
+			continue
+		}
+		seen[target] = struct{}{}
+		targets = append(targets, target)
+	}
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("resolve SOCKS5 target %s: no usable addresses", host)
+	}
+	return targets, nil
+}
+
+func dialProxyContext(
+	ctx context.Context,
+	dialer proxy.Dialer,
+	network string,
+	addr string,
+) (net.Conn, error) {
+	if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
+		return contextDialer.DialContext(ctx, network, addr)
+	}
+	type dialResult struct {
+		conn net.Conn
+		err  error
+	}
+	done := make(chan dialResult, 1)
+	go func() {
+		conn, err := dialer.Dial(network, addr)
+		done <- dialResult{conn: conn, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-done:
+		return result.conn, result.err
+	}
+}
+
+func newSOCKS5DialContext(dialer proxy.Dialer, resolveLocally bool) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		targets := []string{addr}
+		if resolveLocally {
+			var err error
+			targets, err = resolveSOCKS5Targets(ctx, network, addr, net.DefaultResolver.LookupIPAddr)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		var lastErr error
+		for _, target := range targets {
+			conn, err := dialProxyContext(ctx, dialer, network, target)
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+		}
+		return nil, fmt.Errorf("SOCKS5 dial %s failed: %w", addr, lastErr)
+	}
 }
 
 func GetHttpClient() *http.Client {
@@ -159,8 +273,7 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 			}
 		}
 
-		// 创建 SOCKS5 代理拨号器
-		// proxy.SOCKS5 使用 tcp 参数，所有 TCP 连接包括 DNS 查询都将通过代理进行。行为与 socks5h 相同
+		// socks5 resolves targets locally; socks5h delegates DNS to the proxy.
 		baseDialer := &net.Dialer{
 			Timeout:   nonNegativeSeconds(common.RelayDialTimeout),
 			KeepAlive: seconds(common.RelayDialKeepAlive),
@@ -170,26 +283,7 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 			return nil, err
 		}
 
-		transport := newRelayTransport(nil, func(ctx context.Context, network, addr string) (net.Conn, error) {
-			if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
-				return contextDialer.DialContext(ctx, network, addr)
-			}
-			type dialResult struct {
-				conn net.Conn
-				err  error
-			}
-			done := make(chan dialResult, 1)
-			go func() {
-				conn, err := dialer.Dial(network, addr)
-				done <- dialResult{conn: conn, err: err}
-			}()
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case result := <-done:
-				return result.conn, result.err
-			}
-		})
+		transport := newRelayTransport(nil, newSOCKS5DialContext(dialer, parsedURL.Scheme == "socks5"))
 
 		client := &http.Client{Transport: transport, CheckRedirect: checkRedirect}
 		client.Timeout = time.Duration(common.RelayTimeout) * time.Second

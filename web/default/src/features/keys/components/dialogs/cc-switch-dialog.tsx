@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels } from '@/lib/api'
+import { FAST_API_BASE_URL, FAST_OPENAI_BASE_URL } from '@/lib/api-routes'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
@@ -167,7 +168,7 @@ function buildCCSwitchURL(
   apiKey: string
 ): string {
   const serverAddress = getServerAddress()
-  const endpoint = app === 'codex' ? serverAddress + '/v1' : serverAddress
+  const endpoint = app === 'codex' ? FAST_OPENAI_BASE_URL : FAST_API_BASE_URL
   const params = new URLSearchParams()
   params.set('resource', 'provider')
   params.set('app', app)
@@ -305,6 +306,15 @@ export function CCSwitchDialog(props: Props) {
                 </div>
               ))}
             </RadioGroup>
+          </div>
+
+          <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2'>
+            <span className='text-muted-foreground text-xs font-medium'>
+              {t('High-speed API route')} · {t('Recommended')}
+            </span>
+            <code className='text-xs break-all'>
+              {app === 'codex' ? FAST_OPENAI_BASE_URL : FAST_API_BASE_URL}
+            </code>
           </div>
 
           <div className='space-y-2'>

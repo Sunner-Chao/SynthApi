@@ -18,6 +18,9 @@ type ChannelSettings struct {
 	SystemPromptOverride        bool   `json:"system_prompt_override,omitempty"`
 	UpstreamRequestGzipEnabled  *bool  `json:"upstream_request_gzip_enabled,omitempty"`
 	UpstreamRequestGzipMinBytes int64  `json:"upstream_request_gzip_min_bytes,omitempty"`
+	MaxConcurrency              int    `json:"max_concurrency,omitempty"`          // 0 means inherit the system default
+	MaxConcurrencyPerUser       int    `json:"max_concurrency_per_user,omitempty"` // 0 means inherit the system default
+	LargeRequestEligible        bool   `json:"large_request_eligible,omitempty"`
 }
 
 const (
@@ -37,6 +40,20 @@ func (s ChannelSettings) EffectiveUpstreamRequestGzipEnabled(defaultEnabled bool
 		return defaultEnabled
 	}
 	return *s.UpstreamRequestGzipEnabled
+}
+
+func (s ChannelSettings) EffectiveMaxConcurrency(defaultLimit int) int {
+	if s.MaxConcurrency > 0 {
+		return s.MaxConcurrency
+	}
+	return defaultLimit
+}
+
+func (s ChannelSettings) EffectiveMaxConcurrencyPerUser(defaultLimit int) int {
+	if s.MaxConcurrencyPerUser > 0 {
+		return s.MaxConcurrencyPerUser
+	}
+	return defaultLimit
 }
 
 type VertexKeyType string

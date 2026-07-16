@@ -29,7 +29,13 @@ import {
   ShieldCheck,
   TerminalSquare,
   Wallet,
+  Zap,
 } from 'lucide-react'
+import {
+  FAST_ANTHROPIC_COMPAT_BASE_URL,
+  FAST_API_BASE_URL,
+  FAST_OPENAI_BASE_URL,
+} from '@/lib/api-routes'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -77,25 +83,29 @@ const addressRows = [
     scene: 'Claude Code / Anthropic 格式',
     variable: 'ANTHROPIC_BASE_URL',
     value: anthropicBaseUrl,
+    fastValue: FAST_API_BASE_URL,
     note: '不带 /v1；客户端会访问 /v1/messages。',
   },
   {
     scene: 'Anthropic 兼容别名',
     variable: '手动 Base URL',
     value: anthropicCompatBaseUrl,
+    fastValue: FAST_ANTHROPIC_COMPAT_BASE_URL,
     note: '用于明确指定 Anthropic 路径的客户端。',
   },
   {
     scene: 'Codex CLI / OpenAI SDK / OpenClaw',
     variable: 'OPENAI_BASE_URL',
     value: openAiBaseUrl,
+    fastValue: FAST_OPENAI_BASE_URL,
     note: '必须带 /v1。',
   },
   {
     scene: '浏览器访问与控制台',
     variable: '站点地址',
     value: siteBaseUrl,
-    note: '用于登录、创建 Key、查看钱包和日志。',
+    fastValue: null,
+    note: `用于登录、创建 Key、查看钱包和日志；API 大速率调用可改用 ${FAST_API_BASE_URL}。`,
   },
 ]
 
@@ -193,6 +203,18 @@ function CodeBlock({ children }: { children: string }) {
     <pre className='bg-muted overflow-x-auto rounded-md p-4 text-xs leading-6 sm:text-sm'>
       <code>{children}</code>
     </pre>
+  )
+}
+
+function FastRouteHint(props: { url: string }) {
+  return (
+    <div className='flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2'>
+      <Badge variant='outline' className='gap-1 border-amber-500/40'>
+        <Zap className='size-3 text-amber-500' />
+        高速线路推荐
+      </Badge>
+      <code className='min-w-0 font-mono text-xs break-all'>{props.url}</code>
+    </div>
   )
 }
 
@@ -336,6 +358,7 @@ export function Docs() {
                       <div className='font-mono text-sm break-all'>
                         {row.value}
                       </div>
+                      {row.fastValue && <FastRouteHint url={row.fastValue} />}
                       <p className='text-muted-foreground text-sm leading-6'>
                         {row.note}
                       </p>
@@ -379,7 +402,10 @@ export function Docs() {
                     <p className='text-muted-foreground mt-2 text-sm leading-6'>
                       Codex CLI、OpenClaw、OpenAI SDK 填 {openAiBaseUrl}；Claude
                       Code 填 {anthropicBaseUrl}。填反时常见表现是
-                      404、空响应、Malformed response 或工具无法识别模型。
+                      404、空响应、Malformed response
+                      或工具无法识别模型。大速率调用优先使用{' '}
+                      {FAST_OPENAI_BASE_URL}（OpenAI）或
+                      {FAST_API_BASE_URL}（Claude）。
                     </p>
                   </li>
                   <li className='rounded-md border p-4'>
@@ -401,6 +427,7 @@ export function Docs() {
                 </CardDescription>
               </CardHeader>
               <CardContent className='space-y-4'>
+                <FastRouteHint url={FAST_API_BASE_URL} />
                 <CodeBlock>{`# macOS / Linux 临时配置
 export ANTHROPIC_BASE_URL=${anthropicBaseUrl}
 export ANTHROPIC_API_KEY=sk-your-api-key
@@ -427,6 +454,7 @@ claude`}</CodeBlock>
                 </CardDescription>
               </CardHeader>
               <CardContent className='space-y-4'>
+                <FastRouteHint url={FAST_OPENAI_BASE_URL} />
                 <CodeBlock>{`# macOS / Linux
 export OPENAI_BASE_URL=${openAiBaseUrl}
 export OPENAI_API_KEY=sk-your-api-key
@@ -453,6 +481,7 @@ cc-switch use synthapi`}</CodeBlock>
                 </CardDescription>
               </CardHeader>
               <CardContent className='space-y-4'>
+                <FastRouteHint url={FAST_OPENAI_BASE_URL} />
                 <CodeBlock>{`import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -491,6 +520,7 @@ print(res.choices[0].message.content)`}</CodeBlock>
                 </CardDescription>
               </CardHeader>
               <CardContent className='space-y-4'>
+                <FastRouteHint url={FAST_API_BASE_URL} />
                 <CodeBlock>{`curl ${openAiBaseUrl}/models \\
   -H "Authorization: Bearer sk-your-api-key"`}</CodeBlock>
                 <CodeBlock>{`curl ${openAiBaseUrl}/chat/completions \\
@@ -608,11 +638,11 @@ print(res.choices[0].message.content)`}</CodeBlock>
               <CardContent className='space-y-3 text-sm leading-6'>
                 <p>
                   使用 Claude Code：看 Claude Code 配置，地址填{' '}
-                  {anthropicBaseUrl}。
+                  {anthropicBaseUrl}；高速线路填 {FAST_API_BASE_URL}。
                 </p>
                 <p>
                   使用 Codex CLI：看 Codex CLI / OpenAI 兼容工具，地址填{' '}
-                  {openAiBaseUrl}。
+                  {openAiBaseUrl}；高速线路填 {FAST_OPENAI_BASE_URL}。
                 </p>
                 <p>
                   写项目代码：看项目代码接入示例，并把 Key

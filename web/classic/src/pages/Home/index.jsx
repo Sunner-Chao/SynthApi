@@ -64,6 +64,7 @@ import {
 } from '@lobehub/icons';
 
 const { Text } = Typography;
+const FAST_API_BASE_URL = 'https://116.62.113.242';
 
 const Home = () => {
   const { t, i18n } = useTranslation();
@@ -209,6 +210,9 @@ const Home = () => {
                       }
                     />
                   </div>
+                  <Text type='tertiary' className='mt-3 font-mono'>
+                    {t('高速线路推荐')}：{FAST_API_BASE_URL}
+                  </Text>
                 </div>
 
                 {/* 操作按钮 */}

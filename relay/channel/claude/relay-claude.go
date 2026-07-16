@@ -1076,8 +1076,7 @@ func responseStreamData(c *gin.Context, eventType string, payload any) error {
 	if err != nil {
 		return err
 	}
-	helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: eventType}, string(data))
-	return nil
+	return helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: eventType}, string(data))
 }
 
 func claudeResponsesUsageFromClaudeUsage(claudeUsage *dto.ClaudeUsage) *dto.Usage {

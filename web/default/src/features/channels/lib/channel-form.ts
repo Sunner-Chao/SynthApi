@@ -190,6 +190,9 @@ export const channelFormSchema = z
     pass_through_body_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
+    max_concurrency: z.number().int().min(0).max(1000).optional(),
+    max_concurrency_per_user: z.number().int().min(0).max(1000).optional(),
+    large_request_eligible: z.boolean().optional(),
     upstream_request_gzip_enabled: z.boolean().optional(),
     upstream_request_gzip_min_mib: z.number().min(1).max(128).optional(),
     // Type-specific settings (stored in settings JSON)
@@ -310,6 +313,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   pass_through_body_enabled: false,
   system_prompt: '',
   system_prompt_override: false,
+  max_concurrency: 0,
+  max_concurrency_per_user: 0,
+  large_request_eligible: false,
   upstream_request_gzip_enabled: true,
   upstream_request_gzip_min_mib: 1,
   // Type-specific settings
@@ -348,6 +354,9 @@ export function transformChannelToFormDefaults(
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
+    max_concurrency: 0,
+    max_concurrency_per_user: 0,
+    large_request_eligible: false,
     upstream_request_gzip_enabled: supportsUpstreamRequestGzip(channel.type),
     upstream_request_gzip_min_mib: 1,
   }
@@ -362,6 +371,17 @@ export function transformChannelToFormDefaults(
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
+        max_concurrency:
+          typeof parsed.max_concurrency === 'number' &&
+          parsed.max_concurrency > 0
+            ? parsed.max_concurrency
+            : 0,
+        max_concurrency_per_user:
+          typeof parsed.max_concurrency_per_user === 'number' &&
+          parsed.max_concurrency_per_user > 0
+            ? parsed.max_concurrency_per_user
+            : 0,
+        large_request_eligible: parsed.large_request_eligible === true,
         upstream_request_gzip_enabled:
           supportsUpstreamRequestGzip(channel.type) &&
           parsed.upstream_request_gzip_enabled !== false,
@@ -492,6 +512,9 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
+    max_concurrency: formData.max_concurrency || 0,
+    max_concurrency_per_user: formData.max_concurrency_per_user || 0,
+    large_request_eligible: formData.large_request_eligible === true,
   })
   if (supportsUpstreamRequestGzip(formData.type)) {
     settingObj.upstream_request_gzip_enabled =

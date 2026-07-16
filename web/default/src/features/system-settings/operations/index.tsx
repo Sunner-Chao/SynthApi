@@ -37,7 +37,7 @@ const defaultOperationsSettings: OperationsSettings = {
   AutomaticDisableKeywords: '',
   AutomaticDisableStatusCodes: '401',
   AutomaticRetryStatusCodes:
-    '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
+    '401,403,408-409,425,429,500,502-503,522,525-527,529',
   'monitor_setting.auto_test_channel_enabled': false,
   'monitor_setting.auto_test_channel_minutes': 10,
   SMTPServer: '',

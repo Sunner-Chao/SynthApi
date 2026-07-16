@@ -95,6 +95,11 @@ func CreateXPayOrder(ctx context.Context, userID int, amount float64, paymentMet
 	if !IsXPayTopUpEnabled() {
 		return nil, errors.New("XPay is not configured")
 	}
+	normalizedAmount, err := NormalizePaymentTopUpAmount(amount)
+	if err != nil {
+		return nil, err
+	}
+	amount = normalizedAmount
 	if amount < GetXPayMinTopup() {
 		return nil, fmt.Errorf("充值数量不能小于 %.2f", GetXPayMinTopup())
 	}

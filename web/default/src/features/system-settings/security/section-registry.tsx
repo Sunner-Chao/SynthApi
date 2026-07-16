@@ -29,6 +29,22 @@ const SECURITY_SECTIONS = [
     build: (settings: SecuritySettings) => (
       <RateLimitSection
         defaultValues={{
+          ModelRequestMaxConcurrencyPerUser:
+            settings.ModelRequestMaxConcurrencyPerUser,
+          ModelRequestMaxConcurrencyPerToken:
+            settings.ModelRequestMaxConcurrencyPerToken,
+          ModelRequestDefaultChannelMaxConcurrency:
+            settings.ModelRequestDefaultChannelMaxConcurrency,
+          ModelRequestDefaultChannelMaxConcurrencyPerUser:
+            settings.ModelRequestDefaultChannelMaxConcurrencyPerUser,
+          ModelRequestLargeBodyThresholdMB:
+            settings.ModelRequestLargeBodyThresholdMB,
+          ModelRequestMaxLargeConcurrencyPerUser:
+            settings.ModelRequestMaxLargeConcurrencyPerUser,
+          ModelRequestSmallFailoverBodyMB:
+            settings.ModelRequestSmallFailoverBodyMB,
+          ModelRequestSmallFailoverTimeoutSeconds:
+            settings.ModelRequestSmallFailoverTimeoutSeconds,
           ModelRequestRateLimitEnabled: settings.ModelRequestRateLimitEnabled,
           ModelRequestRateLimitCount: settings.ModelRequestRateLimitCount,
           ModelRequestRateLimitSuccessCount:

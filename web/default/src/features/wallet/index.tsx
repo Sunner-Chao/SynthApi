@@ -17,12 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
 import { Crown, WalletCards } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { refreshSelf } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
-import { cn } from '@/lib/utils'
 import { SectionPageLayout } from '@/components/layout'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
@@ -32,7 +33,7 @@ import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
 import { WalletStatsCard } from './components/wallet-stats-card'
-import { DEFAULT_DISCOUNT_RATE, PAYMENT_TYPES } from './constants'
+import { DEFAULT_DISCOUNT_RATE } from './constants'
 import {
   useTopupInfo,
   usePayment,
@@ -44,8 +45,12 @@ import {
 } from './hooks'
 import {
   getDefaultPaymentType,
+  getDefaultPaymentProvider,
+  getPaymentMethodKey,
   getMinTopupAmount,
   isWaffoPancakePayment,
+  normalizeTopupAmount,
+  resolvePaymentProvider,
 } from './lib'
 import type {
   UserWalletData,
@@ -100,11 +105,7 @@ export function Wallet(props: WalletProps) {
     processing,
     calculatePaymentAmount,
     processPayment,
-  } = usePayment(
-    isLocalCurrency,
-    currency?.quotaDisplayType || 'CNY',
-    effectiveUsdExchangeRate
-  )
+  } = usePayment()
   const {
     affiliateLink,
     loading: affiliateLoading,
@@ -145,39 +146,66 @@ export function Wallet(props: WalletProps) {
 
   useEffect(() => {
     if (topupInfo && topupAmount === 0) {
-      const minTopup = getMinTopupAmount(topupInfo)
+      const minTopup = normalizeTopupAmount(getMinTopupAmount(topupInfo))
       setTopupAmount(minTopup)
       const defaultPaymentType = getDefaultPaymentType(topupInfo)
-      calculatePaymentAmount(minTopup, defaultPaymentType)
+      calculatePaymentAmount(
+        minTopup,
+        defaultPaymentType,
+        getDefaultPaymentProvider(topupInfo)
+      )
     }
   }, [topupInfo, topupAmount, calculatePaymentAmount])
 
-  const getCurrentPaymentType = useCallback(() => {
-    return selectedPaymentMethod?.type || getDefaultPaymentType(topupInfo)
+  const getCurrentPaymentContext = useCallback(() => {
+    if (selectedPaymentMethod) {
+      return {
+        type: selectedPaymentMethod.type,
+        provider: resolvePaymentProvider(selectedPaymentMethod, topupInfo),
+      }
+    }
+    return {
+      type: getDefaultPaymentType(topupInfo),
+      provider: getDefaultPaymentProvider(topupInfo),
+    }
   }, [selectedPaymentMethod, topupInfo])
 
   const handleSelectPreset = (preset: PresetAmount) => {
-    setTopupAmount(preset.value)
-    setSelectedPreset(preset.value)
-    calculatePaymentAmount(preset.value, getCurrentPaymentType())
+    const amount = normalizeTopupAmount(preset.value)
+    setTopupAmount(amount)
+    setSelectedPreset(amount)
+    const payment = getCurrentPaymentContext()
+    calculatePaymentAmount(amount, payment.type, payment.provider)
   }
 
-  const handleTopupAmountChange = (amount: number) => {
+  const handleTopupAmountChange = (rawAmount: number) => {
+    const amount = normalizeTopupAmount(rawAmount)
     setTopupAmount(amount)
     setSelectedPreset(null)
-    calculatePaymentAmount(amount, getCurrentPaymentType())
+    const payment = getCurrentPaymentContext()
+    calculatePaymentAmount(amount, payment.type, payment.provider)
   }
 
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
     setSelectedPaymentMethod(method)
-    setPaymentLoading(method.type)
+    setPaymentLoading(getPaymentMethodKey(method))
 
     try {
-      const minTopup = getMinTopupAmount(topupInfo)
+      const minTopup = method.min_topup || getMinTopupAmount(topupInfo)
       if (topupAmount < minTopup) {
         return
       }
-      await calculatePaymentAmount(topupAmount, method.type)
+      const paymentProvider = resolvePaymentProvider(method, topupInfo)
+      const calculatedAmount = await calculatePaymentAmount(
+        topupAmount,
+        method.type,
+        paymentProvider
+      )
+      if (calculatedAmount === null) return
+      if (calculatedAmount <= 0) {
+        toast.error(t('Payment request failed'))
+        return
+      }
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -185,21 +213,26 @@ export function Wallet(props: WalletProps) {
   }
 
   const handlePaymentConfirm = async () => {
-    if (!selectedPaymentMethod) return
+    if (
+      !selectedPaymentMethod ||
+      calculating ||
+      !Number.isFinite(paymentAmount) ||
+      paymentAmount <= 0
+    ) {
+      return
+    }
 
     const isPancake = isWaffoPancakePayment(selectedPaymentMethod.type)
-    const paymentGateway =
-      topupInfo?.enable_mpay_topup &&
-      (selectedPaymentMethod.type === PAYMENT_TYPES.ALIPAY ||
-        selectedPaymentMethod.type === PAYMENT_TYPES.WECHAT)
-        ? 'mpay'
-        : undefined
+    const paymentProvider = resolvePaymentProvider(
+      selectedPaymentMethod,
+      topupInfo
+    )
     const success = isPancake
       ? await processWaffoPancakePayment(topupAmount)
       : await processPayment(
           topupAmount,
           selectedPaymentMethod.type,
-          paymentGateway
+          paymentProvider
         )
 
     if (success) {

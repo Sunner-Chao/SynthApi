@@ -1,6 +1,9 @@
 package model
 
 import (
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -171,4 +174,154 @@ func TestExpireSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) 
 	order := GetSubscriptionOrderByTradeNo("sub-expire-guard")
 	require.NotNil(t, order)
 	assert.Equal(t, common.TopUpStatusPending, order.Status)
+}
+
+func TestCompleteSubscriptionOrder_AlipayDirectIsIdempotent(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 404, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 501)
+	insertSubscriptionOrderForPaymentGuardTest(t, "alipay-sub-idempotent", 404, plan.Id, PaymentProviderAlipayDirect)
+
+	require.NoError(t, CompleteAlipayDirectSubscriptionOrder("alipay-sub-idempotent", `{"trade_no":"provider-1"}`, "9.99"))
+	require.NoError(t, CompleteAlipayDirectSubscriptionOrder("alipay-sub-idempotent", `{"trade_no":"provider-1"}`, "9.99"))
+	require.ErrorIs(t,
+		CompleteAlipayDirectSubscriptionOrder("alipay-sub-idempotent", `{"trade_no":"provider-conflict"}`, "9.99"),
+		ErrProviderTradeMismatch,
+	)
+	require.Equal(t, int64(1), countUserSubscriptionsForPaymentGuardTest(t, 404))
+
+	order := GetSubscriptionOrderByTradeNo("alipay-sub-idempotent")
+	require.NotNil(t, order)
+	require.Equal(t, common.TopUpStatusSuccess, order.Status)
+	topUp := GetTopUpByTradeNo("alipay-sub-idempotent")
+	require.NotNil(t, topUp)
+	require.Equal(t, PaymentProviderAlipayDirect, topUp.PaymentProvider)
+}
+
+func TestCompleteAlipayDirectSubscriptionConcurrentTradeNumbersAcceptsOne(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 405, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 502)
+	insertSubscriptionOrderForPaymentGuardTest(t, "alipay-sub-concurrent", 405, plan.Id, PaymentProviderAlipayDirect)
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, providerTradeNo := range []string{"provider-concurrent-a", "provider-concurrent-b"} {
+		wg.Add(1)
+		go func(providerTradeNo string) {
+			defer wg.Done()
+			<-start
+			payload := fmt.Sprintf(`{"trade_no":%q}`, providerTradeNo)
+			errs <- CompleteAlipayDirectSubscriptionOrder("alipay-sub-concurrent", payload, "9.99")
+		}(providerTradeNo)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	var successCount int
+	var mismatchCount int
+	for err := range errs {
+		switch {
+		case err == nil:
+			successCount++
+		case errors.Is(err, ErrProviderTradeMismatch):
+			mismatchCount++
+		default:
+			require.NoError(t, err)
+		}
+	}
+	require.Equal(t, 1, successCount)
+	require.Equal(t, 1, mismatchCount)
+	require.Equal(t, int64(1), countUserSubscriptionsForPaymentGuardTest(t, 405))
+
+	order := GetSubscriptionOrderByTradeNo("alipay-sub-concurrent")
+	require.NotNil(t, order)
+	require.Equal(t, common.TopUpStatusSuccess, order.Status)
+	storedProviderTradeNo, err := subscriptionProviderTradeNo(PaymentProviderAlipayDirect, order.ProviderPayload)
+	require.NoError(t, err)
+	require.Contains(t, []string{"provider-concurrent-a", "provider-concurrent-b"}, storedProviderTradeNo)
+}
+
+func TestCompleteAlipayDirectTopUpConcurrentNotificationsCreditOnce(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 505, 100)
+	topUp := &TopUp{
+		UserId:          505,
+		Amount:          500,
+		DisplayAmount:   1,
+		Money:           7.30,
+		TradeNo:         "alipay-concurrent-topup",
+		Currency:        "CNY",
+		PaymentMethod:   PaymentMethodAlipay,
+		PaymentProvider: PaymentProviderAlipayDirect,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- CompleteAlipayDirectTopUp(topUp.TradeNo, "provider-concurrent-1", "7.30", "127.0.0.1")
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	require.Equal(t, 600, getUserQuotaForPaymentGuardTest(t, 505))
+	completed := GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, completed)
+	require.Equal(t, common.TopUpStatusSuccess, completed.Status)
+	require.Equal(t, "provider-concurrent-1", completed.ProviderTradeNo)
+	require.ErrorIs(t,
+		CompleteAlipayDirectTopUp(topUp.TradeNo, "provider-conflict", "7.30", "127.0.0.1"),
+		ErrProviderTradeMismatch,
+	)
+}
+
+func TestExpireAlipayTopUpCASDoesNotOverwriteSuccess(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 606, 600)
+	topUp := &TopUp{
+		UserId: 606, Amount: 500, DisplayAmount: 1, Money: 7.30,
+		TradeNo: "alipay-success-not-expired", ProviderTradeNo: "provider-success-1", Currency: "CNY",
+		PaymentMethod: PaymentMethodAlipay, PaymentProvider: PaymentProviderAlipayDirect,
+		Status: common.TopUpStatusSuccess, CreateTime: time.Now().Unix(), CompleteTime: time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	err := UpdatePendingTopUpStatus(topUp.TradeNo, PaymentProviderAlipayDirect, common.TopUpStatusExpired)
+	require.ErrorIs(t, err, ErrTopUpStatusInvalid)
+	current := GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, current)
+	require.Equal(t, common.TopUpStatusSuccess, current.Status)
+	require.Equal(t, 600, getUserQuotaForPaymentGuardTest(t, 606))
+}
+
+func TestExpireAlipaySubscriptionCASDoesNotOverwriteSuccess(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 707, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 601)
+	insertSubscriptionOrderForPaymentGuardTest(t, "alipay-sub-success-not-expired", 707, plan.Id, PaymentProviderAlipayDirect)
+	require.NoError(t, CompleteAlipayDirectSubscriptionOrder("alipay-sub-success-not-expired", `{"trade_no":"provider-sub-1"}`, "9.99"))
+
+	err := ExpireSubscriptionOrder("alipay-sub-success-not-expired", PaymentProviderAlipayDirect)
+	require.ErrorIs(t, err, ErrSubscriptionOrderStatusInvalid)
+	order := GetSubscriptionOrderByTradeNo("alipay-sub-success-not-expired")
+	require.NotNil(t, order)
+	require.Equal(t, common.TopUpStatusSuccess, order.Status)
+	require.Equal(t, int64(1), countUserSubscriptionsForPaymentGuardTest(t, 707))
 }

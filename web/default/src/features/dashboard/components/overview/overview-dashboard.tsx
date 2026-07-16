@@ -45,6 +45,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { getUserModels } from '@/lib/api'
+import { FAST_OPENAI_BASE_URL } from '@/lib/api-routes'
 import { formatQuota } from '@/lib/format'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
@@ -409,6 +410,15 @@ function RequestPreview(props: {
             </code>
           ))}
         </div>
+      </div>
+
+      <div className='mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2'>
+        <span className='text-muted-foreground text-xs font-medium'>
+          {t('High-speed API route')} · {t('Recommended')}
+        </span>
+        <code className='min-w-0 font-mono text-xs break-all'>
+          {FAST_OPENAI_BASE_URL}
+        </code>
       </div>
 
       <div className='grid gap-2'>

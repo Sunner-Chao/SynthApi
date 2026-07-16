@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -19,6 +20,8 @@ type TopUp struct {
 	DisplayAmount   float64 `json:"display_amount"`
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	ProviderTradeNo string  `json:"provider_trade_no" gorm:"type:varchar(128);index"`
+	Currency        string  `json:"currency" gorm:"type:varchar(8);default:''"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
 	CreateTime      int64   `json:"create_time"`
@@ -33,6 +36,8 @@ const (
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodXPay         = "xpay"
 	PaymentMethodMPay         = "mpay"
+	PaymentMethodAlipay       = "alipay"
+	PaymentMethodWechat       = "wxpay"
 	PaymentMethodBalance      = "balance"
 )
 
@@ -44,13 +49,17 @@ const (
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderXPay         = "xpay"
 	PaymentProviderMPay         = "mpay"
+	PaymentProviderAlipayDirect = "alipay_direct"
 	PaymentProviderBalance      = "balance"
 )
 
 var (
-	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
-	ErrTopUpNotFound         = errors.New("topup not found")
-	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
+	ErrPaymentMethodMismatch   = errors.New("payment method mismatch")
+	ErrPaymentAmountMismatch   = errors.New("payment amount mismatch")
+	ErrProviderTradeMismatch   = errors.New("provider trade number mismatch")
+	ErrTopUpNotFound           = errors.New("topup not found")
+	ErrTopUpStatusInvalid      = errors.New("topup status invalid")
+	errPaymentOrderCASConflict = errors.New("payment order changed concurrently")
 )
 
 func (topUp *TopUp) Insert() error {
@@ -78,7 +87,7 @@ func quotaFromStoredTopUp(topUp *TopUp) int {
 	case PaymentProviderStripe:
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		return int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
-	case PaymentProviderMPay, PaymentProviderXPay:
+	case PaymentProviderMPay, PaymentProviderXPay, PaymentProviderAlipayDirect:
 		return int(topUp.Amount)
 	default:
 		return quotaFromTopUpDisplayAmount(topUp.Amount)
@@ -109,27 +118,38 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
-
-	refCol := "`trade_no`"
-	if common.UsingPostgreSQL {
-		refCol = `"trade_no"`
+	if targetStatus == "" {
+		return errors.New("未提供目标状态")
 	}
 
-	return DB.Transaction(func(tx *gorm.DB) error {
-		topUp := &TopUp{}
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
-			return ErrTopUpNotFound
-		}
-		if expectedPaymentProvider != "" && topUp.PaymentProvider != expectedPaymentProvider {
-			return ErrPaymentMethodMismatch
-		}
-		if topUp.Status != common.TopUpStatusPending {
-			return ErrTopUpStatusInvalid
-		}
+	updates := map[string]interface{}{"status": targetStatus}
+	if targetStatus == common.TopUpStatusExpired || targetStatus == common.TopUpStatusFailed {
+		updates["complete_time"] = common.GetTimestamp()
+	}
+	query := DB.Model(&TopUp{}).
+		Where("trade_no = ? AND status = ?", tradeNo, common.TopUpStatusPending)
+	if expectedPaymentProvider != "" {
+		query = query.Where("payment_provider = ?", expectedPaymentProvider)
+	}
+	result := query.Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 1 {
+		return nil
+	}
 
-		topUp.Status = targetStatus
-		return tx.Save(topUp).Error
-	})
+	current := GetTopUpByTradeNo(tradeNo)
+	if current == nil {
+		return ErrTopUpNotFound
+	}
+	if expectedPaymentProvider != "" && current.PaymentProvider != expectedPaymentProvider {
+		return ErrPaymentMethodMismatch
+	}
+	if current.Status == targetStatus {
+		return nil
+	}
+	return ErrTopUpStatusInvalid
 }
 
 func Recharge(referenceId string, customerId string, callerIp string) (err error) {
@@ -418,6 +438,130 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
 	return nil
 }
+
+// CompleteAlipayDirectTopUp atomically marks an official Alipay order paid and
+// credits the wallet. Repeated notifications are idempotent.
+func CompleteAlipayDirectTopUp(tradeNo string, providerTradeNo string, paidMoney string, callerIp string) error {
+	providerTradeNo = strings.TrimSpace(providerTradeNo)
+	if tradeNo == "" || providerTradeNo == "" {
+		return errors.New("未提供订单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingPostgreSQL {
+		refCol = `"trade_no"`
+	}
+
+	var topUp TopUp
+	var quotaToAdd int
+	completed := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where(refCol+" = ?", tradeNo).First(&topUp).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
+		}
+		if topUp.PaymentProvider != PaymentProviderAlipayDirect {
+			return ErrPaymentMethodMismatch
+		}
+		if !paymentAmountMatches(topUp.Money, paidMoney) {
+			return ErrPaymentAmountMismatch
+		}
+		if topUp.Currency != "CNY" {
+			return errors.New("支付宝订单币种不是 CNY")
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			if topUp.ProviderTradeNo != "" && topUp.ProviderTradeNo != providerTradeNo {
+				return ErrProviderTradeMismatch
+			}
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+
+		quotaToAdd = quotaFromStoredTopUp(&topUp)
+		if quotaToAdd <= 0 {
+			return errors.New("无效的充值额度")
+		}
+
+		completeTime := common.GetTimestamp()
+		result := tx.Model(&TopUp{}).
+			Where("id = ? AND status = ? AND payment_provider = ?", topUp.Id, common.TopUpStatusPending, PaymentProviderAlipayDirect).
+			Updates(map[string]interface{}{
+				"provider_trade_no": providerTradeNo,
+				"payment_method":    PaymentMethodAlipay,
+				"status":            common.TopUpStatusSuccess,
+				"complete_time":     completeTime,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errPaymentOrderCASConflict
+		}
+		userUpdate := tx.Model(&User{}).Where("id = ?", topUp.UserId).
+			Update("quota", gorm.Expr("quota + ?", quotaToAdd))
+		if userUpdate.Error != nil {
+			return userUpdate.Error
+		}
+		if userUpdate.RowsAffected != 1 {
+			return errors.New("充值用户不存在")
+		}
+		if err := ClearWalletLowQuotaNotifyStateIfRecoveredTx(tx, topUp.UserId); err != nil {
+			return err
+		}
+		topUp.PaymentMethod = PaymentMethodAlipay
+		topUp.ProviderTradeNo = providerTradeNo
+		topUp.Status = common.TopUpStatusSuccess
+		topUp.CompleteTime = completeTime
+		completed = true
+		return nil
+	})
+	if errors.Is(err, errPaymentOrderCASConflict) {
+		current := GetTopUpByTradeNo(tradeNo)
+		if current == nil {
+			return ErrTopUpNotFound
+		}
+		if current.PaymentProvider != PaymentProviderAlipayDirect {
+			return ErrPaymentMethodMismatch
+		}
+		if !paymentAmountMatches(current.Money, paidMoney) {
+			return ErrPaymentAmountMismatch
+		}
+		if current.Status == common.TopUpStatusSuccess {
+			if current.ProviderTradeNo != "" && current.ProviderTradeNo != providerTradeNo {
+				return ErrProviderTradeMismatch
+			}
+			return nil
+		}
+		return ErrTopUpStatusInvalid
+	}
+	if err != nil {
+		return err
+	}
+	if !completed {
+		return nil
+	}
+
+	if err := cacheIncrUserQuota(topUp.UserId, int64(quotaToAdd)); err != nil {
+		common.SysLog("failed to increase user quota cache after Alipay topup: " + err.Error())
+	}
+	RecordTopupLog(topUp.UserId,
+		fmt.Sprintf("支付宝官方充值成功，充值金额: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money),
+		callerIp, PaymentMethodAlipay, PaymentProviderAlipayDirect)
+	return nil
+}
+
+func paymentAmountMatches(expected float64, actual string) bool {
+	actualAmount, err := decimal.NewFromString(strings.TrimSpace(actual))
+	if err != nil {
+		return false
+	}
+	return decimal.NewFromFloat(expected).Round(2).Equal(actualAmount)
+}
+
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")

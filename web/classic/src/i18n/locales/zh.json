@@ -2652,6 +2652,7 @@
     "Server Timing：{{timing}}": "Server Timing：{{timing}}",
     "上游尝试 #{{attempt}}": "上游尝试 #{{attempt}}",
     "，": "，",
-    "、": "、"
+    "、": "、",
+    "高速线路推荐": "高速线路推荐"
   }
 }

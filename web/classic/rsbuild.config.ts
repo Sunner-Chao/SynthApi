@@ -10,6 +10,7 @@ const semiUiDir = path.resolve(
   path.dirname(require.resolve('@douyinfe/semi-ui')),
   '../..',
 )
+const semiUiDependenciesDir = path.resolve(semiUiDir, '../..')
 
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
@@ -43,6 +44,9 @@ export default defineConfig(({ envMode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        // date-fns-tz 1.x still imports v2-only subpaths; keep it isolated
+        // from the default workspace's date-fns v4 dependency.
+        'date-fns': path.resolve(semiUiDependenciesDir, 'date-fns'),
         '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
           semiUiDir,
           'dist/css/semi.css',

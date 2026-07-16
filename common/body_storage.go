@@ -280,6 +280,61 @@ func CreateBodyStorageFromReader(reader io.Reader, contentLength int64, maxBytes
 		return storage, nil
 	}
 
+	// Decompressed and chunked requests have no reliable Content-Length. Probe
+	// only up to the memory threshold, then stream the complete body to disk so
+	// large requests never have to be materialized in the heap first.
+	if IsDiskCacheEnabled() && contentLength <= 0 && maxBytes >= 0 {
+		probeLimit := threshold
+		if probeLimit < 1 {
+			probeLimit = 1
+		}
+		if probeLimit > maxBytes {
+			probeLimit = maxBytes
+		}
+
+		probeReader := &io.LimitedReader{R: reader, N: probeLimit + 1}
+		prefix, err := io.ReadAll(probeReader)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(prefix)) > maxBytes {
+			return nil, ErrRequestBodyTooLarge
+		}
+		if probeReader.N > 0 {
+			storage, err := CreateBodyStorage(prefix)
+			if err != nil {
+				return nil, err
+			}
+			if storage.IsDisk() {
+				IncrementDiskCacheHits()
+			} else {
+				IncrementMemoryCacheHits()
+			}
+			return storage, nil
+		}
+
+		if threshold <= maxBytes && int64(len(prefix)) >= threshold && IsDiskCacheAvailable(maxBytes) {
+			storage, err := newDiskStorageFromReader(
+				io.MultiReader(bytes.NewReader(prefix), reader),
+				maxBytes,
+				GetDiskCachePath(),
+			)
+			if err != nil {
+				if IsRequestBodyTooLargeError(err) {
+					return nil, err
+				}
+				return nil, fmt.Errorf("disk storage creation failed: %w", err)
+			}
+			IncrementDiskCacheHits()
+			return storage, nil
+		}
+
+		// The probe reached EOF below the threshold, or disk capacity is not
+		// available. Reassemble the bounded stream and retain the existing
+		// memory fallback behavior.
+		reader = io.MultiReader(bytes.NewReader(prefix), reader)
+	}
+
 	// 使用内存读取
 	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
 	if err != nil {

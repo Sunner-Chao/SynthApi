@@ -988,6 +988,12 @@ func (channel *Channel) ValidateSettings() error {
 	if channelParams.UpstreamRequestGzipMinBytes < 0 {
 		return fmt.Errorf("upstream_request_gzip_min_bytes cannot be negative")
 	}
+	if channelParams.MaxConcurrency < 0 || channelParams.MaxConcurrency > 1000 {
+		return fmt.Errorf("max_concurrency must be between 0 and 1000")
+	}
+	if channelParams.MaxConcurrencyPerUser < 0 || channelParams.MaxConcurrencyPerUser > 1000 {
+		return fmt.Errorf("max_concurrency_per_user must be between 0 and 1000")
+	}
 	if channelParams.UpstreamRequestGzipEnabled != nil &&
 		*channelParams.UpstreamRequestGzipEnabled &&
 		!constant.SupportsUpstreamRequestGzip(channel.Type) {

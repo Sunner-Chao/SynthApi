@@ -40,6 +40,17 @@ export const PAYMENT_TYPES = {
 } as const
 
 /**
+ * Payment gateway providers used when multiple gateways expose the same
+ * payment method type (for example, Alipay Direct and MPay both use alipay).
+ */
+export const PAYMENT_PROVIDERS = {
+  ALIPAY_DIRECT: 'alipay_direct',
+  MPAY: 'mpay',
+  XPAY: 'xpay',
+  WAFFO: 'waffo',
+} as const
+
+/**
  * Default payment type
  */
 export const DEFAULT_PAYMENT_TYPE = PAYMENT_TYPES.ALIPAY

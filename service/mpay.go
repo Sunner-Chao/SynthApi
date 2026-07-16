@@ -73,6 +73,11 @@ func CreateMPayOrder(ctx context.Context, userID int, amount float64, paymentMet
 	if !IsMPayTopUpEnabled() {
 		return nil, errors.New("MPay is not configured")
 	}
+	normalizedAmount, err := NormalizePaymentTopUpAmount(amount)
+	if err != nil {
+		return nil, err
+	}
+	amount = normalizedAmount
 	if amount < GetMPayMinTopup() {
 		return nil, fmt.Errorf("充值数量不能小于 %.2f", GetMPayMinTopup())
 	}

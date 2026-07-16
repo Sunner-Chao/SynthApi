@@ -62,7 +62,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { RiskAcknowledgementDialog } from '@/components/risk-acknowledgement-dialog'
-import { confirmPaymentCompliance } from '../api'
+import { confirmPaymentCompliance, saveAlipayDirectConfig } from '../api'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -158,6 +158,23 @@ const paymentSchema = z.object({
       })
     }
   }),
+  AlipayEnabled: z.boolean(),
+  AlipayAppID: z.string(),
+  AlipaySellerID: z.string(),
+  AlipayPrivateKey: z.string(),
+  AlipayPlatformPublicKey: z.string(),
+  AlipaySandbox: z.boolean(),
+  AlipayNotifyURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  AlipayReturnURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  AlipayMinTopUp: z.coerce.number().min(0.01),
   XPayEnabled: z.boolean(),
   XPayApiBase: z.string().refine((value) => {
     const trimmed = value.trim()
@@ -479,6 +496,15 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: values.CreemWebhookSecret.trim(),
       CreemTestMode: values.CreemTestMode,
       CreemProducts: values.CreemProducts.trim(),
+      AlipayEnabled: values.AlipayEnabled,
+      AlipayAppID: values.AlipayAppID.trim(),
+      AlipaySellerID: values.AlipaySellerID.trim(),
+      AlipayPrivateKey: values.AlipayPrivateKey.trim(),
+      AlipayPlatformPublicKey: values.AlipayPlatformPublicKey.trim(),
+      AlipaySandbox: values.AlipaySandbox,
+      AlipayNotifyURL: removeTrailingSlash(values.AlipayNotifyURL.trim()),
+      AlipayReturnURL: removeTrailingSlash(values.AlipayReturnURL.trim()),
+      AlipayMinTopUp: values.AlipayMinTopUp,
       XPayEnabled: values.XPayEnabled,
       XPayApiBase: removeTrailingSlash(values.XPayApiBase.trim()),
       XPayAppID: values.XPayAppID.trim(),
@@ -545,6 +571,16 @@ export function PaymentSettingsSection({
       CreemWebhookSecret: initialRef.current.CreemWebhookSecret.trim(),
       CreemTestMode: initialRef.current.CreemTestMode,
       CreemProducts: initialRef.current.CreemProducts.trim(),
+      AlipayEnabled: initialRef.current.AlipayEnabled,
+      AlipayAppID: initialRef.current.AlipayAppID.trim(),
+      AlipaySellerID: initialRef.current.AlipaySellerID.trim(),
+      AlipayPrivateKey: initialRef.current.AlipayPrivateKey.trim(),
+      AlipayPlatformPublicKey:
+        initialRef.current.AlipayPlatformPublicKey.trim(),
+      AlipaySandbox: initialRef.current.AlipaySandbox,
+      AlipayNotifyURL: removeTrailingSlash(initialRef.current.AlipayNotifyURL),
+      AlipayReturnURL: removeTrailingSlash(initialRef.current.AlipayReturnURL),
+      AlipayMinTopUp: initialRef.current.AlipayMinTopUp,
       XPayEnabled: initialRef.current.XPayEnabled,
       XPayApiBase: removeTrailingSlash(initialRef.current.XPayApiBase),
       XPayAppID: initialRef.current.XPayAppID.trim(),
@@ -877,6 +913,17 @@ export function PaymentSettingsSection({
       updates.push({ key: 'WaffoPayMethods', value: sanitized.WaffoPayMethods })
     }
 
+    const hasAlipayChanges =
+      sanitized.AlipayEnabled !== initial.AlipayEnabled ||
+      sanitized.AlipayAppID !== initial.AlipayAppID ||
+      sanitized.AlipaySellerID !== initial.AlipaySellerID ||
+      sanitized.AlipayPrivateKey.length > 0 ||
+      sanitized.AlipayPlatformPublicKey.length > 0 ||
+      sanitized.AlipaySandbox !== initial.AlipaySandbox ||
+      sanitized.AlipayNotifyURL !== initial.AlipayNotifyURL ||
+      sanitized.AlipayReturnURL !== initial.AlipayReturnURL ||
+      sanitized.AlipayMinTopUp !== initial.AlipayMinTopUp
+
     const hasWaffoPancakeChanges =
       sanitized.WaffoPancakeMerchantID !== initial.WaffoPancakeMerchantID ||
       sanitized.WaffoPancakePrivateKey.length > 0 ||
@@ -884,43 +931,58 @@ export function PaymentSettingsSection({
       waffoPancakeSelection.storeID !== waffoPancakeSavedBinding.storeID ||
       waffoPancakeSelection.productID !== waffoPancakeSavedBinding.productID
 
-    if (updates.length === 0 && !hasWaffoPancakeChanges) {
+    if (updates.length === 0 && !hasAlipayChanges && !hasWaffoPancakeChanges) {
       toast.info(t('No changes to save'))
       return
     }
 
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
-    }
-
-    if (!hasWaffoPancakeChanges) {
-      return
-    }
-
-    if (!sanitized.WaffoPancakeMerchantID) {
-      toast.error(t('Merchant ID is required'))
-      return
-    }
-
-    if (!waffoPancakeSelection.storeID || !waffoPancakeSelection.productID) {
-      toast.error(t('Pick or create both a store and a product before saving.'))
-      return
+    if (hasWaffoPancakeChanges) {
+      if (!sanitized.WaffoPancakeMerchantID) {
+        toast.error(t('Merchant ID is required'))
+        return
+      }
+      if (!waffoPancakeSelection.storeID || !waffoPancakeSelection.productID) {
+        toast.error(
+          t('Pick or create both a store and a product before saving.')
+        )
+        return
+      }
     }
 
     try {
-      const body = await saveWaffoPancakeConfig({
-        merchantID: sanitized.WaffoPancakeMerchantID,
-        privateKey: sanitized.WaffoPancakePrivateKey,
-        returnURL: sanitized.WaffoPancakeReturnURL,
-        storeID: waffoPancakeSelection.storeID,
-        productID: waffoPancakeSelection.productID,
-      })
+      for (const update of updates) {
+        const result = await updateOption.mutateAsync(update)
+        if (!result.success) return
+      }
+    } catch {
+      // useUpdateOption already reports transport failures.
+      return
+    }
 
-      if (
-        body?.message === 'success' &&
-        typeof body.data === 'object' &&
-        body.data
-      ) {
+    if (hasWaffoPancakeChanges) {
+      try {
+        const body = await saveWaffoPancakeConfig({
+          merchantID: sanitized.WaffoPancakeMerchantID,
+          privateKey: sanitized.WaffoPancakePrivateKey,
+          returnURL: sanitized.WaffoPancakeReturnURL,
+          storeID: waffoPancakeSelection.storeID,
+          productID: waffoPancakeSelection.productID,
+        })
+
+        if (
+          body?.message !== 'success' ||
+          typeof body.data !== 'object' ||
+          !body.data
+        ) {
+          const reason = typeof body?.data === 'string' ? body.data : undefined
+          toast.error(
+            reason
+              ? `${t('Waffo Pancake save failed')}: ${reason}`
+              : t('Waffo Pancake save failed')
+          )
+          return
+        }
+
         const saved = body.data as { product_id: string; store_id: string }
         const savedBinding = {
           storeID: saved.store_id,
@@ -930,21 +992,40 @@ export function PaymentSettingsSection({
         setWaffoPancakeSelection(savedBinding)
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
         toast.success(t('Waffo Pancake settings saved'))
+      } catch (error) {
+        toast.error(
+          `${t('Waffo Pancake save failed')}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        )
         return
       }
+    }
 
-      const reason = typeof body?.data === 'string' ? body.data : undefined
-      toast.error(
-        reason
-          ? `${t('Waffo Pancake save failed')}: ${reason}`
-          : t('Waffo Pancake save failed')
-      )
-    } catch (error) {
-      toast.error(
-        `${t('Waffo Pancake save failed')}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
+    if (hasAlipayChanges) {
+      try {
+        const result = await saveAlipayDirectConfig({
+          enabled: sanitized.AlipayEnabled,
+          app_id: sanitized.AlipayAppID,
+          seller_id: sanitized.AlipaySellerID,
+          private_key: sanitized.AlipayPrivateKey,
+          platform_public_key: sanitized.AlipayPlatformPublicKey,
+          sandbox: sanitized.AlipaySandbox,
+          notify_url: sanitized.AlipayNotifyURL,
+          return_url: sanitized.AlipayReturnURL,
+          min_topup: sanitized.AlipayMinTopUp,
+        })
+        if (!result.success) {
+          toast.error(result.message || t('Failed to update setting'))
+          return
+        }
+        queryClient.invalidateQueries({ queryKey: ['system-options'] })
+        toast.success(t('Setting updated successfully'))
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : t('Failed to update setting')
+        )
+      }
     }
   }
 
@@ -1277,6 +1358,242 @@ export function PaymentSettingsSection({
                       {t('Discount map by recharge amount (JSON object)')}
                     </FormDescription>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Gateway Card: Official Alipay */}
+          <div className='bg-card rounded-lg border p-5'>
+            <div className='mb-4 flex items-center justify-between gap-3'>
+              <div className='flex min-w-0 items-center gap-3'>
+                <div className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg'>
+                  <Wallet aria-hidden='true' className='size-5' />
+                </div>
+                <div className='min-w-0'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <h3 className='text-lg font-semibold'>
+                      {t('Official Alipay AI Payment')}
+                    </h3>
+                    <Badge variant='secondary'>{t('Recommended')}</Badge>
+                    {form.watch('AlipaySandbox') && (
+                      <Badge variant='outline'>{t('Sandbox')}</Badge>
+                    )}
+                  </div>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Official RSA2 callbacks with active order reconciliation'
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                aria-label={t('Enable official Alipay payments')}
+                checked={form.watch('AlipayEnabled')}
+                onCheckedChange={(checked) =>
+                  setPaymentValue('AlipayEnabled', checked)
+                }
+              />
+            </div>
+
+            <Alert className='mb-5'>
+              <Globe aria-hidden='true' />
+              <AlertTitle>{t('Alipay AI web payment onboarding')}</AlertTitle>
+              <AlertDescription>
+                {t(
+                  'Complete the official onboarding and signing process before enabling this gateway.'
+                )}{' '}
+                <a
+                  className='font-medium underline underline-offset-4'
+                  href='https://aipay.alipay.com/products/ai-web-app'
+                  target='_blank'
+                  rel='noreferrer'
+                >
+                  {t('Open official onboarding')}
+                </a>
+              </AlertDescription>
+            </Alert>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='AlipayAppID'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Alipay App ID')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        autoComplete='off'
+                        placeholder='2024xxxxxxxxxxxx'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='AlipaySellerID'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Alipay Seller ID')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        autoComplete='off'
+                        placeholder='2088xxxxxxxxxxxx'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'The 2088 account ID shown in Alipay merchant settings'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='AlipayPrivateKey'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Alipay application private key')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        autoComplete='new-password'
+                        spellCheck={false}
+                        placeholder={t('Enter new key to update')}
+                        className='min-h-32 resize-y font-mono'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank unless rotating the key')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='AlipayPlatformPublicKey'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Alipay platform public key')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        autoComplete='new-password'
+                        spellCheck={false}
+                        placeholder={t('Enter new key to update')}
+                        className='min-h-32 resize-y font-mono'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Used to verify official payment notifications')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='AlipayNotifyURL'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Alipay notify URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='https://api.example.com/api/alipay/notify'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank to use the default callback URL')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='AlipayReturnURL'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Alipay return URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='https://api.example.com/console/topup'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave blank to return to the wallet page')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='AlipayMinTopUp'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Alipay minimum top-up')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0.01}
+                        step={0.01}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='AlipaySandbox'
+                render={({ field }) => (
+                  <FormItem className='flex min-h-20 items-center justify-between gap-4 rounded-lg border p-4'>
+                    <div className='flex flex-col gap-1'>
+                      <FormLabel>{t('Alipay sandbox')}</FormLabel>
+                      <FormDescription>
+                        {t('Use the official sandbox gateway for testing')}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        aria-label={t('Alipay sandbox')}
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
                   </FormItem>
                 )}
               />

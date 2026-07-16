@@ -1,5 +1,37 @@
 # AGENTS.md — Project Conventions for new-api
 
+## CRITICAL: Live Production Host
+
+This checkout is on the live 1.6 GiB production server. By default, never run
+frontend builds, TypeScript project checks, Go builds, dependency installation,
+or any other compiler/bundler in this checkout. A one-turn exception requires
+the user's explicit production-build authorization. An authorized build must
+use the resource limits specified by the user and retain a hard cgroup boundary
+so the compiler cannot consume resources without an upper bound.
+
+Use only lightweight source inspection and targeted static checks here. Build
+artifacts on CI or the separate Shanghai build server, then transfer the final
+artifact to this host. Preserving API traffic and SSH access takes precedence
+over completing a locally authorized build.
+
+### Shanghai Build Workflow
+
+- The production checkout at `/home/ubuntu/demo/SynthApi` is the source of
+  truth. The Shanghai checkout is `synthapi-shanghai-build:/home/ubuntu/demo/SynthApi`.
+- Run `scripts/remote-build-shanghai.sh sync` to mirror source code. It keeps
+  Shanghai's `.git`, dependencies, frontend `dist`, environment files,
+  databases, logs, uploads, and existing binaries out of the transfer, and
+  stores overwritten Shanghai files in a timestamped backup directory.
+- Use Shanghai's `git_shell_linux/git-quick-status.sh` before and after source
+  synchronization. Its GitHub push/pull scripts operate only on committed Git
+  history and must not be used as a substitute for syncing uncommitted source.
+- Run `scripts/remote-build-shanghai.sh build` for both frontend builds and the
+  Go build. Run `scripts/remote-build-shanghai.sh all` to sync, build, compress,
+  download, and verify a complete candidate artifact.
+- Never compile frontend or backend code on the production host. A downloaded
+  candidate must still be backed up, atomically installed, restarted, and
+  health-checked as a separate production deployment step.
+
 ## Overview
 
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.

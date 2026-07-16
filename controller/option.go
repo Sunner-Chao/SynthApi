@@ -137,6 +137,10 @@ func UpdateOption(c *gin.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
+	if setting.IsAlipayDirectOptionKey(option.Key) {
+		common.ApiErrorMsg(c, "支付宝官方支付配置必须通过专用保存接口修改")
+		return
+	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {

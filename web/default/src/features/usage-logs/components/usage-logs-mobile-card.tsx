@@ -34,9 +34,11 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { dotColorMap, textColorMap, type StatusVariant } from '@/components/status-badge'
-import type { LogCategory } from '../types'
+import type { LogCategory, UsageLog } from '../types'
 import { LOG_TYPE_ENUM } from '../constants'
-import { getLogTypeConfig } from '../lib/utils'
+import { parseLogOther } from '../lib/format'
+import { getLogTypeConfig, isTimingLogType } from '../lib/utils'
+import { ApiLineBadge } from './api-line-badge'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]: 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/30',
@@ -183,9 +185,8 @@ function CommonLogsCard<TData>({
 
   const modelCell = cells.get('model_name')
   const quotaCell = cells.get('quota')
-  const rowData = cells.get('created_at')?.row.original as
-    | Record<string, unknown>
-    | undefined
+  const rowData = cells.get('created_at')?.row.original as UsageLog | undefined
+  const other = rowData ? parseLogOther(rowData.other) : null
 
   return (
     <div className='space-y-2.5'>
@@ -206,6 +207,13 @@ function CommonLogsCard<TData>({
             createdAt={rowData?.created_at}
             type={rowData?.type}
           />
+          {rowData && isTimingLogType(rowData.type) && (
+            <ApiLineBadge
+              line={other?.ingress_line}
+              host={other?.ingress_host}
+              className='mt-1'
+            />
+          )}
         </div>
         <SummaryField
           label={t('Channel')}

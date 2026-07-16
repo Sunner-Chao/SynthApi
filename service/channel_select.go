@@ -71,7 +71,9 @@ func (p *RetryParam) ResetRetryNextTry() {
 func NextSmartFailoverGroup(c *gin.Context, baseGroup string, modelName string) (string, bool) {
 	baseGroup = strings.TrimSpace(baseGroup)
 	modelName = strings.TrimSpace(modelName)
-	if c == nil || baseGroup == "" || modelName == "" || baseGroup == "auto" {
+	if c == nil || common.RetryTimes <= 0 ||
+		!common.GetContextKeyBool(c, constant.ContextKeyTokenCrossGroupRetry) ||
+		baseGroup == "" || modelName == "" || baseGroup == "auto" {
 		return "", false
 	}
 	if _, isSmartGroup := setting.GetSmartGroupSources(baseGroup); isSmartGroup {
@@ -118,7 +120,6 @@ func buildSmartFailoverGroups(c *gin.Context, baseGroup string, modelName string
 		return nil
 	}
 	maxRatio := baseRatio * (1 + smartFailoverMaxPriceIncreaseRate)
-	excludeIDs := ImportedAccountExcludedChannelIDs(c)
 
 	type candidate struct {
 		group string
@@ -143,7 +144,7 @@ func buildSmartFailoverGroups(c *gin.Context, baseGroup string, modelName string
 		if ratio <= 0 || ratio > maxRatio {
 			continue
 		}
-		channel, err := model.GetRandomSatisfiedChannelExcluding(group, modelName, 0, excludeIDs)
+		channel, err := selectRequestChannel(c, group, modelName, 0)
 		if err != nil || channel == nil {
 			continue
 		}
@@ -218,7 +219,6 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	smartGroups, isSmartGroup := setting.GetSmartGroupSources(param.TokenGroup)
-	excludeIDs := ImportedAccountExcludedChannelIDs(param.Ctx)
 
 	if param.TokenGroup == "auto" || isSmartGroup {
 		if param.TokenGroup == "auto" && len(setting.GetAutoGroups()) == 0 {
@@ -236,7 +236,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		// startGroupIndex: the group index to start searching from
 		// startGroupIndex: 开始搜索的分组索引
 		startGroupIndex := 0
-		crossGroupRetry := isSmartGroup || common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
+		crossGroupRetry := common.RetryTimes > 0 && common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
 
 		if lastGroupIndex, exists := common.GetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex); exists {
 			if idx, ok := lastGroupIndex.(int); ok {
@@ -256,7 +256,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannelExcluding(autoGroup, param.ModelName, priorityRetry, excludeIDs)
+			channel, _ = selectRequestChannel(param.Ctx, autoGroup, param.ModelName, priorityRetry)
 			if ShouldSkipChannelForImportedAccountFailover(param.Ctx, channel) {
 				MarkImportedAccountChannelExcluded(param.Ctx, channel.Id)
 				if param.skipDepth > 100 {
@@ -270,6 +270,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 				return CacheGetRandomSatisfiedChannel(param)
 			}
 			if channel == nil {
+				if param.GetRetry() > 0 && !crossGroupRetry {
+					break
+				}
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
 				logger.LogDebug(param.Ctx, "No available channel in group %s for model %s at priorityRetry %d, trying next group", autoGroup, param.ModelName, priorityRetry)
@@ -306,7 +309,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannelExcluding(param.TokenGroup, param.ModelName, param.GetRetry(), excludeIDs)
+		channel, err = selectRequestChannel(param.Ctx, param.TokenGroup, param.ModelName, param.GetRetry())
 		if err == nil && ShouldSkipChannelForImportedAccountFailover(param.Ctx, channel) {
 			MarkImportedAccountChannelExcluded(param.Ctx, channel.Id)
 			if param.skipDepth > 100 {
@@ -322,6 +325,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
+	}
+	if channel == nil && HasChannelCapacityExclusions(param.Ctx) {
+		return nil, selectGroup, ErrAllChannelsAtCapacity
 	}
 	return channel, selectGroup, nil
 }

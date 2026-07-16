@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import type {
+  AlipayDirectConfigRequest,
   ConfirmPaymentComplianceResponse,
   DeleteLogsResponse,
   FetchUpstreamRatiosRequest,
@@ -42,6 +43,17 @@ export async function confirmPaymentCompliance() {
   const res = await api.post<ConfirmPaymentComplianceResponse>(
     '/api/option/payment_compliance',
     { confirmed: true }
+  )
+  return res.data
+}
+
+export async function saveAlipayDirectConfig(
+  request: AlipayDirectConfigRequest
+) {
+  const res = await api.post<UpdateOptionResponse>(
+    '/api/option/alipay-direct/save',
+    request,
+    { skipBusinessError: true } as Record<string, unknown>
   )
   return res.data
 }

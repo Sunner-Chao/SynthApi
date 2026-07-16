@@ -80,6 +80,9 @@ export type Channel = z.infer<typeof channelSchema>
 // ============================================================================
 
 export interface ChannelSettings {
+  max_concurrency?: number
+  max_concurrency_per_user?: number
+  large_request_eligible?: boolean
   force_format?: boolean
   thinking_to_content?: boolean
   proxy?: string

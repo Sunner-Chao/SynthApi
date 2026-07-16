@@ -70,6 +70,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import type { LogOtherData, RelayTrace, UsageLog } from '../../types'
+import { ApiLineBadge } from '../api-line-badge'
 
 function timingTextColorClass(
   variant: 'success' | 'warning' | 'danger'
@@ -1094,7 +1095,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         )}
       >
         <DialogHeader className='max-sm:gap-1'>
-          <DialogTitle className='flex items-center gap-2 text-base'>
+          <DialogTitle className='flex flex-wrap items-center gap-2 text-base'>
             {t('Log Details')}
             <StatusBadge
               label={t(typeConfig.label)}
@@ -1102,6 +1103,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
               size='sm'
               copyable={false}
             />
+            {showTiming && (
+              <ApiLineBadge
+                line={other?.ingress_line}
+                host={other?.ingress_host}
+              />
+            )}
           </DialogTitle>
           <DialogDescription className='sr-only'>
             {t('View the complete details for this log entry')}

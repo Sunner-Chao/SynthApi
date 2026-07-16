@@ -31,6 +31,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/about", controller.GetAbout)
 		//apiRouter.GET("/midjourney", controller.GetMidjourney)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
+		apiRouter.GET("/business-preview", middleware.DisableCache(), controller.GetPublicBusinessPreview)
 		apiRouter.GET("/pricing", middleware.HeaderNavModuleAuth("pricing"), controller.GetPricing)
 		perfMetricsRoute := apiRouter.Group("/perf-metrics")
 		perfMetricsRoute.Use(middleware.HeaderNavModulePublicOrUserAuth("pricing"))
@@ -60,6 +61,8 @@ func SetApiRouter(router *gin.Engine) {
 		// :env separates test vs prod URLs so the operator can register each
 		// in Pancake's matching webhook slot; handler enforces env match.
 		apiRouter.POST("/waffo-pancake/webhook/:env", controller.WaffoPancakeWebhook)
+		apiRouter.POST("/alipay/notify", controller.AlipayDirectNotify)
+		apiRouter.GET("/alipay/return", controller.AlipayDirectReturn)
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
@@ -101,6 +104,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/qrcode/pay", middleware.CriticalRateLimit(), controller.RequestQRCodePayment)
 				selfRoute.POST("/xpay/create", middleware.CriticalRateLimit(), controller.XPayCreateOrder)
 				selfRoute.POST("/mpay/create", middleware.CriticalRateLimit(), controller.MPayCreateOrder)
+				selfRoute.POST("/alipay/pay", middleware.CriticalRateLimit(), controller.RequestAlipayDirectPay)
+				selfRoute.GET("/alipay/status/:trade_no", middleware.CriticalRateLimit(), controller.AlipayDirectOrderStatus)
 				selfRoute.GET("/xpay/status/:trade_no", controller.XPayOrderStatus)
 				selfRoute.GET("/xpay/orders", controller.XPayUserOrders)
 				selfRoute.POST("/amount", controller.RequestAmount)
@@ -165,6 +170,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/self/delete", middleware.CriticalRateLimit(), controller.DeleteSubscriptionSelf)
 			subscriptionRoute.POST("/balance/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestBalancePay)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
+			subscriptionRoute.POST("/alipay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestAlipayDirectPay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
 			subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWaffoPancakePay)
@@ -184,6 +190,11 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+		}
+		paymentRefundReviewRoute := apiRouter.Group("/payment/refund-reviews")
+		paymentRefundReviewRoute.Use(middleware.AdminAuth())
+		{
+			paymentRefundReviewRoute.GET("", controller.AdminListPaymentRefundReviews)
 		}
 
 		// XPay callback and notification (no auth)
@@ -205,6 +216,7 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
 			optionRoute.POST("/payment_compliance", controller.ConfirmPaymentCompliance)
+			optionRoute.POST("/alipay-direct/save", controller.SaveAlipayDirectConfig)
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
 			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)

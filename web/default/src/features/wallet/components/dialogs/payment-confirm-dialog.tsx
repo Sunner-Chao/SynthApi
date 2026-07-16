@@ -29,9 +29,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { formatCurrency, getPaymentIcon } from '../../lib'
+import { DEFAULT_DISCOUNT_RATE, PAYMENT_PROVIDERS } from '../../constants'
+import {
+  formatCurrency,
+  getPaymentIcon,
+  getPaymentMethodDisplayName,
+  isAlipayDirectPayment,
+} from '../../lib'
 import type { PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
@@ -69,6 +75,12 @@ export function PaymentConfirmDialog({
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const isDirect = isAlipayDirectPayment(paymentMethod)
+  const isRecommended = isDirect || paymentMethod?.recommended
+  const isBackup = paymentMethod?.provider === PAYMENT_PROVIDERS.XPAY
+  const paymentMethodName = paymentMethod
+    ? getPaymentMethodDisplayName(paymentMethod, t)
+    : ''
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -134,18 +146,32 @@ export function PaymentConfirmDialog({
           )}
 
           <div className='border-t pt-4'>
-            <div className='flex items-center justify-between'>
-              <span className='text-muted-foreground text-sm'>
+            <div className='flex items-center justify-between gap-3'>
+              <span className='text-muted-foreground shrink-0 text-sm'>
                 {t('Payment Method')}
               </span>
-              <div className='flex items-center gap-2'>
-                {getPaymentIcon(
-                  paymentMethod?.type,
-                  'h-4 w-4',
-                  paymentMethod?.icon,
-                  paymentMethod?.name
+              <div className='flex min-w-0 flex-1 flex-col items-end gap-0.5'>
+                <div className='flex min-w-0 items-center justify-end gap-2'>
+                  {getPaymentIcon(
+                    paymentMethod?.type,
+                    'h-4 w-4',
+                    paymentMethod?.icon,
+                    paymentMethodName
+                  )}
+                  <span className='truncate font-medium'>
+                    {paymentMethodName}
+                  </span>
+                  {isRecommended && (
+                    <Badge variant='secondary'>{t('Recommended')}</Badge>
+                  )}
+                </div>
+                {(isDirect || isBackup) && (
+                  <span className='text-muted-foreground max-w-56 text-right text-xs leading-4'>
+                    {isDirect
+                      ? t('Official direct payment, more stable')
+                      : t('Backup payment method')}
+                  </span>
                 )}
-                <span className='font-medium'>{paymentMethod?.name}</span>
               </div>
             </div>
           </div>
@@ -155,7 +181,15 @@ export function PaymentConfirmDialog({
           <AlertDialogCancel disabled={processing}>
             {t('Cancel')}
           </AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={processing}>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={
+              processing ||
+              calculating ||
+              !Number.isFinite(paymentAmount) ||
+              paymentAmount <= 0
+            }
+          >
             {processing && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {t('Confirm Payment')}
           </AlertDialogAction>

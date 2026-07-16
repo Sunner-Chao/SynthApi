@@ -77,6 +77,7 @@ import type {
   PlanRecord,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
+import { PAYMENT_PROVIDERS, PAYMENT_TYPES } from '../constants'
 import type { PaymentMethod, TopupInfo } from '../types'
 
 interface SubscriptionPlansCardProps {
@@ -99,7 +100,13 @@ function isUnlimitedSubscriptionGroup(group?: string | null): boolean {
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
   return payMethods.filter(
     (m) =>
-      m?.type && m.type !== 'stripe' && m.type !== 'creem' && m.type !== 'xpay'
+      m?.type &&
+      m.type !== PAYMENT_TYPES.STRIPE &&
+      m.type !== PAYMENT_TYPES.CREEM &&
+      m.type !== PAYMENT_TYPES.XPAY &&
+      m.provider !== PAYMENT_PROVIDERS.ALIPAY_DIRECT &&
+      m.provider !== PAYMENT_PROVIDERS.MPAY &&
+      m.provider !== PAYMENT_PROVIDERS.XPAY
   )
 }
 
@@ -155,6 +162,23 @@ export function SubscriptionPlansCard({
   const enableCreem = !!topupInfo?.enable_creem_topup
   const enableWaffoPancake = !!topupInfo?.enable_waffo_pancake_topup
   const enableOnlineTopUp = !!topupInfo?.enable_online_topup
+  const alipayDirectMethod = useMemo<PaymentMethod | undefined>(() => {
+    const configured = topupInfo?.pay_methods?.find(
+      (method) => method.provider === PAYMENT_PROVIDERS.ALIPAY_DIRECT
+    )
+    if (configured) {
+      return { ...configured, name: t('Alipay (Official)') }
+    }
+    if (!topupInfo?.enable_alipay_direct_topup) return undefined
+
+    return {
+      type: PAYMENT_TYPES.ALIPAY,
+      provider: PAYMENT_PROVIDERS.ALIPAY_DIRECT,
+      name: t('Alipay (Official)'),
+      min_topup: topupInfo.alipay_direct_min_topup,
+      recommended: true,
+    }
+  }, [t, topupInfo])
   const epayMethods = useMemo(
     () => getEpayMethods(topupInfo?.pay_methods),
     [topupInfo?.pay_methods]
@@ -878,6 +902,7 @@ export function SubscriptionPlansCard({
         enableWaffoPancake={enableWaffoPancake}
         enableOnlineTopUp={enableOnlineTopUp}
         epayMethods={epayMethods}
+        alipayDirectMethod={alipayDirectMethod}
         userQuota={userQuota}
         onPurchaseSuccess={refreshUserAccessState}
         purchaseLimit={
