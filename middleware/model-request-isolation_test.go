@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -14,6 +16,177 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPromptCacheKeyLimiterSerializesSameKey(t *testing.T) {
+	limiter := promptCacheKeyLimiter{}
+	firstRelease, err := limiter.acquire(context.Background(), "same-key", 1)
+	require.NoError(t, err)
+
+	secondAcquired := make(chan func(), 1)
+	go func() {
+		release, acquireErr := limiter.acquire(context.Background(), "same-key", 1)
+		if acquireErr == nil {
+			secondAcquired <- release
+		}
+	}()
+
+	select {
+	case <-secondAcquired:
+		t.Fatal("same prompt cache key must wait for the active request")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	differentRelease, err := limiter.acquire(context.Background(), "different-key", 1)
+	require.NoError(t, err)
+	differentRelease()
+
+	firstRelease()
+	select {
+	case secondRelease := <-secondAcquired:
+		secondRelease()
+	case <-time.After(time.Second):
+		t.Fatal("queued prompt cache key request was not released")
+	}
+
+	limiter.mu.Lock()
+	require.Empty(t, limiter.entries)
+	limiter.mu.Unlock()
+}
+
+func TestPromptCacheKeyLimiterCleansCanceledWaiter(t *testing.T) {
+	limiter := promptCacheKeyLimiter{}
+	firstRelease, err := limiter.acquire(context.Background(), "same-key", 1)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	release, err := limiter.acquire(ctx, "same-key", 1)
+	require.Nil(t, release)
+	require.ErrorIs(t, err, context.Canceled)
+
+	firstRelease()
+	limiter.mu.Lock()
+	require.Empty(t, limiter.entries)
+	limiter.mu.Unlock()
+}
+
+func TestPromptCacheConcurrencyKeyIsolatesUsers(t *testing.T) {
+	require.Equal(t,
+		promptCacheConcurrencyKey(20, "session-1"),
+		promptCacheConcurrencyKey(20, "session-1"),
+	)
+	require.NotEqual(t,
+		promptCacheConcurrencyKey(20, "session-1"),
+		promptCacheConcurrencyKey(21, "session-1"),
+	)
+}
+
+func TestPromptCacheKeyConcurrencyMiddlewareQueuesWithout429(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldLimit := common.ModelRequestMaxConcurrencyPerPromptCacheKey
+	oldExemptUserIDs := common.ModelRequestConcurrencyExemptUserIDs
+	common.ModelRequestMaxConcurrencyPerPromptCacheKey = 1
+	common.ModelRequestConcurrencyExemptUserIDs = nil
+	promptCacheActiveLimiter = promptCacheKeyLimiter{}
+	t.Cleanup(func() {
+		common.ModelRequestMaxConcurrencyPerPromptCacheKey = oldLimit
+		common.ModelRequestConcurrencyExemptUserIDs = oldExemptUserIDs
+		promptCacheActiveLimiter = promptCacheKeyLimiter{}
+	})
+
+	entered := make(chan struct{}, 2)
+	releaseHandlers := make(chan struct{})
+	router := gin.New()
+	router.Use(BodyStorageCleanup())
+	router.Use(func(c *gin.Context) {
+		c.Set("id", 20)
+		c.Next()
+	})
+	router.Use(ModelTextRequestBodyGuard())
+	router.Use(PromptCacheKeyConcurrencyLimit())
+	router.POST("/v1/responses", func(c *gin.Context) {
+		entered <- struct{}{}
+		<-releaseHandlers
+		c.Status(http.StatusOK)
+	})
+
+	requestBody := `{"model":"gpt-5.6-sol","prompt_cache_key":"session-1","input":"hello"}`
+	responses := make(chan int, 2)
+	sendRequest := func() {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		responses <- recorder.Code
+	}
+
+	go sendRequest()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first request did not enter handler")
+	}
+
+	go sendRequest()
+	select {
+	case <-entered:
+		t.Fatal("second request with the same key bypassed the queue")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseHandlers)
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second request did not enter after the first completed")
+	}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case status := <-responses:
+			require.Equal(t, http.StatusOK, status)
+		case <-time.After(time.Second):
+			t.Fatal("request did not complete")
+		}
+	}
+}
+
+func TestPromptCacheKeyConcurrencyMiddlewareUsesSessionHeaderWithoutReadingBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldLimit := common.ModelRequestMaxConcurrencyPerPromptCacheKey
+	oldExemptUserIDs := common.ModelRequestConcurrencyExemptUserIDs
+	common.ModelRequestMaxConcurrencyPerPromptCacheKey = 1
+	common.ModelRequestConcurrencyExemptUserIDs = nil
+	promptCacheActiveLimiter = promptCacheKeyLimiter{}
+	t.Cleanup(func() {
+		common.ModelRequestMaxConcurrencyPerPromptCacheKey = oldLimit
+		common.ModelRequestConcurrencyExemptUserIDs = oldExemptUserIDs
+		promptCacheActiveLimiter = promptCacheKeyLimiter{}
+	})
+
+	bodyRead := false
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("id", 20)
+		c.Next()
+	})
+	router.Use(PromptCacheKeyConcurrencyLimit())
+	router.POST("/v1/responses", func(c *gin.Context) {
+		require.False(t, bodyRead)
+		_, _ = io.ReadAll(c.Request.Body)
+		bodyRead = true
+		c.Status(http.StatusOK)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Session_id", "session-from-header")
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, bodyRead)
+}
 
 func TestActiveModelRequestLimiterEnforcesUserAndTokenLimits(t *testing.T) {
 	limiter := activeModelRequestLimiter{}

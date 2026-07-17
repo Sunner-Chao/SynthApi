@@ -63,6 +63,16 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'long_context_optimization.enabled': false,
+  'long_context_optimization.server_side_compaction_enabled': true,
+  'long_context_optimization.compact_threshold_tokens': 50000,
+  'long_context_optimization.override_existing_compaction': false,
+  'long_context_optimization.reasoning_downgrade_enabled': false,
+  'long_context_optimization.reasoning_threshold_tokens': 150000,
+  'long_context_optimization.reasoning_target_effort': 'high',
+  'long_context_optimization.apply_to_user_ids': '',
+  'long_context_optimization.apply_to_token_ids': '',
+  'long_context_optimization.apply_to_groups': '',
 }
 
 export function OperationsSettings() {

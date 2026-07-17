@@ -1,17 +1,23 @@
 package service
 
-import "sync"
+import (
+	"context"
+	"sync"
+	"time"
+)
 
 type channelActiveUserTracker struct {
 	mu              sync.RWMutex
 	usersByChannel  map[int]map[int]int
 	activeByChannel map[int]int
+	changed         chan struct{}
 }
 
 func newChannelActiveUserTracker() *channelActiveUserTracker {
 	return &channelActiveUserTracker{
 		usersByChannel:  make(map[int]map[int]int),
 		activeByChannel: make(map[int]int),
+		changed:         make(chan struct{}),
 	}
 }
 
@@ -38,8 +44,23 @@ func TryBeginChannelActiveUse(channelID int, userID int, totalLimit int, perUser
 	return activeChannelUsers.beginWithLimit(channelID, userID, totalLimit, perUserLimit)
 }
 
+func TryBeginChannelActiveUseWaiting(ctx context.Context, channelID int, userID int, totalLimit int, perUserLimit int, maxWait time.Duration) (func(), ChannelCapacitySnapshot, time.Duration) {
+	return activeChannelUsers.beginWithLimitWaiting(ctx, channelID, userID, totalLimit, perUserLimit, maxWait)
+}
+
+func WaitForChannelCapacityChange(ctx context.Context, maxWait time.Duration) bool {
+	if maxWait > 100*time.Millisecond {
+		maxWait = 100 * time.Millisecond
+	}
+	return activeChannelUsers.waitForChange(ctx, maxWait)
+}
+
 func GetChannelActiveUserCounts(channelIDs []int) map[int]int {
 	return activeChannelUsers.counts(channelIDs)
+}
+
+func GetChannelActiveRequestCounts() map[int]int {
+	return activeChannelUsers.requestCounts()
 }
 
 func GetChannelActiveUserIDs(channelIDs []int) map[int][]int {
@@ -103,6 +124,78 @@ func (t *channelActiveUserTracker) beginWithLimit(channelID int, userID int, tot
 	}, capacity
 }
 
+func (t *channelActiveUserTracker) beginWithLimitWaiting(ctx context.Context, channelID int, userID int, totalLimit int, perUserLimit int, maxWait time.Duration) (func(), ChannelCapacitySnapshot, time.Duration) {
+	if maxWait <= 0 || channelID <= 0 || userID <= 0 {
+		release, capacity := t.beginWithLimit(channelID, userID, totalLimit, perUserLimit)
+		return release, capacity, 0
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	started := time.Now()
+	deadline := started.Add(maxWait)
+	var capacity ChannelCapacitySnapshot
+	for {
+		if ctx.Err() != nil {
+			return nil, capacity, time.Since(started)
+		}
+		t.mu.Lock()
+		if t.usersByChannel == nil {
+			t.usersByChannel = make(map[int]map[int]int)
+		}
+		if t.activeByChannel == nil {
+			t.activeByChannel = make(map[int]int)
+		}
+		if t.changed == nil {
+			t.changed = make(chan struct{})
+		}
+		capacity = t.capacityLocked(channelID, userID, totalLimit, perUserLimit)
+		if capacity.Allowed {
+			userCounts := t.usersByChannel[channelID]
+			if userCounts == nil {
+				userCounts = make(map[int]int)
+				t.usersByChannel[channelID] = userCounts
+			}
+			userCounts[userID]++
+			t.activeByChannel[channelID]++
+			t.mu.Unlock()
+
+			var once sync.Once
+			return func() {
+				once.Do(func() { t.end(channelID, userID) })
+			}, capacity, time.Since(started)
+		}
+		changed := t.changed
+		t.mu.Unlock()
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, capacity, time.Since(started)
+		}
+		timer := time.NewTimer(remaining)
+		select {
+		case <-changed:
+			stopAndDrainTimer(timer)
+		case <-timer.C:
+			return nil, capacity, time.Since(started)
+		case <-ctx.Done():
+			stopAndDrainTimer(timer)
+			return nil, capacity, time.Since(started)
+		}
+	}
+}
+
+func stopAndDrainTimer(timer *time.Timer) {
+	if timer == nil || timer.Stop() {
+		return
+	}
+	select {
+	case <-timer.C:
+	default:
+	}
+}
+
 func (t *channelActiveUserTracker) capacityLocked(channelID int, userID int, totalLimit int, perUserLimit int) ChannelCapacitySnapshot {
 	active := t.activeByChannel[channelID]
 	userActive := t.usersByChannel[channelID][userID]
@@ -149,6 +242,52 @@ func (t *channelActiveUserTracker) end(channelID int, userID int) {
 	if len(userCounts) == 0 {
 		delete(t.usersByChannel, channelID)
 	}
+	t.notifyChangedLocked()
+}
+
+func (t *channelActiveUserTracker) notifyChangedLocked() {
+	if t.changed != nil {
+		close(t.changed)
+	}
+	t.changed = make(chan struct{})
+}
+
+func (t *channelActiveUserTracker) waitForChange(ctx context.Context, maxWait time.Duration) bool {
+	if maxWait <= 0 {
+		return false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	t.mu.RLock()
+	changed := t.changed
+	t.mu.RUnlock()
+	if changed == nil {
+		return false
+	}
+
+	timer := time.NewTimer(maxWait)
+	defer timer.Stop()
+	select {
+	case <-changed:
+		return true
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (t *channelActiveUserTracker) requestCounts() map[int]int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	counts := make(map[int]int, len(t.activeByChannel))
+	for channelID, count := range t.activeByChannel {
+		counts[channelID] = count
+	}
+	return counts
 }
 
 func (t *channelActiveUserTracker) counts(channelIDs []int) map[int]int {

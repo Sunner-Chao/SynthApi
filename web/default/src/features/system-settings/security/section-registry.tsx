@@ -41,10 +41,6 @@ const SECURITY_SECTIONS = [
             settings.ModelRequestLargeBodyThresholdMB,
           ModelRequestMaxLargeConcurrencyPerUser:
             settings.ModelRequestMaxLargeConcurrencyPerUser,
-          ModelRequestSmallFailoverBodyMB:
-            settings.ModelRequestSmallFailoverBodyMB,
-          ModelRequestSmallFailoverTimeoutSeconds:
-            settings.ModelRequestSmallFailoverTimeoutSeconds,
           ModelRequestRateLimitEnabled: settings.ModelRequestRateLimitEnabled,
           ModelRequestRateLimitCount: settings.ModelRequestRateLimitCount,
           ModelRequestRateLimitSuccessCount:

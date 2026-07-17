@@ -35,3 +35,15 @@ func TestChannelRequestExclusionsTrackCapacitySeparately(t *testing.T) {
 	require.True(t, IsChannelSelectionExcluded(c, 652))
 	require.True(t, HasChannelCapacityExclusions(c))
 }
+
+func TestClearRequestCapacityExclusionsPreservesOtherExclusions(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	MarkChannelSelectionExcluded(c, 171)
+	MarkChannelCapacityExcluded(c, 652)
+
+	clearRequestCapacityExclusions(c)
+
+	require.True(t, IsChannelSelectionExcluded(c, 171))
+	require.False(t, IsChannelSelectionExcluded(c, 652))
+	require.False(t, HasChannelCapacityExclusions(c))
+}

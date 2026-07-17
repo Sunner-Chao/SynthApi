@@ -4916,6 +4916,24 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Long Context Optimization": "长上下文优化",
+    "Enable long context optimization": "启用长上下文优化",
+    "Only applies to the scopes configured below": "仅作用于下方配置的范围",
+    "Server-side compaction": "服务端上下文压缩",
+    "OpenAI Responses and Codex channels only": "仅支持 OpenAI Responses 与 Codex 类型渠道",
+    "Compaction threshold": "压缩阈值（Token）",
+    "Override client compaction": "覆盖客户端压缩配置",
+    "Keep client settings unless this is enabled": "默认保留客户端已有配置",
+    "Reasoning effort downgrade": "降低推理强度",
+    "May reduce answer quality; disabled by default": "可能影响回答质量，默认关闭",
+    "Reasoning downgrade threshold": "推理降级阈值（Token）",
+    "Target reasoning effort": "目标推理强度",
+    "User ID scope": "用户 ID 范围",
+    "Token ID scope": "令牌 ID 范围",
+    "Group scope": "分组范围",
+    "Blank applies to all users": "留空表示全部用户",
+    "Blank applies to all tokens": "留空表示全部令牌",
+    "Blank applies to all groups": "留空表示全部分组"
   }
 }

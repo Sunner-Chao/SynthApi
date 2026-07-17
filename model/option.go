@@ -179,8 +179,6 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestDefaultChannelMaxConcurrencyPerUser"] = strconv.Itoa(common.ModelRequestDefaultChannelMaxConcurrencyPerUser)
 	common.OptionMap["ModelRequestLargeBodyThresholdMB"] = strconv.Itoa(common.ModelRequestLargeBodyThresholdMB)
 	common.OptionMap["ModelRequestMaxLargeConcurrencyPerUser"] = strconv.Itoa(common.ModelRequestMaxLargeConcurrencyPerUser)
-	common.OptionMap["ModelRequestSmallFailoverBodyMB"] = strconv.Itoa(common.ModelRequestSmallFailoverBodyMB)
-	common.OptionMap["ModelRequestSmallFailoverTimeoutSeconds"] = strconv.Itoa(common.ModelRequestSmallFailoverTimeoutSeconds)
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
@@ -722,10 +720,6 @@ func updateOptionMap(key string, value string) (err error) {
 		common.ModelRequestLargeBodyThresholdMB, _ = strconv.Atoi(value)
 	case "ModelRequestMaxLargeConcurrencyPerUser":
 		common.ModelRequestMaxLargeConcurrencyPerUser, _ = strconv.Atoi(value)
-	case "ModelRequestSmallFailoverBodyMB":
-		common.ModelRequestSmallFailoverBodyMB, _ = strconv.Atoi(value)
-	case "ModelRequestSmallFailoverTimeoutSeconds":
-		common.ModelRequestSmallFailoverTimeoutSeconds, _ = strconv.Atoi(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
 	case "DataExportInterval":

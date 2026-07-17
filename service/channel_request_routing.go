@@ -120,7 +120,9 @@ func selectRequestChannel(c *gin.Context, group string, modelName string, retry 
 func selectRequestChannelWithPreference(c *gin.Context, group string, modelName string, retry int, requireLargeEligible bool) (*model.Channel, error) {
 	excluded := channelSelectionExcludedIDs(c)
 	for checked := 0; checked < 100; checked++ {
-		channel, err := model.GetRandomSatisfiedChannelExcluding(group, modelName, retry, excluded)
+		channel, err := model.GetRandomSatisfiedChannelExcludingWithLoad(
+			group, modelName, retry, excluded, GetChannelActiveRequestCounts(),
+		)
 		if err != nil {
 			return channel, err
 		}
@@ -151,4 +153,15 @@ func selectRequestChannelWithPreference(c *gin.Context, group string, modelName 
 		return nil, ErrAllChannelsAtCapacity
 	}
 	return nil, nil
+}
+
+func clearRequestCapacityExclusions(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	selected := requestChannelSelectionExcludedIDs(c)
+	for channelID := range requestChannelCapacityExcludedIDs(c) {
+		delete(selected, channelID)
+	}
+	c.Set(channelCapacityRequestExcludedKey, make(map[int]struct{}))
 }

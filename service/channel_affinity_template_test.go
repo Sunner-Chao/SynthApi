@@ -236,6 +236,80 @@ func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 	require.Equal(t, buildChannelAffinityKeyHint(affinityValue), meta.KeyHint)
 }
 
+func TestCodexAffinityPrefersSessionHeaderOverBodyKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setting := operation_setting.GetChannelAffinitySetting()
+	require.NotNil(t, setting)
+
+	var codexRule *operation_setting.ChannelAffinityRule
+	for i := range setting.Rules {
+		if setting.Rules[i].Name == "codex cli trace" {
+			codexRule = &setting.Rules[i]
+			break
+		}
+	}
+	require.NotNil(t, codexRule)
+	require.NotEmpty(t, codexRule.KeySources)
+	require.Equal(t, "request_header", codexRule.KeySources[0].Type)
+	require.Equal(t, "Session_id", codexRule.KeySources[0].Key)
+
+	headerKey := fmt.Sprintf("header-session-%d", time.Now().UnixNano())
+	bodyKey := fmt.Sprintf("body-session-%d", time.Now().UnixNano())
+	cacheKeySuffix := buildChannelAffinityCacheKeySuffix(*codexRule, "gpt-5", "default", headerKey)
+	cache := getChannelAffinityCache()
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 652, time.Minute))
+	t.Cleanup(func() { _, _ = cache.DeleteMany([]string{cacheKeySuffix}) })
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":%q}`, bodyKey)))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Request.Header.Set("Session_id", headerKey)
+
+	channelID, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "default")
+	require.True(t, found)
+	require.Equal(t, 652, channelID)
+	meta, ok := getChannelAffinityMeta(ctx)
+	require.True(t, ok)
+	require.Equal(t, "request_header", meta.KeySourceType)
+	require.Equal(t, headerKey, extractChannelAffinityValue(ctx, codexRule.KeySources[0]))
+}
+
+func TestRecordChannelAffinityPreservesMappingForTemporaryFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setting := operation_setting.GetChannelAffinitySetting()
+	require.NotNil(t, setting)
+
+	originalEnabled := setting.Enabled
+	originalSwitchOnSuccess := setting.SwitchOnSuccess
+	setting.Enabled = true
+	setting.SwitchOnSuccess = true
+	t.Cleanup(func() {
+		setting.Enabled = originalEnabled
+		setting.SwitchOnSuccess = originalSwitchOnSuccess
+	})
+
+	cacheKeySuffix := fmt.Sprintf("temporary-fallback-%d", time.Now().UnixNano())
+	cache := getChannelAffinityCache()
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 652, time.Minute))
+	t.Cleanup(func() { _, _ = cache.DeleteMany([]string{cacheKeySuffix}) })
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	setChannelAffinityContext(ctx, channelAffinityMeta{
+		CacheKey:   cache.FullKey(cacheKeySuffix),
+		TTLSeconds: 60,
+	})
+	require.True(t, PreserveChannelAffinityForFallback(ctx, "large_request"))
+
+	ctx.Set("channel_id", 653)
+	RecordChannelAffinity(ctx, 653)
+
+	channelID, found, err := cache.Get(cacheKeySuffix)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, 652, channelID)
+}
+
 func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

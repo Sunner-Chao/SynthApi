@@ -202,12 +202,13 @@ var RelayStageLogThresholdMs int
 var RelayForceHTTP2 bool
 var ModelRequestMaxConcurrencyPerUser int
 var ModelRequestMaxConcurrencyPerToken int
+var ModelRequestMaxConcurrencyPerPromptCacheKey int
+var ModelRequestChannelCapacityQueueTimeoutMs int
+var ModelRequestAffinityCapacityQueueTimeoutMs int
 var ModelRequestDefaultChannelMaxConcurrency int
 var ModelRequestDefaultChannelMaxConcurrencyPerUser int
 var ModelRequestLargeBodyThresholdMB int
 var ModelRequestMaxLargeConcurrencyPerUser int
-var ModelRequestSmallFailoverBodyMB int
-var ModelRequestSmallFailoverTimeoutSeconds int
 var ModelRequestConcurrencyExemptUserIDs map[int]struct{}
 var ModelTextRequestBodyMB int
 var ModelTextRequestBodyReadTimeout int

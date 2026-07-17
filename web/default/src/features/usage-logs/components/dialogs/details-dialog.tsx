@@ -64,6 +64,7 @@ import {
   getFirstResponseTimeColor,
   getResponseTimeColor,
 } from '../../lib/format'
+import { getLogThroughput } from '../../lib/throughput'
 import {
   getLogTypeConfig,
   isPerCallBilling,
@@ -1017,6 +1018,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
     !!other?.expr_b64
   const hasAudioTokens = other?.ws || other?.audio
   const showTiming = isTimingLogType(props.log.type)
+  const throughput = getLogThroughput(props.log, other)
   const showOverviewIp =
     !!props.log.ip &&
     !other?.relay_trace &&
@@ -1134,6 +1136,18 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 />
               )}
 
+              {props.isAdmin && props.log.username && (
+                <DetailRow label={t('User')} value={props.log.username} mono />
+              )}
+
+              {props.isAdmin && props.log.user_id > 0 && (
+                <DetailRow
+                  label={t('User ID')}
+                  value={String(props.log.user_id)}
+                  mono
+                />
+              )}
+
               {props.isAdmin && props.log.channel > 0 && (
                 <DetailRow
                   label={t('Channel')}
@@ -1160,6 +1174,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 <DetailRow
                   label={t('Token')}
                   value={props.log.token_name}
+                  mono
+                />
+              )}
+
+              {props.isAdmin && (props.log.token_id ?? 0) > 0 && (
+                <DetailRow
+                  label={`${t('Token')} ID`}
+                  value={String(props.log.token_id)}
                   mono
                 />
               )}
@@ -1198,7 +1220,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
                         timingTextColorClass(
                           getResponseTimeColor(
                             props.log.use_time,
-                            props.log.completion_tokens
+                            props.log.completion_tokens,
+                            throughput?.tokensPerSecond
                           )
                         )
                       )}

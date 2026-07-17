@@ -352,6 +352,16 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'long_context_optimization.enabled': boolean
+  'long_context_optimization.server_side_compaction_enabled': boolean
+  'long_context_optimization.compact_threshold_tokens': number
+  'long_context_optimization.override_existing_compaction': boolean
+  'long_context_optimization.reasoning_downgrade_enabled': boolean
+  'long_context_optimization.reasoning_threshold_tokens': number
+  'long_context_optimization.reasoning_target_effort': 'low' | 'medium' | 'high'
+  'long_context_optimization.apply_to_user_ids': string
+  'long_context_optimization.apply_to_token_ids': string
+  'long_context_optimization.apply_to_groups': string
 }
 
 export type SecuritySettings = {
@@ -361,8 +371,6 @@ export type SecuritySettings = {
   ModelRequestDefaultChannelMaxConcurrencyPerUser: number
   ModelRequestLargeBodyThresholdMB: number
   ModelRequestMaxLargeConcurrencyPerUser: number
-  ModelRequestSmallFailoverBodyMB: number
-  ModelRequestSmallFailoverTimeoutSeconds: number
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number
   ModelRequestRateLimitSuccessCount: number

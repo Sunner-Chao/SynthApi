@@ -4916,6 +4916,24 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Long Context Optimization": "Long Context Optimization",
+    "Enable long context optimization": "Enable long context optimization",
+    "Only applies to the scopes configured below": "Only applies to the scopes configured below",
+    "Server-side compaction": "Server-side compaction",
+    "OpenAI Responses and Codex channels only": "OpenAI Responses and Codex channels only",
+    "Compaction threshold": "Compaction threshold",
+    "Override client compaction": "Override client compaction",
+    "Keep client settings unless this is enabled": "Keep client settings unless this is enabled",
+    "Reasoning effort downgrade": "Reasoning effort downgrade",
+    "May reduce answer quality; disabled by default": "May reduce answer quality; disabled by default",
+    "Reasoning downgrade threshold": "Reasoning downgrade threshold",
+    "Target reasoning effort": "Target reasoning effort",
+    "User ID scope": "User ID scope",
+    "Token ID scope": "Token ID scope",
+    "Group scope": "Group scope",
+    "Blank applies to all users": "Blank applies to all users",
+    "Blank applies to all tokens": "Blank applies to all tokens",
+    "Blank applies to all groups": "Blank applies to all groups"
   }
 }

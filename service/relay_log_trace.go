@@ -47,18 +47,20 @@ type relayTraceClientLog struct {
 }
 
 type relayTraceGatewayLog struct {
-	IngressBeforeRelayMs int64  `json:"ingress_before_relay_ms"`
-	ValidateMs           int64  `json:"validate_ms"`
-	RelayInfoMs          int64  `json:"relay_info_ms"`
-	PreprocessMs         int64  `json:"preprocess_ms"`
-	PricingMs            int64  `json:"pricing_ms"`
-	PreConsumeMs         int64  `json:"pre_consume_ms"`
-	SelectChannelMs      int64  `json:"select_channel_ms"`
-	RefreshBillingMs     int64  `json:"refresh_billing_ms"`
-	BodyStorageMs        int64  `json:"body_storage_ms"`
-	UpstreamRelayMs      int64  `json:"upstream_relay_ms"`
-	FirstEventMs         *int64 `json:"first_event_ms,omitempty"`
-	Attempts             int    `json:"attempts"`
+	IngressBeforeRelayMs   int64  `json:"ingress_before_relay_ms"`
+	ValidateMs             int64  `json:"validate_ms"`
+	RelayInfoMs            int64  `json:"relay_info_ms"`
+	PreprocessMs           int64  `json:"preprocess_ms"`
+	PricingMs              int64  `json:"pricing_ms"`
+	PreConsumeMs           int64  `json:"pre_consume_ms"`
+	SelectChannelMs        int64  `json:"select_channel_ms"`
+	RefreshBillingMs       int64  `json:"refresh_billing_ms"`
+	BodyStorageMs          int64  `json:"body_storage_ms"`
+	PromptCacheQueueMs     int64  `json:"prompt_cache_queue_ms"`
+	ChannelCapacityQueueMs int64  `json:"channel_capacity_queue_ms"`
+	UpstreamRelayMs        int64  `json:"upstream_relay_ms"`
+	FirstEventMs           *int64 `json:"first_event_ms,omitempty"`
+	Attempts               int    `json:"attempts"`
 }
 
 // AppendRelayTraceLogInfo adds the user-visible trace allowlist to a log.
@@ -86,17 +88,19 @@ func AppendRelayTraceLogInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 		totalMs := nonNegativeDurationMs(stage.Total)
 		trace.TotalMs = &totalMs
 		trace.Gateway = &relayTraceGatewayLog{
-			IngressBeforeRelayMs: nonNegativeDurationMs(stage.IngressBeforeRelay),
-			ValidateMs:           nonNegativeDurationMs(stage.ValidateRequest),
-			RelayInfoMs:          nonNegativeDurationMs(stage.GenRelayInfo),
-			PreprocessMs:         nonNegativeDurationMs(stage.Preprocess),
-			PricingMs:            nonNegativeDurationMs(stage.Pricing),
-			PreConsumeMs:         nonNegativeDurationMs(stage.PreConsume),
-			SelectChannelMs:      nonNegativeDurationMs(stage.SelectChannel),
-			RefreshBillingMs:     nonNegativeDurationMs(stage.RefreshBilling),
-			BodyStorageMs:        nonNegativeDurationMs(stage.BodyStorage),
-			UpstreamRelayMs:      nonNegativeDurationMs(stage.UpstreamRelay),
-			Attempts:             stage.Attempts,
+			IngressBeforeRelayMs:   nonNegativeDurationMs(stage.IngressBeforeRelay),
+			ValidateMs:             nonNegativeDurationMs(stage.ValidateRequest),
+			RelayInfoMs:            nonNegativeDurationMs(stage.GenRelayInfo),
+			PreprocessMs:           nonNegativeDurationMs(stage.Preprocess),
+			PricingMs:              nonNegativeDurationMs(stage.Pricing),
+			PreConsumeMs:           nonNegativeDurationMs(stage.PreConsume),
+			SelectChannelMs:        nonNegativeDurationMs(stage.SelectChannel),
+			RefreshBillingMs:       nonNegativeDurationMs(stage.RefreshBilling),
+			BodyStorageMs:          nonNegativeDurationMs(stage.BodyStorage),
+			PromptCacheQueueMs:     nonNegativeDurationMs(stage.PromptCacheQueue),
+			ChannelCapacityQueueMs: nonNegativeDurationMs(stage.ChannelCapacityQueue),
+			UpstreamRelayMs:        nonNegativeDurationMs(stage.UpstreamRelay),
+			Attempts:               stage.Attempts,
 		}
 		if relayInfo.HasSendResponse() && !relayInfo.StartTime.IsZero() {
 			trace.Gateway.FirstEventMs = durationBetweenMs(relayInfo.StartTime, relayInfo.FirstResponseTime)

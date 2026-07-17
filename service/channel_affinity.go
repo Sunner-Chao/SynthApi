@@ -25,6 +25,8 @@ const (
 	ginKeyChannelAffinityMeta       = "channel_affinity_meta"
 	ginKeyChannelAffinityLogInfo    = "channel_affinity_log_info"
 	ginKeyChannelAffinitySkipRetry  = "channel_affinity_skip_retry_on_failure"
+	ginKeyChannelAffinitySkipRecord = "channel_affinity_skip_record"
+	ginKeyChannelAffinityBypass     = "channel_affinity_temporary_bypass_reason"
 
 	channelAffinityCacheNamespace           = "new-api:channel_affinity:v1"
 	channelAffinityUsageCacheStatsNamespace = "new-api:channel_affinity_usage_cache_stats:v1"
@@ -688,6 +690,12 @@ func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interfa
 	if !ok || anyInfo == nil {
 		return
 	}
+	if info, ok := anyInfo.(map[string]interface{}); ok {
+		if reason := strings.TrimSpace(c.GetString(ginKeyChannelAffinityBypass)); reason != "" {
+			info["temporary_bypass"] = true
+			info["temporary_bypass_reason"] = reason
+		}
+	}
 	adminInfo["channel_affinity"] = anyInfo
 }
 
@@ -707,8 +715,42 @@ func GetChannelAffinityFingerprint(c *gin.Context) string {
 	return strings.TrimSpace(fingerprint)
 }
 
+func IsChannelAffinitySelected(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(ginKeyChannelAffinityLogInfo)
+	if !ok || value == nil {
+		return false
+	}
+	info, ok := value.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	channelID, ok := info["channel_id"].(int)
+	return ok && channelID > 0
+}
+
+// PreserveChannelAffinityForFallback lets this request use a temporary fallback
+// without replacing the existing conversation-to-channel mapping on success.
+func PreserveChannelAffinityForFallback(c *gin.Context, reason string) bool {
+	if c == nil {
+		return false
+	}
+	cacheKey, _, ok := getChannelAffinityContext(c)
+	if !ok || strings.TrimSpace(cacheKey) == "" {
+		return false
+	}
+	c.Set(ginKeyChannelAffinitySkipRecord, true)
+	c.Set(ginKeyChannelAffinityBypass, strings.TrimSpace(reason))
+	return true
+}
+
 func RecordChannelAffinity(c *gin.Context, channelID int) {
 	if channelID <= 0 {
+		return
+	}
+	if c != nil && c.GetBool(ginKeyChannelAffinitySkipRecord) {
 		return
 	}
 	setting := operation_setting.GetChannelAffinitySetting()

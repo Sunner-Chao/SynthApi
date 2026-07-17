@@ -21,16 +21,18 @@ type relayStageTrace struct {
 	relayEnteredAt time.Time
 	clientWriter   *relayTraceResponseWriter
 
-	validateRequest time.Duration
-	genRelayInfo    time.Duration
-	preprocess      time.Duration
-	pricing         time.Duration
-	preConsume      time.Duration
-	selectChannel   time.Duration
-	refreshBilling  time.Duration
-	bodyStorage     time.Duration
-	upstreamRelay   time.Duration
-	upstreamStarted time.Time
+	validateRequest      time.Duration
+	genRelayInfo         time.Duration
+	preprocess           time.Duration
+	pricing              time.Duration
+	preConsume           time.Duration
+	selectChannel        time.Duration
+	refreshBilling       time.Duration
+	bodyStorage          time.Duration
+	promptCacheQueue     time.Duration
+	channelCapacityQueue time.Duration
+	upstreamRelay        time.Duration
+	upstreamStarted      time.Time
 
 	attempts  int
 	channelID int
@@ -47,6 +49,8 @@ func newRelayStageTrace(c *gin.Context) *relayStageTrace {
 		startAt:        startAt,
 		relayEnteredAt: now,
 	}
+	trace.promptCacheQueue, _ = common.GetContextKeyType[time.Duration](c, constant.ContextKeyPromptCacheQueue)
+	trace.channelCapacityQueue, _ = common.GetContextKeyType[time.Duration](c, constant.ContextKeyChannelCapacityQueue)
 	traceResponse := common.RelayStageLogThresholdMs > 0 || common.LogConsumeEnabled || constant.ErrorLogEnabled
 	if traceResponse && c != nil && c.Writer != nil {
 		writer := &relayTraceResponseWriter{ResponseWriter: c.Writer}
@@ -81,18 +85,20 @@ func (t *relayStageTrace) SnapshotRelayStageMetrics() relaycommon.RelayStageMetr
 		upstreamRelay += now.Sub(t.upstreamStarted)
 	}
 	snapshot := relaycommon.RelayStageMetricsSnapshot{
-		Total:              now.Sub(t.startAt),
-		IngressBeforeRelay: t.relayEnteredAt.Sub(t.startAt),
-		ValidateRequest:    t.validateRequest,
-		GenRelayInfo:       t.genRelayInfo,
-		Preprocess:         t.preprocess,
-		Pricing:            t.pricing,
-		PreConsume:         t.preConsume,
-		SelectChannel:      t.selectChannel,
-		RefreshBilling:     t.refreshBilling,
-		BodyStorage:        t.bodyStorage,
-		UpstreamRelay:      upstreamRelay,
-		Attempts:           t.attempts,
+		Total:                now.Sub(t.startAt),
+		IngressBeforeRelay:   t.relayEnteredAt.Sub(t.startAt),
+		ValidateRequest:      t.validateRequest,
+		GenRelayInfo:         t.genRelayInfo,
+		Preprocess:           t.preprocess,
+		Pricing:              t.pricing,
+		PreConsume:           t.preConsume,
+		SelectChannel:        t.selectChannel,
+		RefreshBilling:       t.refreshBilling,
+		BodyStorage:          t.bodyStorage,
+		PromptCacheQueue:     t.promptCacheQueue,
+		ChannelCapacityQueue: t.channelCapacityQueue,
+		UpstreamRelay:        upstreamRelay,
+		Attempts:             t.attempts,
 	}
 	if t.clientWriter == nil {
 		return snapshot
@@ -218,7 +224,7 @@ func (t *relayStageTrace) logIfSlow(c *gin.Context, info *relaycommon.RelayInfo,
 	}
 
 	logger.LogInfo(c, fmt.Sprintf(
-		"relay stage latency: status=%s status_code=%d err_code=%s total_ms=%d ingress_before_relay_ms=%d client_body_observed=%t client_body_read_ms=%d client_request_bytes=%d client_body_disk=%t validate_ms=%d relay_info_ms=%d preprocess_ms=%d pricing_ms=%d pre_consume_ms=%d select_channel_ms=%d refresh_billing_ms=%d body_storage_ms=%d upstream_relay_ms=%d first_event_ms=%d upstream_to_first_event_ms=%d application_stream_after_first_event_ms=%d client_first_write_ms=%d client_stream_span_ms=%d client_write_blocked_ms=%d client_response_bytes=%d attempts=%d trace_coverage=%s trace_attempts=%d trace_overflow=%d model=%q group=%q channel_id=%d inbound_cf_ray=%q inbound_cf_colo=%q affinity_fp=%q",
+		"relay stage latency: status=%s status_code=%d err_code=%s total_ms=%d ingress_before_relay_ms=%d client_body_observed=%t client_body_read_ms=%d client_request_bytes=%d client_body_disk=%t validate_ms=%d relay_info_ms=%d preprocess_ms=%d pricing_ms=%d pre_consume_ms=%d select_channel_ms=%d refresh_billing_ms=%d body_storage_ms=%d prompt_cache_queue_ms=%d channel_capacity_queue_ms=%d upstream_relay_ms=%d first_event_ms=%d upstream_to_first_event_ms=%d application_stream_after_first_event_ms=%d client_first_write_ms=%d client_stream_span_ms=%d client_write_blocked_ms=%d client_response_bytes=%d attempts=%d trace_coverage=%s trace_attempts=%d trace_overflow=%d model=%q group=%q channel_id=%d inbound_cf_ray=%q inbound_cf_colo=%q affinity_fp=%q",
 		status,
 		statusCode,
 		errCode,
@@ -236,6 +242,8 @@ func (t *relayStageTrace) logIfSlow(c *gin.Context, info *relaycommon.RelayInfo,
 		t.selectChannel.Milliseconds(),
 		t.refreshBilling.Milliseconds(),
 		t.bodyStorage.Milliseconds(),
+		t.promptCacheQueue.Milliseconds(),
+		t.channelCapacityQueue.Milliseconds(),
 		t.upstreamRelay.Milliseconds(),
 		firstEventMs,
 		upstreamToFirstEventMs,

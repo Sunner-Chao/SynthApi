@@ -47,6 +47,8 @@ func TestAppendRelayTraceLogInfoIncludesClientAndStageMetrics(t *testing.T) {
 			Total:                2 * time.Second,
 			IngressBeforeRelay:   20 * time.Millisecond,
 			ValidateRequest:      5 * time.Millisecond,
+			PromptCacheQueue:     125 * time.Millisecond,
+			ChannelCapacityQueue: 250 * time.Millisecond,
 			UpstreamRelay:        1500 * time.Millisecond,
 			Attempts:             1,
 			ClientWriterObserved: true,
@@ -76,6 +78,8 @@ func TestAppendRelayTraceLogInfoIncludesClientAndStageMetrics(t *testing.T) {
 	require.EqualValues(t, 1024, *trace.Client.RequestBytes)
 	require.EqualValues(t, 2048, *trace.Client.ResponseBytes)
 	require.NotNil(t, trace.Gateway)
+	require.EqualValues(t, 125, trace.Gateway.PromptCacheQueueMs)
+	require.EqualValues(t, 250, trace.Gateway.ChannelCapacityQueueMs)
 	require.EqualValues(t, 1500, trace.Gateway.UpstreamRelayMs)
 	require.EqualValues(t, 1500, *trace.Gateway.FirstEventMs)
 

@@ -96,13 +96,14 @@ var channelAffinitySetting = ChannelAffinitySetting{
 	Enabled:           true,
 	SwitchOnSuccess:   true,
 	MaxEntries:        100_000,
-	DefaultTTLSeconds: 3600,
+	DefaultTTLSeconds: 21600,
 	Rules: []ChannelAffinityRule{
 		{
 			Name:       "codex cli trace",
 			ModelRegex: []string{"^gpt-.*$"},
 			PathRegex:  []string{"/v1/responses"},
 			KeySources: []ChannelAffinityKeySource{
+				{Type: "request_header", Key: "Session_id"},
 				{Type: "gjson", Path: "prompt_cache_key"},
 			},
 			ValueRegex:            "",

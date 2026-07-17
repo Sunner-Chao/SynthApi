@@ -76,8 +76,6 @@ const createRateLimitSchema = (t: (key: string) => string) =>
       .max(1000),
     ModelRequestLargeBodyThresholdMB: z.number().int().min(0).max(1024),
     ModelRequestMaxLargeConcurrencyPerUser: z.number().int().min(0).max(1000),
-    ModelRequestSmallFailoverBodyMB: z.number().int().min(0).max(1024),
-    ModelRequestSmallFailoverTimeoutSeconds: z.number().int().min(0).max(300),
     ModelRequestRateLimitEnabled: z.boolean(),
     ModelRequestRateLimitDurationMinutes: z.number().min(0),
     ModelRequestRateLimitCount: z.number().min(0).max(100000000),
@@ -321,58 +319,6 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t('Maximum active large requests')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='ModelRequestSmallFailoverBodyMB'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Failover request size')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        max={1024}
-                        step={1}
-                        {...field}
-                        onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 0)
-                        }
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Maximum body size eligible for failover in MB')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='ModelRequestSmallFailoverTimeoutSeconds'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Failover time budget')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        max={300}
-                        step={1}
-                        {...field}
-                        onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 0)
-                        }
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Maximum additional seconds for one alternate channel'
-                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

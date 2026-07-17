@@ -116,6 +116,10 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
 }
 
 func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, excludeIDs map[int]struct{}) (*Channel, error) {
+	return GetRandomSatisfiedChannelExcludingWithLoad(group, model, retry, excludeIDs, nil)
+}
+
+func GetRandomSatisfiedChannelExcludingWithLoad(group string, model string, retry int, excludeIDs map[int]struct{}, activeRequests map[int]int) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
 		if len(excludeIDs) > 0 {
@@ -175,11 +179,6 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, e
 	if len(targetChannels) == 0 {
 		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
 	}
-	targetChannels = preferNonCoolingChannels(targetChannels, channels, sortedUniquePriorities, targetPriorityIndex)
-	if len(targetChannels) == 0 {
-		return nil, nil
-	}
-
 	var sumWeight = 0
 	for _, channel := range targetChannels {
 		sumWeight += channel.GetWeight()
@@ -203,7 +202,7 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, e
 	totalWeight := 0
 	for _, channel := range targetChannels {
 		baseWeight := channel.GetWeight()*smoothingFactor + smoothingAdjustment
-		effectiveWeight := adjustedChannelSelectionWeight(channel, baseWeight, logPerfHints, channelPerfHints)
+		effectiveWeight := adjustedChannelSelectionWeight(channel, baseWeight, logPerfHints, channelPerfHints, activeRequests[channel.Id])
 		if effectiveWeight <= 0 {
 			continue
 		}
@@ -236,7 +235,7 @@ type weightedChannel struct {
 	weight  int
 }
 
-func adjustedChannelSelectionWeight(channel *Channel, baseWeight int, logPerfHints map[int]ChannelLogLatencyHint, channelPerfHints map[int]ChannelPerfRouteHint) int {
+func adjustedChannelSelectionWeight(channel *Channel, baseWeight int, logPerfHints map[int]ChannelLogLatencyHint, channelPerfHints map[int]ChannelPerfRouteHint, activeRequests int) int {
 	if channel == nil || baseWeight <= 0 {
 		return 0
 	}
@@ -250,6 +249,18 @@ func adjustedChannelSelectionWeight(channel *Channel, baseWeight int, logPerfHin
 	}
 	if hint, ok := channelPerfHints[channel.Id]; ok && hint.SelectionWeightPct > 0 && hint.SelectionWeightPct < percent {
 		percent = hint.SelectionWeightPct
+	}
+	limit := channel.GetSetting().EffectiveMaxConcurrency(common.ModelRequestDefaultChannelMaxConcurrency)
+	if limit > 0 && activeRequests > 0 {
+		remaining := limit - activeRequests
+		if remaining <= 0 {
+			return 1
+		}
+		loadPercent := remaining * 100 / limit
+		if loadPercent < 10 {
+			loadPercent = 10
+		}
+		percent = percent * loadPercent / 100
 	}
 	adjusted := baseWeight * percent / 100
 	if adjusted <= 0 {
@@ -270,40 +281,6 @@ func getChannelsByPriority(channelIDs []int, targetPriority int64) ([]*Channel, 
 		}
 	}
 	return targetChannels, nil
-}
-
-func preferNonCoolingChannels(targetChannels []*Channel, allChannelIDs []int, sortedPriorities []int, targetPriorityIndex int) []*Channel {
-	if len(targetChannels) == 0 {
-		return targetChannels
-	}
-	if ready := filterCoolingChannels(targetChannels); len(ready) > 0 {
-		return ready
-	}
-
-	for i := targetPriorityIndex + 1; i < len(sortedPriorities); i++ {
-		lowerPriorityChannels, err := getChannelsByPriority(allChannelIDs, int64(sortedPriorities[i]))
-		if err != nil {
-			return targetChannels
-		}
-		if ready := filterCoolingChannels(lowerPriorityChannels); len(ready) > 0 {
-			return ready
-		}
-	}
-	return nil
-}
-
-func filterCoolingChannels(channels []*Channel) []*Channel {
-	if len(channels) == 0 {
-		return nil
-	}
-	ready := make([]*Channel, 0, len(channels))
-	for _, channel := range channels {
-		if channel == nil || IsChannelCoolingDown(channel.Id) {
-			continue
-		}
-		ready = append(ready, channel)
-	}
-	return ready
 }
 
 func channelResponseTimeWeightPercent(responseTimeMs int) int {

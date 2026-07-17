@@ -173,10 +173,18 @@ export function getThroughputColor(
  */
 export function getResponseTimeColor(
   seconds: number,
-  completionTokens: number
+  completionTokens: number,
+  tokensPerSecond?: number | null
 ): 'success' | 'warning' | 'danger' {
-  if (completionTokens < 100 || seconds <= 0) return getTimeColor(seconds)
-  return getThroughputColor(completionTokens / seconds)
+  if (
+    completionTokens < 100 ||
+    tokensPerSecond == null ||
+    !Number.isFinite(tokensPerSecond) ||
+    tokensPerSecond <= 0
+  ) {
+    return getTimeColor(seconds)
+  }
+  return getThroughputColor(tokensPerSecond)
 }
 
 /**

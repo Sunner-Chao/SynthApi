@@ -72,9 +72,10 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth())
-	relayV1Router.Use(middleware.ModelRequestConcurrencyLimit())
 	relayV1Router.Use(middleware.ModelTextRequestBodyGuard())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
+	relayV1Router.Use(middleware.PromptCacheKeyConcurrencyLimit())
+	relayV1Router.Use(middleware.ModelRequestConcurrencyLimit())
 	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")

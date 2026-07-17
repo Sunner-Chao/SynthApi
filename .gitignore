@@ -18,6 +18,8 @@ upload
 .bun/
 node_modules/.cache/
 .pnpm-store/
+__pycache__/
+*.py[cod]
 
 # OS files
 Thumbs.db

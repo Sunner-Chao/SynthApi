@@ -31,8 +31,6 @@ const defaultSecuritySettings: SecuritySettings = {
   ModelRequestDefaultChannelMaxConcurrencyPerUser: 6,
   ModelRequestLargeBodyThresholdMB: 10,
   ModelRequestMaxLargeConcurrencyPerUser: 2,
-  ModelRequestSmallFailoverBodyMB: 1,
-  ModelRequestSmallFailoverTimeoutSeconds: 8,
   ModelRequestRateLimitEnabled: false,
   ModelRequestRateLimitCount: 0,
   ModelRequestRateLimitSuccessCount: 1000,

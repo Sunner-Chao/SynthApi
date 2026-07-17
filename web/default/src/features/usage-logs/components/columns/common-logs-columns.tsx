@@ -49,9 +49,10 @@ import {
   getTieredBillingSummary,
   getSubscriptionBillingDisplay,
   hasAnyCacheTokens,
-  parseLogOther,
   isViolationFeeLog,
+  parseLogOther,
 } from '../../lib/format'
+import { formatTokensPerSecond, getLogThroughput } from '../../lib/throughput'
 import {
   isDisplayableLogType,
   isTimingLogType,
@@ -422,7 +423,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             useUsageLogsContext()
           const log = row.original
 
-          if (!log.username) return null
+          if (!log.username && log.user_id <= 0) return null
+          const avatarSeed = log.username || String(log.user_id)
 
           return (
             <button
@@ -442,27 +444,38 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   )}
                   style={
                     sensitiveVisible
-                      ? getUserAvatarStyle(log.username)
+                      ? getUserAvatarStyle(avatarSeed)
                       : undefined
                   }
                 >
-                  {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
+                  {sensitiveVisible ? getUserAvatarFallback(avatarSeed) : '•'}
                 </AvatarFallback>
               </Avatar>
-              <TooltipProvider delay={300}>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
-                    }
-                  >
-                    {sensitiveVisible ? log.username : '••••'}
-                  </TooltipTrigger>
-                  {sensitiveVisible && log.username.length > 12 && (
-                    <TooltipContent side='top'>{log.username}</TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
+              <div className='flex min-w-0 flex-col gap-0.5'>
+                {log.username && (
+                  <TooltipProvider delay={300}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
+                        }
+                      >
+                        {sensitiveVisible ? log.username : '••••'}
+                      </TooltipTrigger>
+                      {sensitiveVisible && log.username.length > 12 && (
+                        <TooltipContent side='top'>
+                          {log.username}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {log.user_id > 0 && (
+                  <span className='text-muted-foreground/60 font-mono text-xs'>
+                    {t('ID')} {log.user_id}
+                  </span>
+                )}
+              </div>
             </button>
           )
         },
@@ -482,15 +495,23 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       if (!isDisplayableLogType(log.type)) return null
 
       const tokenName = log.token_name
-      if (!tokenName) return null
+      const tokenId = log.token_id ?? 0
+      if (!tokenName && !(isAdmin && tokenId > 0)) return null
 
       const other = parseLogOther(log.other)
-      const displayName = sensitiveVisible ? tokenName : '••••'
+      const displayName = tokenName
+        ? sensitiveVisible
+          ? tokenName
+          : '••••'
+        : `${t('Token')} #${tokenId}`
       let group = log.group
       if (!group) group = other?.group || ''
 
       const metaParts: string[] = []
       const groupRatioText = getGroupRatioText(other)
+      if (isAdmin && tokenId > 0) {
+        metaParts.push(`${t('ID')} ${tokenId}`)
+      }
       if (group) {
         metaParts.push(sensitiveVisible ? group : '••••')
       }
@@ -504,13 +525,19 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <StatusBadge
                   label={displayName}
                   icon={KeyRound}
-                  copyText={sensitiveVisible ? tokenName : undefined}
+                  copyText={
+                    sensitiveVisible && tokenName
+                      ? tokenName
+                      : isAdmin && tokenId > 0
+                        ? String(tokenId)
+                        : undefined
+                  }
                   size='sm'
                   showDot={false}
                   className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
                 />
               </TooltipTrigger>
-              {sensitiveVisible && tokenName.length > 16 && (
+              {sensitiveVisible && tokenName && tokenName.length > 16 && (
                 <TooltipContent side='top' className='max-w-xs break-all'>
                   {tokenName}
                 </TooltipContent>
@@ -565,11 +592,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const useTime = row.getValue('use_time') as number
         const other = parseLogOther(log.other)
         const frt = other?.frt
-        const tokensPerSecond =
-          useTime > 0 && log.completion_tokens > 0
-            ? log.completion_tokens / useTime
-            : null
-        const timeVariant = getResponseTimeColor(useTime, log.completion_tokens)
+        const throughput = getLogThroughput(log, other)
+        const timeVariant = getResponseTimeColor(
+          useTime,
+          log.completion_tokens,
+          throughput?.tokensPerSecond
+        )
         const frtVariant = frt
           ? getFirstResponseTimeColor(frt / 1000)
           : 'neutral'
@@ -622,11 +650,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             <div className='flex items-center gap-1 [font-family:var(--font-body)] !text-xs leading-none'>
               <span className='text-muted-foreground/60 [font-family:var(--font-body)] !text-xs leading-none'>
                 {log.is_stream ? t('Stream') : t('Non-stream')}
-                {tokensPerSecond != null && (
+                {throughput != null && (
                   <>
                     {' · '}
+                    {throughput.estimated && '~'}
                     <span className='tabular-nums'>
-                      {Math.round(tokensPerSecond)}
+                      {formatTokensPerSecond(throughput.tokensPerSecond)}
                     </span>
                     {' t/s'}
                   </>
@@ -768,9 +797,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                       {t('Deducted by subscription')}:{' '}
                       {formatLogQuota(consumed)}
                     </div>
-                    <div>
-                      {t('{{rate}} rate ({{off}} off)', { rate, off })}
-                    </div>
+                    <div>{t('{{rate}} rate ({{off}} off)', { rate, off })}</div>
                   </div>
                 </TooltipContent>
               </Tooltip>

@@ -21,6 +21,7 @@ import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
+import { LongContextOptimizationSection } from '../maintenance/long-context-optimization-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
@@ -133,6 +134,44 @@ const OPERATIONS_SECTIONS = [
             settings['perf_metrics_setting.bucket_time'] ?? 'hour',
           'perf_metrics_setting.retention_days':
             settings['perf_metrics_setting.retention_days'] ?? 0,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'long-context',
+    titleKey: 'Long Context Optimization',
+    build: (settings: OperationsSettings) => (
+      <LongContextOptimizationSection
+        defaultValues={{
+          'long_context_optimization.enabled':
+            settings['long_context_optimization.enabled'] ?? false,
+          'long_context_optimization.server_side_compaction_enabled':
+            settings[
+              'long_context_optimization.server_side_compaction_enabled'
+            ] ?? true,
+          'long_context_optimization.compact_threshold_tokens':
+            settings['long_context_optimization.compact_threshold_tokens'] ??
+            50000,
+          'long_context_optimization.override_existing_compaction':
+            settings[
+              'long_context_optimization.override_existing_compaction'
+            ] ?? false,
+          'long_context_optimization.reasoning_downgrade_enabled':
+            settings['long_context_optimization.reasoning_downgrade_enabled'] ??
+            false,
+          'long_context_optimization.reasoning_threshold_tokens':
+            settings['long_context_optimization.reasoning_threshold_tokens'] ??
+            150000,
+          'long_context_optimization.reasoning_target_effort':
+            settings['long_context_optimization.reasoning_target_effort'] ??
+            'high',
+          'long_context_optimization.apply_to_user_ids':
+            settings['long_context_optimization.apply_to_user_ids'] ?? '',
+          'long_context_optimization.apply_to_token_ids':
+            settings['long_context_optimization.apply_to_token_ids'] ?? '',
+          'long_context_optimization.apply_to_groups':
+            settings['long_context_optimization.apply_to_groups'] ?? '',
         }}
       />
     ),

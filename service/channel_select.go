@@ -332,6 +332,25 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	return channel, selectGroup, nil
 }
 
+func CacheGetRandomSatisfiedChannelWaiting(param *RetryParam, maxWait time.Duration) (*model.Channel, string, error, time.Duration) {
+	started := time.Now()
+	deadline := started.Add(maxWait)
+	for {
+		channel, group, err := CacheGetRandomSatisfiedChannel(param)
+		if !errors.Is(err, ErrAllChannelsAtCapacity) || maxWait <= 0 {
+			return channel, group, err, time.Since(started)
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, group, err, time.Since(started)
+		}
+		if !WaitForChannelCapacityChange(param.Ctx.Request.Context(), remaining) {
+			return nil, group, err, time.Since(started)
+		}
+		clearRequestCapacityExclusions(param.Ctx)
+	}
+}
+
 func sortGroupsByRoutePerformance(groups []string, modelName string) []string {
 	if len(groups) < 2 {
 		return groups

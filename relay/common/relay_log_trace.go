@@ -37,18 +37,20 @@ var publicServerTimingNames = map[string]string{
 }
 
 type RelayStageMetricsSnapshot struct {
-	Total              time.Duration
-	IngressBeforeRelay time.Duration
-	ValidateRequest    time.Duration
-	GenRelayInfo       time.Duration
-	Preprocess         time.Duration
-	Pricing            time.Duration
-	PreConsume         time.Duration
-	SelectChannel      time.Duration
-	RefreshBilling     time.Duration
-	BodyStorage        time.Duration
-	UpstreamRelay      time.Duration
-	Attempts           int
+	Total                time.Duration
+	IngressBeforeRelay   time.Duration
+	ValidateRequest      time.Duration
+	GenRelayInfo         time.Duration
+	Preprocess           time.Duration
+	Pricing              time.Duration
+	PreConsume           time.Duration
+	SelectChannel        time.Duration
+	RefreshBilling       time.Duration
+	BodyStorage          time.Duration
+	PromptCacheQueue     time.Duration
+	ChannelCapacityQueue time.Duration
+	UpstreamRelay        time.Duration
+	Attempts             int
 
 	ClientWriterObserved bool
 	ClientFirstWrite     time.Duration

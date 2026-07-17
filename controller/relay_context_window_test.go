@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestContextWindowErrorStopsRetryFailoverAndCooldown(t *testing.T) {
+func TestContextWindowErrorStopsRetryFailover(t *testing.T) {
 	originalRetryTimes := common.RetryTimes
 	common.RetryTimes = 1
 	t.Cleanup(func() { common.RetryTimes = originalRetryTimes })
@@ -26,9 +26,5 @@ func TestContextWindowErrorStopsRetryFailoverAndCooldown(t *testing.T) {
 		Code:    "unknown_error",
 	}, http.StatusBadGateway)
 
-	require.False(t, shouldRetry(c, relayErr, 3))
 	require.False(t, shouldSmartGroupFailover(c, &relaycommon.RelayInfo{}, "primary", relayErr))
-	cooldown, class := channelCooldownDecision(relayErr)
-	require.Zero(t, cooldown)
-	require.Empty(t, class)
 }

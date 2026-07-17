@@ -39,6 +39,12 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		c.Set("image_generation_call_quality", responsesResponse.GetQuality())
 		c.Set("image_generation_call_size", responsesResponse.GetSize())
 	}
+	for _, output := range responsesResponse.Output {
+		if service.IsLongContextCompactionType(output.Type) {
+			service.MarkLongContextCompactionObserved(c)
+			break
+		}
+	}
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -130,6 +136,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					}
 				}
 			}
+		}
+		if service.IsLongContextCompactionType(streamResponse.Type) ||
+			(streamResponse.Item != nil && service.IsLongContextCompactionType(streamResponse.Item.Type)) {
+			service.MarkLongContextCompactionObserved(c)
 		}
 	})
 

@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 type activeModelRequestLimiter struct {
@@ -21,6 +24,158 @@ type activeModelRequestLimiter struct {
 }
 
 var modelRequestActiveLimiter activeModelRequestLimiter
+
+type promptCacheKeyEntry struct {
+	slots chan struct{}
+	refs  int
+}
+
+type promptCacheKeyLimiter struct {
+	mu      sync.Mutex
+	entries map[string]*promptCacheKeyEntry
+}
+
+var promptCacheActiveLimiter promptCacheKeyLimiter
+
+func (l *promptCacheKeyLimiter) acquire(ctx context.Context, key string, limit int) (func(), error) {
+	if key == "" || limit <= 0 {
+		return func() {}, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	l.mu.Lock()
+	if l.entries == nil {
+		l.entries = make(map[string]*promptCacheKeyEntry)
+	}
+	entry := l.entries[key]
+	if entry == nil {
+		entry = &promptCacheKeyEntry{slots: make(chan struct{}, limit)}
+		l.entries[key] = entry
+	}
+	entry.refs++
+	l.mu.Unlock()
+
+	dropRef := func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		entry.refs--
+		if entry.refs == 0 && l.entries[key] == entry {
+			delete(l.entries, key)
+		}
+	}
+
+	select {
+	case entry.slots <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-entry.slots
+			dropRef()
+			return nil, err
+		}
+	case <-ctx.Done():
+		dropRef()
+		return nil, ctx.Err()
+	}
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			<-entry.slots
+			dropRef()
+		})
+	}, nil
+}
+
+func isPromptCacheKeyRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.Method != http.MethodPost {
+		return false
+	}
+	switch c.Request.URL.Path {
+	case "/v1/responses", "/v1/responses/compact":
+		return strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json")
+	default:
+		return false
+	}
+}
+
+func promptCacheConcurrencyKey(userID int, promptCacheKey string) string {
+	payload := fmt.Sprintf("%d\x00%s", userID, promptCacheKey)
+	return common.Sha1([]byte(payload))
+}
+
+// PromptCacheKeyConcurrencyLimit serializes requests that mutate the same Codex
+// context before they consume the broader user and token concurrency budgets.
+func PromptCacheKeyConcurrencyLimit() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		limit := common.ModelRequestMaxConcurrencyPerPromptCacheKey
+		if limit <= 0 || !isPromptCacheKeyRequest(c) {
+			c.Next()
+			return
+		}
+
+		userID := c.GetInt("id")
+		if userID <= 0 {
+			c.Next()
+			return
+		}
+		if _, exempt := common.ModelRequestConcurrencyExemptUserIDs[userID]; exempt {
+			c.Next()
+			return
+		}
+		if common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime).IsZero() {
+			common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+		}
+
+		promptCacheKey := strings.TrimSpace(c.Request.Header.Get("session_id"))
+		if promptCacheKey == "" {
+			storage, err := common.GetBodyStorage(c)
+			if err != nil {
+				status := http.StatusBadRequest
+				if common.IsRequestBodyTooLargeError(err) {
+					status = http.StatusRequestEntityTooLarge
+				}
+				abortWithOpenAiMessage(c, status, fmt.Sprintf("读取请求体失败：%v", err))
+				return
+			}
+			body, err := storage.Bytes()
+			if err != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, fmt.Sprintf("读取请求体失败：%v", err))
+				return
+			}
+			if _, err = storage.Seek(0, io.SeekStart); err != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, fmt.Sprintf("重置请求体失败：%v", err))
+				return
+			}
+			c.Request.Body = io.NopCloser(storage)
+
+			if !gjson.ValidBytes(body) {
+				c.Next()
+				return
+			}
+			values := gjson.GetManyBytes(body, "model", "prompt_cache_key")
+			promptCacheKey = strings.TrimSpace(values[1].String())
+		}
+		if promptCacheKey == "" {
+			c.Next()
+			return
+		}
+
+		queueStarted := time.Now()
+		release, err := promptCacheActiveLimiter.acquire(
+			c.Request.Context(),
+			promptCacheConcurrencyKey(userID, promptCacheKey),
+			limit,
+		)
+		common.SetContextKey(c, constant.ContextKeyPromptCacheQueue, time.Since(queueStarted))
+		if err != nil {
+			c.Abort()
+			return
+		}
+		defer release()
+		c.Next()
+	}
+}
 
 func (l *activeModelRequestLimiter) acquire(userID, tokenID, userLimit, tokenLimit int) (func(), string) {
 	return l.acquireRequest(userID, tokenID, userLimit, tokenLimit, false, 0)

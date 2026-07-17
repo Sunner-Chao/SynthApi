@@ -1,12 +1,10 @@
 package controller
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -215,8 +213,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if primaryGroup == "" {
 		primaryGroup = relayInfo.TokenGroup
 	}
-	attemptBudget := newRelayAttemptBudget(common.RetryTimes)
-	failoverPolicy := newRelayFailoverPolicy()
+	// Channel discovery may inspect alternatives, but the request gets exactly one upstream attempt.
+	attemptBudget := newRelayAttemptBudget(0)
 	retryParam := &service.RetryParam{
 		Ctx:        c,
 		TokenGroup: primaryGroup,
@@ -227,9 +225,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.LastError = nil
 
 	for ; retryParam.GetRetry() <= attemptBudget.retryLimit() && !attemptBudget.exhausted(); retryParam.IncreaseRetry() {
-		if failoverPolicy.expired() {
-			break
-		}
 		stageStart = time.Now()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		stageTrace.addSince(&stageTrace.selectChannel, stageStart)
@@ -248,13 +243,28 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channelSettings := channel.GetSetting()
 		channelLimit := channelSettings.EffectiveMaxConcurrency(common.ModelRequestDefaultChannelMaxConcurrency)
 		channelUserLimit := channelSettings.EffectiveMaxConcurrencyPerUser(common.ModelRequestDefaultChannelMaxConcurrencyPerUser)
-		endActiveUse, capacity := service.TryBeginChannelActiveUse(channel.Id, relayInfo.UserId, channelLimit, channelUserLimit)
+		capacityWaitMs := common.ModelRequestChannelCapacityQueueTimeoutMs
+		affinitySelected := service.IsChannelAffinitySelected(c)
+		if affinitySelected {
+			capacityWaitMs = common.ModelRequestAffinityCapacityQueueTimeoutMs
+		}
+		endActiveUse, capacity, capacityQueue := service.TryBeginChannelActiveUseWaiting(
+			c.Request.Context(), channel.Id, relayInfo.UserId, channelLimit, channelUserLimit,
+			time.Duration(capacityWaitMs)*time.Millisecond,
+		)
+		stageTrace.channelCapacityQueue += capacityQueue
+		queued, _ := common.GetContextKeyType[time.Duration](c, constant.ContextKeyChannelCapacityQueue)
+		common.SetContextKey(c, constant.ContextKeyChannelCapacityQueue, queued+capacityQueue)
 		if !capacity.Allowed {
 			service.MarkChannelCapacityExcluded(c, channel.Id)
 			logger.LogWarn(c, fmt.Sprintf("channel #%d concurrency limit reached: limited_by=%s active=%d/%d user_active=%d/%d",
 				channel.Id, capacity.LimitedBy, capacity.Active, capacity.TotalLimit, capacity.UserActive, capacity.PerUserLimit))
 			newAPIError = channelCapacityError(channel.Id, capacity)
 			if _, specific := c.Get("specific_channel_id"); specific {
+				c.Header("Retry-After", "1")
+				break
+			}
+			if affinitySelected {
 				c.Header("Retry-After", "1")
 				break
 			}
@@ -285,7 +295,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
-		failoverPolicy.setBodySize(bodyStorage.Size())
 		addUsedChannel(c, channel.Id)
 		if !attemptBudget.acquire() {
 			endActiveUse()
@@ -296,7 +305,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		stageTrace.beginUpstreamRelay()
 		func() {
 			defer endActiveUse()
-			defer failoverPolicy.applyAttemptDeadline(c)()
 
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
@@ -312,8 +320,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		stageTrace.endUpstreamRelay()
 
 		if newAPIError == nil {
-			clearChannelTransientFailures(channel.Id)
-			service.ClearUserChannelCooldown(c, channel.Id)
 			relayInfo.LastError = nil
 			return
 		}
@@ -325,16 +331,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		processChannelError(c, relayInfo, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-
-		remainingRetries := attemptBudget.remainingRetries()
-		if !failoverPolicy.allowRetry(c, relayInfo, newAPIError, remainingRetries) {
-			break
-		}
-		service.MarkChannelSelectionExcluded(c, channel.Id)
-		if prepareSmartGroupFailover(c, relayInfo, retryParam, primaryGroup, newAPIError) {
-			continue
-		}
-		retryParam.ResetRetryNextTry()
+		logger.LogInfo(c, "upstream error returned to client immediately; retry and channel failover skipped")
+		break
 	}
 
 	useChannel := c.GetStringSlice("use_channel")
@@ -544,139 +542,6 @@ func shouldSmartGroupFailover(c *gin.Context, relayInfo *relaycommon.RelayInfo, 
 	return operation_setting.ShouldRetryByStatusCode(code)
 }
 
-func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
-	if openaiErr == nil {
-		return false
-	}
-	if types.IsDeterministicRequestError(openaiErr) {
-		return false
-	}
-	if c == nil || (c.Request != nil && c.Request.Context().Err() != nil) {
-		return false
-	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-		return false
-	}
-	if types.IsSkipRetryError(openaiErr) {
-		return false
-	}
-	if retryTimes <= 0 {
-		return false
-	}
-	if types.IsChannelError(openaiErr) {
-		return true
-	}
-	if _, ok := c.Get("specific_channel_id"); ok {
-		return false
-	}
-	code := openaiErr.StatusCode
-	if code >= 200 && code < 300 {
-		return false
-	}
-	if code < 100 || code > 599 {
-		return true
-	}
-	if operation_setting.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
-		return false
-	}
-	return operation_setting.ShouldRetryByStatusCode(code)
-}
-
-type relayFailoverPolicy struct {
-	bodySize int64
-	deadline time.Time
-	retries  int
-}
-
-func newRelayFailoverPolicy() *relayFailoverPolicy {
-	return &relayFailoverPolicy{}
-}
-
-func (p *relayFailoverPolicy) setBodySize(size int64) {
-	if p != nil && size >= 0 {
-		p.bodySize = size
-	}
-}
-
-func (p *relayFailoverPolicy) expired() bool {
-	return p != nil && !p.deadline.IsZero() && time.Now().After(p.deadline)
-}
-
-func (p *relayFailoverPolicy) allowRetry(c *gin.Context, relayInfo *relaycommon.RelayInfo, relayErr *types.NewAPIError, remainingRetries int) bool {
-	if p == nil || c == nil || relayInfo == nil || relayErr == nil || remainingRetries <= 0 || p.retries >= 1 {
-		return false
-	}
-	if _, specific := c.Get("specific_channel_id"); specific {
-		return false
-	}
-	if c.Request == nil || c.Request.Context().Err() != nil || relayInfo.HasSendResponse() {
-		return false
-	}
-	if types.IsSkipRetryError(relayErr) || types.IsDeterministicRequestError(relayErr) || service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-		return false
-	}
-	maxBodyMB := common.ModelRequestSmallFailoverBodyMB
-	if maxBodyMB <= 0 || p.bodySize > int64(maxBodyMB)<<20 {
-		return false
-	}
-	if !isPreResponseTransportError(relayErr) {
-		return false
-	}
-	timeoutSeconds := common.ModelRequestSmallFailoverTimeoutSeconds
-	if timeoutSeconds <= 0 {
-		return false
-	}
-	p.deadline = time.Now().Add(time.Duration(timeoutSeconds) * time.Second)
-	p.retries++
-	return true
-}
-
-func (p *relayFailoverPolicy) applyAttemptDeadline(c *gin.Context) func() {
-	if p == nil || c == nil || c.Request == nil || p.deadline.IsZero() {
-		return func() {}
-	}
-	originalRequest := c.Request
-	ctx, cancel := context.WithDeadline(originalRequest.Context(), p.deadline)
-	c.Request = originalRequest.WithContext(ctx)
-	return func() {
-		c.Request = originalRequest
-		cancel()
-	}
-}
-
-func isPreResponseTransportError(relayErr *types.NewAPIError) bool {
-	if relayErr == nil || relayErr.GetErrorCode() == types.ErrorCodeBadResponseStatusCode {
-		return false
-	}
-	if errors.Is(relayErr, io.EOF) || errors.Is(relayErr, io.ErrUnexpectedEOF) || errors.Is(relayErr, net.ErrClosed) {
-		return true
-	}
-	var netErr net.Error
-	if errors.As(relayErr, &netErr) {
-		return true
-	}
-	message := strings.ToLower(strings.TrimSpace(relayErr.Error()))
-	if message == "eof" || message == "unexpected eof" {
-		return true
-	}
-	for _, marker := range []string{
-		"dial tcp",
-		"connection refused",
-		"connection reset",
-		"broken pipe",
-		"server closed idle connection",
-		"network is unreachable",
-		"no such host",
-		"tls handshake",
-		"tls:",
-	} {
-		if strings.Contains(message, marker) {
-			return true
-		}
-	}
-	return false
-}
-
 func channelCapacityError(channelID int, capacity service.ChannelCapacitySnapshot) *types.NewAPIError {
 	label := "渠道"
 	limit := capacity.TotalLimit
@@ -694,42 +559,13 @@ func channelCapacityError(channelID int, capacity service.ChannelCapacitySnapsho
 
 func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
-	sharedActionAllowed := true
-	sharedActionChecked := false
-	if cooldown, cooldownClass := channelCooldownDecision(err); cooldown > 0 && !service.IsImportedAccountQuotaError(c, err) {
-		if isTransientCooldownClass(cooldownClass) {
-			userCooldown := service.MarkUserChannelCooldown(c, channelError.ChannelId, cooldown)
-			if userCooldown > 0 {
-				service.ClearChannelAffinityCacheForContext(c)
-				logger.LogInfo(c, fmt.Sprintf("channel #%d user cooldown: %s, class=%s, user_id=%d",
-					channelError.ChannelId, userCooldown.String(), cooldownClass, c.GetInt("id")))
-			}
-		}
-		applyCooldown, distinctUsers := shouldApplySharedChannelCooldown(channelError.ChannelId, c.GetInt("id"), cooldownClass)
-		sharedActionAllowed = applyCooldown
-		sharedActionChecked = true
-		if applyCooldown {
-			model.MarkChannelCooldown(channelError.ChannelId, cooldown, err.ErrorWithStatusCode())
-			logger.LogWarn(c, fmt.Sprintf("channel #%d cooldown: %s, class=%s, status=%d, code=%s",
-				channelError.ChannelId, cooldown.String(), cooldownClass, err.StatusCode, err.GetErrorCode()))
-		} else {
-			logger.LogInfo(c, fmt.Sprintf("channel #%d shared cooldown deferred: class=%s, distinct_users=%d/%d",
-				channelError.ChannelId, cooldownClass, distinctUsers, transientCooldownUserQuorum))
-		}
-	}
+	importedQuotaError := service.IsImportedAccountQuotaError(c, err)
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
-	if !service.IsImportedAccountQuotaError(c, err) && service.ShouldDisableChannel(err) && channelError.AutoBan {
-		if !sharedActionChecked {
-			sharedActionAllowed, _ = shouldApplySharedChannelCooldown(channelError.ChannelId, c.GetInt("id"), "automatic_disable")
-		}
-		if sharedActionAllowed {
-			gopool.Go(func() {
-				service.DisableChannel(channelError, err.ErrorWithStatusCode())
-			})
-		} else {
-			logger.LogInfo(c, fmt.Sprintf("channel #%d automatic disable deferred: waiting for distinct-user quorum", channelError.ChannelId))
-		}
+	if !importedQuotaError && service.ShouldDisableChannel(err) && channelError.AutoBan {
+		gopool.Go(func() {
+			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+		})
 	}
 
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
@@ -811,84 +647,6 @@ func RelayMidjourney(c *gin.Context) {
 		channelId := c.GetInt("channel_id")
 		logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", channelId, statusCode, fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)))
 	}
-}
-
-func channelCooldownDecision(err *types.NewAPIError) (time.Duration, string) {
-	if err == nil || types.IsSkipRetryError(err) || types.IsDeterministicRequestError(err) {
-		return 0, ""
-	}
-	switch err.GetErrorCode() {
-	case types.ErrorCodeChannelInvalidKey, types.ErrorCodeChannelNoAvailableKey:
-		return 10 * time.Minute, "credential"
-	case types.ErrorCodeChannelResponseTimeExceeded, types.ErrorCodeChannelAwsClientError:
-		return 3 * time.Minute, "channel_runtime"
-	case types.ErrorCodeDoRequestFailed:
-		switch {
-		case isTimeoutLikeRelayError(err):
-			return 90 * time.Second, "timeout"
-		case isConnectionLikeRelayError(err):
-			return 45 * time.Second, "connectivity"
-		default:
-			return 60 * time.Second, "request_failed"
-		}
-	}
-	if types.IsChannelError(err) {
-		return 3 * time.Minute, "channel"
-	}
-
-	switch err.StatusCode {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return 10 * time.Minute, "auth"
-	case http.StatusTooManyRequests:
-		return 60 * time.Second, "rate_limit"
-	case http.StatusRequestTimeout:
-		return 90 * time.Second, "timeout"
-	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 522, 524:
-		return 90 * time.Second, "upstream_gateway"
-	case http.StatusInternalServerError:
-		return 60 * time.Second, "upstream_500"
-	}
-	if err.StatusCode >= 525 && err.StatusCode <= 599 {
-		return 2 * time.Minute, "upstream_5xx"
-	}
-	return 0, ""
-}
-
-func channelCooldownDuration(err *types.NewAPIError) time.Duration {
-	duration, _ := channelCooldownDecision(err)
-	return duration
-}
-
-func isTimeoutLikeRelayError(err *types.NewAPIError) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return true
-	}
-	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "timeout") ||
-		strings.Contains(lower, "deadline exceeded") ||
-		strings.Contains(lower, "context deadline")
-}
-
-func isConnectionLikeRelayError(err *types.NewAPIError) bool {
-	if err == nil {
-		return false
-	}
-	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "connection refused") ||
-		strings.Contains(lower, "connection reset") ||
-		strings.Contains(lower, "connection closed") ||
-		strings.Contains(lower, "broken pipe") ||
-		strings.Contains(lower, "no such host") ||
-		strings.Contains(lower, "server misbehaving") ||
-		strings.Contains(lower, "tls handshake") ||
-		strings.Contains(lower, "eof")
 }
 
 func RelayNotImplemented(c *gin.Context) {
@@ -1036,7 +794,8 @@ func RelayTask(c *gin.Context) {
 		}
 	}()
 
-	attemptBudget := newRelayAttemptBudget(common.RetryTimes)
+	// Channel discovery may inspect alternatives, but the request gets exactly one upstream attempt.
+	attemptBudget := newRelayAttemptBudget(0)
 	retryParam := &service.RetryParam{
 		Ctx:        c,
 		TokenGroup: relayInfo.TokenGroup,
@@ -1107,8 +866,6 @@ func RelayTask(c *gin.Context) {
 			result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		}()
 		if taskErr == nil {
-			clearChannelTransientFailures(channel.Id)
-			service.ClearUserChannelCooldown(c, channel.Id)
 			break
 		}
 
@@ -1118,10 +875,8 @@ func RelayTask(c *gin.Context) {
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 		}
-
-		if !shouldRetryTaskRelay(c, channel.Id, taskErr, attemptBudget.remainingRetries()) {
-			break
-		}
+		logger.LogInfo(c, "upstream task error returned to client immediately; retry and channel failover skipped")
+		break
 	}
 
 	useChannel := c.GetStringSlice("use_channel")
@@ -1169,36 +924,6 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
-}
-
-func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
-	if taskErr == nil {
-		return false
-	}
-	if c == nil || (c.Request != nil && c.Request.Context().Err() != nil) {
-		return false
-	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-		return false
-	}
-	if retryTimes <= 0 {
-		return false
-	}
-	if _, ok := c.Get("specific_channel_id"); ok {
-		return false
-	}
-	if taskErr.LocalError {
-		return false
-	}
-	taskCause := taskErr.Error
-	if taskCause == nil {
-		taskCause = errors.New(taskErr.Message)
-	}
-	apiErr := types.NewOpenAIError(taskCause, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
-	if types.IsDeterministicRequestError(apiErr) {
-		return false
-	}
-	return operation_setting.ShouldRetryByStatusCode(taskErr.StatusCode)
 }
 
 const maxRelayRetryTimes = 10

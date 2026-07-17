@@ -26,6 +26,5 @@ func TestClientCancellationStopsRetryAndGroupFailover(t *testing.T) {
 		Err:        errors.New("upstream request canceled"),
 		StatusCode: http.StatusInternalServerError,
 	}
-	require.False(t, shouldRetry(c, relayErr, 2))
 	require.False(t, shouldSmartGroupFailover(c, &relaycommon.RelayInfo{}, "super", relayErr))
 }

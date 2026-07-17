@@ -1,13 +1,16 @@
 package model
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
 
 const (
-	channelRuntimePerfAlpha = 0.2
-	channelRuntimePerfTTL   = 30 * time.Minute
+	channelRuntimePerfAlpha         = 0.2
+	channelRuntimePerfTTL           = 30 * time.Minute
+	channelRuntimeTTFTWindow        = 32
+	channelRuntimeTTFTP90MinSamples = 8
 )
 
 type channelRuntimePerf struct {
@@ -16,6 +19,9 @@ type channelRuntimePerf struct {
 	successRate  float64
 	avgTtftMs    float64
 	avgLatencyMs float64
+	ttftSamples  [channelRuntimeTTFTWindow]int64
+	ttftCount    int
+	ttftNext     int
 	updatedAt    time.Time
 }
 
@@ -55,6 +61,13 @@ func RecordChannelRuntimeSample(channelID int, ttftMs int64, latencyMs int64, ha
 			}
 		}
 	}
+	if hasTtft && ttftMs > 0 {
+		perf.ttftSamples[perf.ttftNext] = ttftMs
+		perf.ttftNext = (perf.ttftNext + 1) % channelRuntimeTTFTWindow
+		if perf.ttftCount < channelRuntimeTTFTWindow {
+			perf.ttftCount++
+		}
+	}
 	perf.updatedAt = time.Now()
 }
 
@@ -87,6 +100,9 @@ func channelRuntimeSelectionWeightPercent(channelID int) int {
 	if ttftMs > channelLatencyNoPenaltyMs {
 		percent = percent * channelResponseTimeWeightPercent(ttftMs) / 100
 	}
+	if p90TtftMs := perf.ttftP90Locked(); p90TtftMs > channelLatencyNoPenaltyMs {
+		percent = percent * channelResponseTimeWeightPercent(p90TtftMs) / 100
+	}
 
 	if percent < 10 {
 		return 10
@@ -95,6 +111,20 @@ func channelRuntimeSelectionWeightPercent(channelID int) int {
 		return 100
 	}
 	return percent
+}
+
+func (p *channelRuntimePerf) ttftP90Locked() int {
+	if p == nil || p.ttftCount < channelRuntimeTTFTP90MinSamples {
+		return 0
+	}
+	samples := make([]int64, p.ttftCount)
+	copy(samples, p.ttftSamples[:p.ttftCount])
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+	index := (len(samples)*90 + 99) / 100
+	if index <= 0 {
+		index = 1
+	}
+	return int(samples[index-1])
 }
 
 func ewma(previous float64, current float64, alpha float64) float64 {

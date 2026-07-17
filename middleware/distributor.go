@@ -117,10 +117,7 @@ func Distribute() func(c *gin.Context) {
 					if err == nil && preferred != nil {
 						if service.IsLargeModelRequest(c) && !preferred.GetSetting().LargeRequestEligible {
 							// Let large-body routing search for a designated channel first.
-						} else if capacity := service.CheckChannelRequestCapacity(c, preferred); !capacity.Allowed {
-							service.MarkChannelCapacityExcluded(c, preferred.Id)
-						} else if service.IsUserChannelCoolingDown(c, preferred.Id) {
-							service.ClearChannelAffinityCacheForContext(c)
+							service.PreserveChannelAffinityForFallback(c, "large_request")
 						} else if service.ShouldSkipChannelForImportedAccountFailover(c, preferred) {
 							service.ClearChannelAffinityCacheForContext(c)
 						} else if preferred.Status != common.ChannelStatusEnabled {
@@ -146,12 +143,14 @@ func Distribute() func(c *gin.Context) {
 				}
 
 				if channel == nil {
-					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
+					var capacityQueue time.Duration
+					channel, selectGroup, err, capacityQueue = service.CacheGetRandomSatisfiedChannelWaiting(&service.RetryParam{
 						Ctx:        c,
 						ModelName:  modelRequest.Model,
 						TokenGroup: usingGroup,
 						Retry:      common.GetPointer(0),
-					})
+					}, time.Duration(common.ModelRequestChannelCapacityQueueTimeoutMs)*time.Millisecond)
+					common.SetContextKey(c, constant.ContextKeyChannelCapacityQueue, capacityQueue)
 					if err != nil {
 						if errors.Is(err, service.ErrAllChannelsAtCapacity) {
 							c.Header("Retry-After", "1")

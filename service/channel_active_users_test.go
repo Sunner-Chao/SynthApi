@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestChannelActiveUserTrackerRefCountsUsersPerChannel(t *testing.T) {
@@ -23,6 +25,52 @@ func TestChannelActiveUserTrackerRefCountsUsersPerChannel(t *testing.T) {
 
 	endOtherUser()
 	assertEqual(t, map[int]int{10: 0}, tracker.counts([]int{10}))
+}
+
+func TestChannelActiveUserTrackerWaitsForCapacity(t *testing.T) {
+	tracker := newChannelActiveUserTracker()
+	first, capacity := tracker.beginWithLimit(652, 20, 1, 1)
+	if !capacity.Allowed || first == nil {
+		t.Fatal("first request should be admitted")
+	}
+
+	time.AfterFunc(40*time.Millisecond, first)
+	second, capacity, waited := tracker.beginWithLimitWaiting(context.Background(), 652, 21, 1, 1, time.Second)
+	if !capacity.Allowed || second == nil {
+		t.Fatal("queued request should be admitted after release")
+	}
+	if waited < 30*time.Millisecond {
+		t.Fatalf("expected a real capacity wait, got %s", waited)
+	}
+	second()
+}
+
+func TestChannelActiveUserTrackerCapacityWaitHonorsContext(t *testing.T) {
+	tracker := newChannelActiveUserTracker()
+	first, capacity := tracker.beginWithLimit(652, 20, 1, 1)
+	if !capacity.Allowed || first == nil {
+		t.Fatal("first request should be admitted")
+	}
+	defer first()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	second, capacity, _ := tracker.beginWithLimitWaiting(ctx, 652, 21, 1, 1, time.Second)
+	if capacity.Allowed || second != nil {
+		t.Fatal("canceled waiter must not consume a channel slot")
+	}
+}
+
+func TestChannelActiveRequestCountsTracksRequestsNotUsers(t *testing.T) {
+	tracker := newChannelActiveUserTracker()
+	first := tracker.begin(652, 20)
+	second := tracker.begin(652, 20)
+	third := tracker.begin(1, 21)
+
+	assertEqual(t, map[int]int{1: 1, 652: 2}, tracker.requestCounts())
+	first()
+	second()
+	third()
 }
 
 func TestChannelActiveUserTrackerSummaryDeduplicatesUsers(t *testing.T) {

@@ -79,8 +79,18 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	appendLongContextOptimizationInfo(ctx, other)
 	AppendRelayTraceLogInfo(ctx, relayInfo, other)
 	return other
+}
+
+func appendLongContextOptimizationInfo(ctx *gin.Context, other map[string]interface{}) {
+	if other == nil {
+		return
+	}
+	if audit := GetLongContextOptimizationAudit(ctx); audit != nil {
+		other["long_context_optimization"] = audit
+	}
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
