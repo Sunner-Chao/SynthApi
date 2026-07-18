@@ -81,6 +81,16 @@ func TestPromptCacheConcurrencyKeyIsolatesUsers(t *testing.T) {
 	)
 }
 
+func TestPromptCacheKeyConcurrencyScope(t *testing.T) {
+	compactRequest := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
+	compactRequest.Header.Set("Content-Type", "application/json")
+	require.True(t, isPromptCacheKeyRequest(&gin.Context{Request: compactRequest}))
+
+	responseRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	responseRequest.Header.Set("Content-Type", "application/json")
+	require.False(t, isPromptCacheKeyRequest(&gin.Context{Request: responseRequest}))
+}
+
 func TestPromptCacheKeyConcurrencyMiddlewareQueuesWithout429(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	oldLimit := common.ModelRequestMaxConcurrencyPerPromptCacheKey
@@ -104,7 +114,7 @@ func TestPromptCacheKeyConcurrencyMiddlewareQueuesWithout429(t *testing.T) {
 	})
 	router.Use(ModelTextRequestBodyGuard())
 	router.Use(PromptCacheKeyConcurrencyLimit())
-	router.POST("/v1/responses", func(c *gin.Context) {
+	router.POST("/v1/responses/compact", func(c *gin.Context) {
 		entered <- struct{}{}
 		<-releaseHandlers
 		c.Status(http.StatusOK)
@@ -114,7 +124,7 @@ func TestPromptCacheKeyConcurrencyMiddlewareQueuesWithout429(t *testing.T) {
 	responses := make(chan int, 2)
 	sendRequest := func() {
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", strings.NewReader(requestBody))
 		request.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(recorder, request)
 		responses <- recorder.Code
@@ -171,7 +181,7 @@ func TestPromptCacheKeyConcurrencyMiddlewareUsesSessionHeaderWithoutReadingBody(
 		c.Next()
 	})
 	router.Use(PromptCacheKeyConcurrencyLimit())
-	router.POST("/v1/responses", func(c *gin.Context) {
+	router.POST("/v1/responses/compact", func(c *gin.Context) {
 		require.False(t, bodyRead)
 		_, _ = io.ReadAll(c.Request.Body)
 		bodyRead = true
@@ -179,7 +189,7 @@ func TestPromptCacheKeyConcurrencyMiddlewareUsesSessionHeaderWithoutReadingBody(
 	})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello"}`))
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Session_id", "session-from-header")
 	router.ServeHTTP(recorder, request)

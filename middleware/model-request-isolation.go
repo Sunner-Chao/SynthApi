@@ -92,7 +92,7 @@ func isPromptCacheKeyRequest(c *gin.Context) bool {
 		return false
 	}
 	switch c.Request.URL.Path {
-	case "/v1/responses", "/v1/responses/compact":
+	case "/v1/responses/compact":
 		return strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json")
 	default:
 		return false
@@ -104,8 +104,8 @@ func promptCacheConcurrencyKey(userID int, promptCacheKey string) string {
 	return common.Sha1([]byte(payload))
 }
 
-// PromptCacheKeyConcurrencyLimit serializes requests that mutate the same Codex
-// context before they consume the broader user and token concurrency budgets.
+// PromptCacheKeyConcurrencyLimit serializes compact requests that mutate the
+// same Codex context before they consume broader concurrency budgets.
 func PromptCacheKeyConcurrencyLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		limit := common.ModelRequestMaxConcurrencyPerPromptCacheKey
