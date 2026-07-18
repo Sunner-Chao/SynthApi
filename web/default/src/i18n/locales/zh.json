@@ -4934,6 +4934,18 @@
     "Group scope": "分组范围",
     "Blank applies to all users": "留空表示全部用户",
     "Blank applies to all tokens": "留空表示全部令牌",
-    "Blank applies to all groups": "留空表示全部分组"
+    "Blank applies to all groups": "留空表示全部分组",
+    "Total / Upstream First Token": "耗时 / 上游首字",
+    "Upstream first token, excluding client upload and upstream request write": "上游首字，不含客户端上传和上游请求写入",
+    "Upstream first response body, excluding client upload and upstream request write": "上游首响应体，不含客户端上传和上游请求写入",
+    "Legacy end-to-end first response; upstream timing unavailable": "旧日志端到端首字，上游耗时不可用",
+    "First response timing unavailable": "首字耗时不可用",
+    "Timing Breakdown": "耗时拆分",
+    "Total Response Time": "总耗时",
+    "Upstream First Token": "上游首字",
+    "Upstream First Body": "上游首响应体",
+    "End-to-End First Token": "端到端首字",
+    "End-to-End First Response": "端到端首响应",
+    "Upstream Request Write": "上游请求写入"
   }
 }

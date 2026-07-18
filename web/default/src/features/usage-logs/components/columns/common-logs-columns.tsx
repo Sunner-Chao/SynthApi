@@ -52,6 +52,10 @@ import {
   isViolationFeeLog,
   parseLogOther,
 } from '../../lib/format'
+import {
+  getLogFirstResponseLatency,
+  type FirstResponseLatencySource,
+} from '../../lib/latency'
 import { formatTokensPerSecond, getLogThroughput } from '../../lib/throughput'
 import {
   isDisplayableLogType,
@@ -69,6 +73,26 @@ interface DetailSegment {
   text: string
   muted?: boolean
   danger?: boolean
+}
+
+function getFirstResponseTooltip(
+  source: FirstResponseLatencySource | null,
+  t: (key: string) => string
+): string {
+  switch (source) {
+    case 'upstream_first_event':
+      return t(
+        'Upstream first token, excluding client upload and upstream request write'
+      )
+    case 'upstream_first_body':
+      return t(
+        'Upstream first response body, excluding client upload and upstream request write'
+      )
+    case 'end_to_end':
+      return t('Legacy end-to-end first response; upstream timing unavailable')
+    default:
+      return t('First response timing unavailable')
+  }
 }
 
 function formatRatioCompact(ratio: number | undefined): string {
@@ -583,7 +607,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     {
       accessorKey: 'use_time',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Timing')} />
+        <DataTableColumnHeader
+          column={column}
+          title={t('Total / Upstream First Token')}
+        />
       ),
       cell: ({ row }) => {
         const log = row.original
@@ -591,15 +618,15 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
         const useTime = row.getValue('use_time') as number
         const other = parseLogOther(log.other)
-        const frt = other?.frt
+        const firstResponse = getLogFirstResponseLatency(log, other)
         const throughput = getLogThroughput(log, other)
         const timeVariant = getResponseTimeColor(
           useTime,
           log.completion_tokens,
           throughput?.tokensPerSecond
         )
-        const frtVariant = frt
-          ? getFirstResponseTimeColor(frt / 1000)
+        const firstResponseVariant = firstResponse
+          ? getFirstResponseTimeColor(firstResponse.milliseconds / 1000)
           : 'neutral'
 
         const timingBgMap: Record<string, string> = {
@@ -623,29 +650,42 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 copyable={false}
                 className={cn('rounded-md font-mono', timingBgMap[timeVariant])}
               />
-              {log.is_stream &&
-                (frt != null && frt > 0 ? (
-                  <StatusBadge
-                    label={formatUseTime(frt / 1000)}
-                    variant={frtVariant as StatusBadgeProps['variant']}
-                    size='sm'
-                    showDot={false}
-                    copyable={false}
-                    className={cn(
-                      'rounded-md font-mono',
-                      timingBgMap[frtVariant]
+              <TooltipProvider delay={300}>
+                <Tooltip>
+                  <TooltipTrigger render={<span className='inline-flex' />}>
+                    {firstResponse ? (
+                      <StatusBadge
+                        label={formatUseTime(firstResponse.milliseconds / 1000)}
+                        variant={
+                          firstResponseVariant as StatusBadgeProps['variant']
+                        }
+                        size='sm'
+                        showDot={false}
+                        copyable={false}
+                        className={cn(
+                          'rounded-md font-mono',
+                          timingBgMap[firstResponseVariant]
+                        )}
+                      />
+                    ) : (
+                      <StatusBadge
+                        label='N/A'
+                        variant='neutral'
+                        size='sm'
+                        showDot={false}
+                        copyable={false}
+                        className={cn(
+                          'rounded-md font-mono',
+                          timingBgMap.neutral
+                        )}
+                      />
                     )}
-                  />
-                ) : (
-                  <StatusBadge
-                    label='N/A'
-                    variant='neutral'
-                    size='sm'
-                    showDot={false}
-                    copyable={false}
-                    className={cn('rounded-md font-mono', timingBgMap.neutral)}
-                  />
-                ))}
+                  </TooltipTrigger>
+                  <TooltipContent side='top' className='max-w-xs'>
+                    {getFirstResponseTooltip(firstResponse?.source ?? null, t)}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <div className='flex items-center gap-1 [font-family:var(--font-body)] !text-xs leading-none'>
               <span className='text-muted-foreground/60 [font-family:var(--font-body)] !text-xs leading-none'>

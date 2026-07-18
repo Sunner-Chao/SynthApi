@@ -144,10 +144,7 @@ function renderType(type, t) {
 
 function buildStreamStatusTooltip(ss, t) {
   if (!ss) return null;
-  const lines = [
-    t('流状态') + '：' + t('异常'),
-    (ss.end_reason || 'unknown'),
-  ];
+  const lines = [t('流状态') + '：' + t('异常'), ss.end_reason || 'unknown'];
   if (ss.error_count > 0) {
     lines.push(`${t('软错误')}: ${ss.error_count}`);
   }
@@ -185,11 +182,7 @@ function renderIsStream(bool, t, streamStatus) {
                 userSelect: 'none',
               }}
             >
-              <CircleAlert
-                size={14}
-                strokeWidth={2.5}
-                color='currentColor'
-              />
+              <CircleAlert size={14} strokeWidth={2.5} color='currentColor' />
             </span>
           </Tooltip>
         )}
@@ -230,31 +223,69 @@ function renderUseTime(type, t) {
   }
 }
 
-function renderFirstUseTime(type, t) {
-  let time = parseFloat(type) / 1000.0;
-  time = time.toFixed(1);
-  if (time < 3) {
+function validFirstResponseLatency(value) {
+  const milliseconds = Number(value);
+  return Number.isFinite(milliseconds) && milliseconds > 0
+    ? milliseconds
+    : null;
+}
+
+function getFirstResponseLatency(record, other) {
+  const attempts = other?.relay_trace?.attempts;
+  const finalAttempt =
+    Array.isArray(attempts) && attempts.length > 0
+      ? attempts[attempts.length - 1]
+      : null;
+  const upstreamMilliseconds = validFirstResponseLatency(
+    record.is_stream
+      ? finalAttempt?.upstream_to_first_event_ms
+      : finalAttempt?.application_first_body_read_ms,
+  );
+
+  if (upstreamMilliseconds !== null) {
+    return {
+      milliseconds: upstreamMilliseconds,
+      source: record.is_stream ? 'upstream_first_event' : 'upstream_first_body',
+    };
+  }
+
+  const endToEndMilliseconds = validFirstResponseLatency(other?.frt);
+  return endToEndMilliseconds === null
+    ? null
+    : { milliseconds: endToEndMilliseconds, source: 'end_to_end' };
+}
+
+function renderFirstUseTime(latency, t) {
+  let tooltip = t('首字耗时不可用');
+  if (latency?.source === 'upstream_first_event') {
+    tooltip = t('上游首字，不含客户端上传和上游请求写入');
+  } else if (latency?.source === 'upstream_first_body') {
+    tooltip = t('上游首响应体，不含客户端上传和上游请求写入');
+  } else if (latency?.source === 'end_to_end') {
+    tooltip = t('旧日志端到端首字，上游耗时不可用');
+  }
+
+  if (!latency) {
     return (
-      <Tag color='green' shape='circle'>
-        {' '}
-        {time} s{' '}
-      </Tag>
-    );
-  } else if (time < 10) {
-    return (
-      <Tag color='orange' shape='circle'>
-        {' '}
-        {time} s{' '}
-      </Tag>
-    );
-  } else {
-    return (
-      <Tag color='red' shape='circle'>
-        {' '}
-        {time} s{' '}
-      </Tag>
+      <Tooltip content={tooltip}>
+        <Tag color='grey' shape='circle'>
+          N/A
+        </Tag>
+      </Tooltip>
     );
   }
+
+  const seconds = latency.milliseconds / 1000.0;
+  const time = seconds.toFixed(1);
+  const color = seconds < 10 ? 'green' : seconds <= 30 ? 'orange' : 'red';
+  return (
+    <Tooltip content={tooltip}>
+      <Tag color={color} shape='circle'>
+        {' '}
+        {time} s{' '}
+      </Tag>
+    </Tooltip>
+  );
 }
 
 function renderBillingTag(record, t) {
@@ -461,7 +492,11 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     };
   }
 
-  const summaryOpts = { ...other, displayMode: billingDisplayMode, outputMode: 'segments' };
+  const summaryOpts = {
+    ...other,
+    displayMode: billingDisplayMode,
+    outputMode: 'segments',
+  };
 
   if (other?.billing_mode === 'tiered_expr') {
     return { segments: renderTieredModelPriceSimple(summaryOpts) };
@@ -702,27 +737,17 @@ export const getLogsColumns = ({
         if (!(record.type === 2 || record.type === 5)) {
           return <></>;
         }
-        if (record.is_stream) {
-          let other = getLogOther(record.other);
-          return (
-            <>
-              <Space>
-                {renderUseTime(text, t)}
-                {renderFirstUseTime(other?.frt, t)}
-                {renderIsStream(record.is_stream, t, other?.stream_status)}
-              </Space>
-            </>
-          );
-        } else {
-          return (
-            <>
-              <Space>
-                {renderUseTime(text, t)}
-                {renderIsStream(record.is_stream, t)}
-              </Space>
-            </>
-          );
-        }
+        const other = getLogOther(record.other);
+        const firstResponseLatency = getFirstResponseLatency(record, other);
+        return (
+          <>
+            <Space>
+              {renderUseTime(text, t)}
+              {renderFirstUseTime(firstResponseLatency, t)}
+              {renderIsStream(record.is_stream, t, other?.stream_status)}
+            </Space>
+          </>
+        );
       },
     },
     {

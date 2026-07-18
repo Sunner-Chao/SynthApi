@@ -64,6 +64,11 @@ import {
   getFirstResponseTimeColor,
   getResponseTimeColor,
 } from '../../lib/format'
+import {
+  getEndToEndFirstResponseLatency,
+  getFinalRelayAttempt,
+  getUpstreamFirstResponseLatency,
+} from '../../lib/latency'
 import { getLogThroughput } from '../../lib/throughput'
 import {
   getLogTypeConfig,
@@ -141,6 +146,30 @@ function formatTraceDuration(milliseconds: number | undefined): string {
   if (milliseconds == null || !Number.isFinite(milliseconds)) return '-'
   if (milliseconds < 1000) return `${Math.max(0, milliseconds)} ms`
   return `${(Math.max(0, milliseconds) / 1000).toFixed(2)} s`
+}
+
+function FirstResponseTimingValue(props: {
+  milliseconds: number | null | undefined
+}) {
+  const { milliseconds } = props
+  if (
+    milliseconds == null ||
+    !Number.isFinite(milliseconds) ||
+    milliseconds <= 0
+  ) {
+    return <span className='text-muted-foreground'>N/A</span>
+  }
+
+  return (
+    <span
+      className={cn(
+        'font-medium',
+        timingTextColorClass(getFirstResponseTimeColor(milliseconds / 1000))
+      )}
+    >
+      {formatTraceDuration(milliseconds)}
+    </span>
+  )
 }
 
 function formatTraceBytes(bytes: number | undefined): string {
@@ -1019,6 +1048,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const hasAudioTokens = other?.ws || other?.audio
   const showTiming = isTimingLogType(props.log.type)
   const throughput = getLogThroughput(props.log, other)
+  const upstreamFirstResponse = getUpstreamFirstResponseLatency(
+    props.log,
+    other
+  )
+  const endToEndFirstResponse = getEndToEndFirstResponseLatency(other)
+  const finalRelayAttempt = getFinalRelayAttempt(other)
   const showOverviewIp =
     !!props.log.ip &&
     !other?.relay_trace &&
@@ -1209,44 +1244,76 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   mono
                 />
               )}
-
-              {showTiming && props.log.use_time > 0 && (
-                <DetailRow
-                  label={t('Response Time')}
-                  value={
-                    <span
-                      className={cn(
-                        'font-medium',
-                        timingTextColorClass(
-                          getResponseTimeColor(
-                            props.log.use_time,
-                            props.log.completion_tokens,
-                            throughput?.tokensPerSecond
-                          )
-                        )
-                      )}
-                    >
-                      {formatUseTime(props.log.use_time)}
-                      {props.log.is_stream &&
-                        other?.frt != null &&
-                        other.frt > 0 && (
-                          <span
-                            className={cn(
-                              'font-normal',
-                              timingTextColorClass(
-                                getFirstResponseTimeColor(other.frt / 1000)
-                              )
-                            )}
-                          >
-                            {' '}
-                            (FRT: {formatUseTime(other.frt / 1000)})
-                          </span>
-                        )}
-                    </span>
-                  }
-                />
-              )}
             </div>
+
+            {showTiming && (
+              <DetailSection label={t('Timing Breakdown')}>
+                <DetailRow
+                  label={t('Total Response Time')}
+                  value={
+                    props.log.use_time > 0 ? (
+                      <span
+                        className={cn(
+                          'font-medium',
+                          timingTextColorClass(
+                            getResponseTimeColor(
+                              props.log.use_time,
+                              props.log.completion_tokens,
+                              throughput?.tokensPerSecond
+                            )
+                          )
+                        )}
+                      >
+                        {formatUseTime(props.log.use_time)}
+                      </span>
+                    ) : (
+                      <span className='text-muted-foreground'>N/A</span>
+                    )
+                  }
+                  mono
+                />
+                <DetailRow
+                  label={
+                    props.log.is_stream
+                      ? t('Upstream First Token')
+                      : t('Upstream First Body')
+                  }
+                  value={
+                    <FirstResponseTimingValue
+                      milliseconds={upstreamFirstResponse?.milliseconds}
+                    />
+                  }
+                  mono
+                />
+                <DetailRow
+                  label={
+                    props.log.is_stream
+                      ? t('End-to-End First Token')
+                      : t('End-to-End First Response')
+                  }
+                  value={
+                    <FirstResponseTimingValue
+                      milliseconds={endToEndFirstResponse?.milliseconds}
+                    />
+                  }
+                  mono
+                />
+                <DetailRow
+                  label={t('Client Upload')}
+                  value={formatTraceDuration(
+                    other?.relay_trace?.client?.body_read_ms
+                  )}
+                  mono
+                />
+                <DetailRow
+                  label={t('Upstream Request Write')}
+                  value={formatTraceDuration(
+                    finalRelayAttempt?.request_write_approx_ms
+                  )}
+                  mono
+                />
+              </DetailSection>
+            )}
 
             {other?.relay_trace && (
               <RelayTraceSection

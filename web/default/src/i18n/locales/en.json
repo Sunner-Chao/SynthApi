@@ -4934,6 +4934,18 @@
     "Group scope": "Group scope",
     "Blank applies to all users": "Blank applies to all users",
     "Blank applies to all tokens": "Blank applies to all tokens",
-    "Blank applies to all groups": "Blank applies to all groups"
+    "Blank applies to all groups": "Blank applies to all groups",
+    "Total / Upstream First Token": "Total / Upstream First Token",
+    "Upstream first token, excluding client upload and upstream request write": "Upstream first token, excluding client upload and upstream request write",
+    "Upstream first response body, excluding client upload and upstream request write": "Upstream first response body, excluding client upload and upstream request write",
+    "Legacy end-to-end first response; upstream timing unavailable": "Legacy end-to-end first response; upstream timing unavailable",
+    "First response timing unavailable": "First response timing unavailable",
+    "Timing Breakdown": "Timing Breakdown",
+    "Total Response Time": "Total Response Time",
+    "Upstream First Token": "Upstream First Token",
+    "Upstream First Body": "Upstream First Body",
+    "End-to-End First Token": "End-to-End First Token",
+    "End-to-End First Response": "End-to-End First Response",
+    "Upstream Request Write": "Upstream Request Write"
   }
 }
