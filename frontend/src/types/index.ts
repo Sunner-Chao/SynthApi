@@ -210,6 +210,8 @@ export interface PublicSettings {
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
+  purchase_subscription_enabled?: boolean
+  purchase_subscription_url?: string
   payment_enabled: boolean
   risk_control_enabled: boolean
   table_default_page_size: number

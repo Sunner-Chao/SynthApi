@@ -573,6 +573,9 @@ export default {
 
   // Redeem
   redeem: {
+    purchaseTitle: '购买充值码',
+    purchaseDescription: '前往寄售平台购买充值码，付款后复制卡密回来兑换。',
+    purchaseButton: '购买充值码',
     title: '兑换码',
     description: '输入兑换码以充值余额或增加并发数',
     currentBalance: '当前余额',

@@ -568,6 +568,9 @@ export default {
 
   // Redeem
   redeem: {
+    purchaseTitle: 'Buy a recharge code',
+    purchaseDescription: 'Buy a code from the store, then return here and redeem the delivered card.',
+    purchaseButton: 'Buy recharge code',
     title: 'Redeem Code',
     description: 'Enter your redeem code to add balance or increase concurrency',
     currentBalance: 'Current Balance',

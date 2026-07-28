@@ -36,6 +36,10 @@
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
+            <button @click="openConsignmentDialog" class="btn btn-secondary">
+              <Icon name="externalLink" size="md" class="mr-2" />
+              {{ t('admin.redeem.consignment.settingsButton') }}
+            </button>
             <button @click="handleExportCodes" class="btn btn-secondary">
               {{ t('admin.redeem.exportCsv') }}
             </button>
@@ -247,6 +251,95 @@
         </div>
       </template>
     </TablePageLayout>
+
+    <!-- Consignment Platform Dialog -->
+    <Teleport to="body">
+      <div
+        v-if="showConsignmentDialog"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      >
+        <div class="fixed inset-0 bg-black/50" @click="closeConsignmentDialog"></div>
+        <div class="relative z-10 w-full max-w-lg rounded-lg bg-white shadow-xl dark:bg-dark-800">
+          <div class="border-b border-gray-200 px-6 py-4 dark:border-dark-600">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.redeem.consignment.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.redeem.consignment.description') }}
+            </p>
+          </div>
+
+          <form class="space-y-5 p-6" @submit.prevent="saveConsignmentSettings">
+            <label class="flex items-center justify-between gap-4">
+              <span>
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.redeem.consignment.enable') }}
+                </span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.redeem.consignment.enableHint') }}
+                </span>
+              </span>
+              <input
+                v-model="consignmentForm.enabled"
+                type="checkbox"
+                class="h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </label>
+
+            <div>
+              <label class="input-label">{{ t('admin.redeem.consignment.purchaseUrl') }}</label>
+              <input
+                v-model.trim="consignmentForm.url"
+                type="url"
+                class="input font-mono text-sm"
+                placeholder="https://pay.ldxp.cn/item/..."
+              />
+              <p class="input-hint">{{ t('admin.redeem.consignment.purchaseUrlHint') }}</p>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+              <p class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.redeem.consignment.workflowTitle') }}
+              </p>
+              <ol class="mt-2 list-inside list-decimal space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                <li>{{ t('admin.redeem.consignment.workflowGenerate') }}</li>
+                <li>{{ t('admin.redeem.consignment.workflowUpload') }}</li>
+                <li>{{ t('admin.redeem.consignment.workflowRedeem') }}</li>
+              </ol>
+              <div class="mt-4 flex flex-wrap gap-2">
+                <a
+                  href="https://pay.ldxp.cn/merchant"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn btn-secondary btn-sm"
+                >
+                  {{ t('admin.redeem.consignment.openLdxp') }}
+                  <Icon name="externalLink" size="sm" class="ml-1.5" />
+                </a>
+                <a
+                  href="https://catfk.com/merchant"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn btn-secondary btn-sm"
+                >
+                  {{ t('admin.redeem.consignment.openCatfk') }}
+                  <Icon name="externalLink" size="sm" class="ml-1.5" />
+                </a>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+              <button type="button" class="btn btn-secondary" @click="closeConsignmentDialog">
+                {{ t('common.cancel') }}
+              </button>
+              <button type="submit" class="btn btn-primary" :disabled="savingConsignment">
+                {{ savingConsignment ? t('common.saving') : t('common.save') }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
@@ -576,8 +669,26 @@
           </div>
           <!-- Footer -->
           <div
-            class="flex justify-end gap-2 rounded-b-xl border-t border-gray-200 bg-gray-50 px-5 py-4 dark:border-dark-600 dark:bg-dark-700/50"
+            class="flex flex-wrap justify-end gap-2 rounded-b-xl border-t border-gray-200 bg-gray-50 px-5 py-4 dark:border-dark-600 dark:bg-dark-700/50"
           >
+            <a
+              href="https://pay.ldxp.cn/merchant"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-secondary"
+            >
+              {{ t('admin.redeem.consignment.uploadToLdxp') }}
+              <Icon name="externalLink" size="sm" class="ml-2" />
+            </a>
+            <a
+              href="https://catfk.com/merchant"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-secondary"
+            >
+              {{ t('admin.redeem.consignment.uploadToCatfk') }}
+              <Icon name="externalLink" size="sm" class="ml-2" />
+            </a>
             <button
               @click="copyGeneratedCodes"
               :class="[
@@ -789,6 +900,12 @@ let abortController: AbortController | null = null
 const showDeleteDialog = ref(false)
 const showDeleteUnusedDialog = ref(false)
 const showBatchUpdateDialog = ref(false)
+const showConsignmentDialog = ref(false)
+const savingConsignment = ref(false)
+const consignmentForm = reactive({
+  enabled: false,
+  url: ''
+})
 const deletingCode = ref<RedeemCode | null>(null)
 const copiedCode = ref<string | null>(null)
 
@@ -1085,6 +1202,47 @@ const handleExportCodes = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToExport'))
     console.error('Error exporting codes:', error)
+  }
+}
+
+const openConsignmentDialog = async () => {
+  try {
+    const settings = await adminAPI.settings.getSettings()
+    consignmentForm.enabled = settings.purchase_subscription_enabled || false
+    consignmentForm.url = settings.purchase_subscription_url || ''
+  } catch (error) {
+    appStore.showError(t('admin.redeem.consignment.loadFailed'))
+    console.error('Error loading consignment settings:', error)
+  } finally {
+    showConsignmentDialog.value = true
+  }
+}
+
+const closeConsignmentDialog = () => {
+  if (!savingConsignment.value) {
+    showConsignmentDialog.value = false
+  }
+}
+
+const saveConsignmentSettings = async () => {
+  if (consignmentForm.enabled && !consignmentForm.url) {
+    appStore.showError(t('admin.redeem.consignment.urlRequired'))
+    return
+  }
+
+  savingConsignment.value = true
+  try {
+    await adminAPI.settings.updateSettings({
+      purchase_subscription_enabled: consignmentForm.enabled,
+      purchase_subscription_url: consignmentForm.url
+    })
+    appStore.showSuccess(t('admin.redeem.consignment.saved'))
+    showConsignmentDialog.value = false
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.redeem.consignment.saveFailed'))
+    console.error('Error saving consignment settings:', error)
+  } finally {
+    savingConsignment.value = false
   }
 }
 

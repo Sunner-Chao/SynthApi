@@ -19,6 +19,29 @@
         </div>
       </div>
 
+      <div
+        v-if="purchaseEnabled && purchaseUrl"
+        class="flex flex-col gap-4 rounded-lg border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800/60 dark:bg-emerald-900/20 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div>
+          <h2 class="text-base font-semibold text-emerald-900 dark:text-emerald-100">
+            {{ t('redeem.purchaseTitle') }}
+          </h2>
+          <p class="mt-1 text-sm text-emerald-700 dark:text-emerald-300">
+            {{ t('redeem.purchaseDescription') }}
+          </p>
+        </div>
+        <a
+          :href="purchaseUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-primary shrink-0"
+        >
+          {{ t('redeem.purchaseButton') }}
+          <Icon name="externalLink" size="sm" class="ml-2" />
+        </a>
+      </div>
+
       <!-- Redeem Form -->
       <div class="card">
         <div class="p-6">
@@ -376,6 +399,8 @@ const errorMessage = ref('')
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
+const purchaseEnabled = ref(false)
+const purchaseUrl = ref('')
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
@@ -481,6 +506,8 @@ onMounted(async () => {
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
+    purchaseEnabled.value = settings.purchase_subscription_enabled || false
+    purchaseUrl.value = settings.purchase_subscription_url || ''
   } catch (error) {
     console.error('Failed to load contact info:', error)
   }
