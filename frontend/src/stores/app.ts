@@ -10,7 +10,8 @@ import { i18n } from '@/i18n'
 import {
   checkUpdates as checkUpdatesAPI,
   type VersionInfo,
-  type ReleaseInfo
+  type ReleaseInfo,
+  type SourceUpdateStatus
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
 
@@ -43,6 +44,9 @@ export const useAppStore = defineStore('app', () => {
   const hasUpdate = ref<boolean>(false)
   const buildType = ref<string>('source')
   const releaseInfo = ref<ReleaseInfo | null>(null)
+  const updateStrategy = ref<'binary' | 'source_sync'>('binary')
+  const rollbackSupported = ref<boolean>(true)
+  const sourceUpdateStatus = ref<SourceUpdateStatus | null>(null)
 
   // Auto-incrementing ID for toasts
   let toastIdCounter = 0
@@ -248,6 +252,9 @@ export const useAppStore = defineStore('app', () => {
         latest_version: latestVersion.value,
         has_update: hasUpdate.value,
         build_type: buildType.value,
+        update_strategy: updateStrategy.value,
+        rollback_supported: rollbackSupported.value,
+        update_status: sourceUpdateStatus.value || undefined,
         release_info: releaseInfo.value || undefined,
         cached: true
       }
@@ -266,6 +273,9 @@ export const useAppStore = defineStore('app', () => {
       hasUpdate.value = data.has_update
       buildType.value = data.build_type || 'source'
       releaseInfo.value = data.release_info || null
+      updateStrategy.value = data.update_strategy || 'binary'
+      rollbackSupported.value = data.rollback_supported !== false
+      sourceUpdateStatus.value = data.update_status || null
       versionLoaded.value = true
       return data
     } catch (error) {
@@ -454,6 +464,9 @@ export const useAppStore = defineStore('app', () => {
     hasUpdate,
     buildType,
     releaseInfo,
+    updateStrategy,
+    rollbackSupported,
+    sourceUpdateStatus,
 
     // Computed
     hasActiveToasts,

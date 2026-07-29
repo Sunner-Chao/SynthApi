@@ -4,7 +4,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -67,6 +70,90 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ErrNoUpdateAvailable))
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
+}
+
+func TestUpdateServiceSourceSyncQueuesRequestAndStatus(t *testing.T) {
+	dir := t.TempDir()
+	requestFile := filepath.Join(dir, "request.json")
+	statusFile := filepath.Join(dir, "status.json")
+	fixedNow := time.Date(2026, time.July, 29, 12, 0, 0, 0, time.UTC)
+	svc := NewUpdateServiceWithOptions(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.168", Name: "v0.1.168"}},
+		"0.1.159",
+		"release",
+		UpdateServiceOptions{
+			Strategy:    UpdateStrategySourceSync,
+			RequestFile: requestFile,
+			StatusFile:  statusFile,
+			Now:         func() time.Time { return fixedNow },
+		},
+	)
+
+	result, err := svc.PerformUpdateOperation(context.Background(), "source-op-1")
+
+	require.NoError(t, err)
+	require.True(t, result.UpdateStarted)
+	require.False(t, result.NeedRestart)
+	require.Equal(t, UpdateStrategySourceSync, result.Strategy)
+	require.Equal(t, "0.1.168", result.TargetVersion)
+	require.Equal(t, "source-op-1", result.OperationID)
+
+	requestData, err := os.ReadFile(requestFile)
+	require.NoError(t, err)
+	var request SourceUpdateRequest
+	require.NoError(t, json.Unmarshal(requestData, &request))
+	require.Equal(t, 1, request.SchemaVersion)
+	require.Equal(t, "source-op-1", request.OperationID)
+	require.Equal(t, "0.1.159", request.CurrentVersion)
+	require.Equal(t, "0.1.168", request.TargetVersion)
+	require.Equal(t, githubRepo, request.OfficialRepository)
+	require.Equal(t, fixedNow.Format(time.RFC3339), request.RequestedAt)
+
+	statusData, err := os.ReadFile(statusFile)
+	require.NoError(t, err)
+	var status SourceUpdateStatus
+	require.NoError(t, json.Unmarshal(statusData, &status))
+	require.Equal(t, "queued", status.State)
+	require.Equal(t, "source-op-1", status.OperationID)
+	require.Equal(t, "pending", status.BackupStatus)
+}
+
+func TestUpdateServiceSourceSyncRejectsConcurrentRequest(t *testing.T) {
+	dir := t.TempDir()
+	statusFile := filepath.Join(dir, "status.json")
+	require.NoError(t, writeUpdateJSONAtomically(statusFile, SourceUpdateStatus{State: "running"}))
+	svc := NewUpdateServiceWithOptions(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.168"}},
+		"0.1.159",
+		"release",
+		UpdateServiceOptions{
+			Strategy:    UpdateStrategySourceSync,
+			RequestFile: filepath.Join(dir, "request.json"),
+			StatusFile:  statusFile,
+		},
+	)
+
+	_, err := svc.PerformUpdateOperation(context.Background(), "source-op-2")
+
+	require.ErrorIs(t, err, ErrSourceUpdateInProgress)
+}
+
+func TestUpdateServiceSourceSyncDisablesBinaryRollback(t *testing.T) {
+	svc := NewUpdateServiceWithOptions(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{},
+		"0.1.168",
+		"release",
+		UpdateServiceOptions{Strategy: UpdateStrategySourceSync},
+	)
+
+	versions, err := svc.ListRollbackVersions(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, versions)
+	require.ErrorIs(t, svc.Rollback(), ErrSourceRollbackUnsupported)
+	require.ErrorIs(t, svc.RollbackToVersion(context.Background(), "0.1.167"), ErrSourceRollbackUnsupported)
 }
 
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {

@@ -54,6 +54,9 @@ services:
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
+      - UPDATE_STRATEGY=${UPDATE_STRATEGY:-binary}
+      - UPDATE_REQUEST_FILE=${UPDATE_REQUEST_FILE:-/app/data/system-update/request.json}
+      - UPDATE_STATUS_FILE=${UPDATE_STATUS_FILE:-/app/data/system-update/status.json}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)

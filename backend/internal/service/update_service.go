@@ -25,6 +25,8 @@ import (
 var (
 	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
 	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
+	ErrSourceUpdateInProgress    = infraerrors.Conflict("SOURCE_UPDATE_IN_PROGRESS", "a source update is already in progress")
+	ErrSourceRollbackUnsupported = infraerrors.Conflict("SOURCE_ROLLBACK_UNSUPPORTED", "binary rollback is disabled for source-synchronized deployments")
 )
 
 const (
@@ -43,6 +45,9 @@ const (
 	maxRollbackVersions = 3
 	// Fetch a few extra releases so filtering (current/newer/prerelease) still leaves enough candidates
 	rollbackFetchPageSize = 15
+
+	UpdateStrategyBinary     = "binary"
+	UpdateStrategySourceSync = "source_sync"
 )
 
 // UpdateCache defines cache operations for update service
@@ -65,27 +70,58 @@ type UpdateService struct {
 	githubClient   GitHubReleaseClient
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
+	strategy       string
+	requestFile    string
+	statusFile     string
+	now            func() time.Time
 }
 
 // NewUpdateService creates a new UpdateService
 func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, version, buildType string) *UpdateService {
+	return NewUpdateServiceWithOptions(cache, githubClient, version, buildType, UpdateServiceOptions{})
+}
+
+// NewUpdateServiceWithOptions creates an UpdateService with deployment-specific update behavior.
+func NewUpdateServiceWithOptions(cache UpdateCache, githubClient GitHubReleaseClient, version, buildType string, options UpdateServiceOptions) *UpdateService {
+	strategy := normalizeUpdateStrategy(options.Strategy)
+	requestFile := strings.TrimSpace(options.RequestFile)
+	statusFile := strings.TrimSpace(options.StatusFile)
+	if strategy == UpdateStrategySourceSync {
+		if requestFile == "" {
+			requestFile = "/app/data/system-update/request.json"
+		}
+		if statusFile == "" {
+			statusFile = "/app/data/system-update/status.json"
+		}
+	}
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &UpdateService{
 		cache:          cache,
 		githubClient:   githubClient,
 		currentVersion: version,
 		buildType:      buildType,
+		strategy:       strategy,
+		requestFile:    requestFile,
+		statusFile:     statusFile,
+		now:            now,
 	}
 }
 
 // UpdateInfo contains update information
 type UpdateInfo struct {
-	CurrentVersion string       `json:"current_version"`
-	LatestVersion  string       `json:"latest_version"`
-	HasUpdate      bool         `json:"has_update"`
-	ReleaseInfo    *ReleaseInfo `json:"release_info,omitempty"`
-	Cached         bool         `json:"cached"`
-	Warning        string       `json:"warning,omitempty"`
-	BuildType      string       `json:"build_type"` // "source" or "release"
+	CurrentVersion    string              `json:"current_version"`
+	LatestVersion     string              `json:"latest_version"`
+	HasUpdate         bool                `json:"has_update"`
+	ReleaseInfo       *ReleaseInfo        `json:"release_info,omitempty"`
+	Cached            bool                `json:"cached"`
+	Warning           string              `json:"warning,omitempty"`
+	BuildType         string              `json:"build_type"` // "source" or "release"
+	UpdateStrategy    string              `json:"update_strategy"`
+	RollbackSupported bool                `json:"rollback_supported"`
+	UpdateStatus      *SourceUpdateStatus `json:"update_status,omitempty"`
 }
 
 // ReleaseInfo contains GitHub release details
@@ -134,7 +170,7 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
-			return cached, nil
+			return s.decorateUpdateInfo(cached), nil
 		}
 	}
 
@@ -144,35 +180,54 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 		// Return cached on error
 		if cached, cacheErr := s.getFromCache(ctx); cacheErr == nil && cached != nil {
 			cached.Warning = "Using cached data: " + err.Error()
-			return cached, nil
+			return s.decorateUpdateInfo(cached), nil
 		}
-		return &UpdateInfo{
+		return s.decorateUpdateInfo(&UpdateInfo{
 			CurrentVersion: s.currentVersion,
 			LatestVersion:  s.currentVersion,
 			HasUpdate:      false,
 			Warning:        err.Error(),
 			BuildType:      s.buildType,
-		}, nil
+		}), nil
 	}
 
 	// Cache result
 	s.saveToCache(ctx, info)
-	return info, nil
+	return s.decorateUpdateInfo(info), nil
 }
 
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	_, err := s.PerformUpdateOperation(ctx, "")
+	return err
+}
+
+// PerformUpdateOperation applies a binary update or queues a source-synchronized update.
+func (s *UpdateService) PerformUpdateOperation(ctx context.Context, operationID string) (*UpdateExecution, error) {
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !info.HasUpdate {
-		return ErrNoUpdateAvailable
+		return nil, ErrNoUpdateAvailable
 	}
 
-	return s.applyReleaseAssets(ctx, info.ReleaseInfo.Assets)
+	if s.strategy == UpdateStrategySourceSync {
+		return s.queueSourceUpdate(operationID, info.LatestVersion)
+	}
+
+	if err := s.applyReleaseAssets(ctx, info.ReleaseInfo.Assets); err != nil {
+		return nil, err
+	}
+	return &UpdateExecution{
+		UpdateStarted: true,
+		NeedRestart:   true,
+		OperationID:   operationID,
+		TargetVersion: info.LatestVersion,
+		Strategy:      UpdateStrategyBinary,
+	}, nil
 }
 
 // applyReleaseAssets downloads the platform archive from the given release assets,
@@ -281,6 +336,9 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if s.strategy == UpdateStrategySourceSync {
+		return ErrSourceRollbackUnsupported
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -307,6 +365,9 @@ func (s *UpdateService) Rollback() error {
 // strictly older than the current version (the current version itself is excluded),
 // newest first. Draft and prerelease entries are skipped.
 func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVersion, error) {
+	if s.strategy == UpdateStrategySourceSync {
+		return []RollbackVersion{}, nil
+	}
 	releases, err := s.fetchRollbackCandidates(ctx)
 	if err != nil {
 		return nil, err
@@ -327,6 +388,9 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 // The target must be one of the versions returned by ListRollbackVersions;
 // anything else (including the current version) is rejected.
 func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) error {
+	if s.strategy == UpdateStrategySourceSync {
+		return ErrSourceRollbackUnsupported
+	}
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed

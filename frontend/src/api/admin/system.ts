@@ -11,6 +11,20 @@ export interface ReleaseInfo {
   html_url: string
 }
 
+export interface SourceUpdateStatus {
+  schema_version: number
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'rolled_back'
+  phase?: string
+  message?: string
+  operation_id?: string
+  current_version?: string
+  target_version?: string
+  requested_at?: string
+  started_at?: string
+  finished_at?: string
+  backup_status?: string
+}
+
 export interface VersionInfo {
   current_version: string
   latest_version: string
@@ -19,6 +33,9 @@ export interface VersionInfo {
   cached: boolean
   warning?: string
   build_type: string // "source" for manual builds, "release" for CI builds
+  update_strategy: 'binary' | 'source_sync'
+  rollback_supported: boolean
+  update_status?: SourceUpdateStatus
 }
 
 /**
@@ -43,6 +60,10 @@ export async function checkUpdates(force = false): Promise<VersionInfo> {
 export interface UpdateResult {
   message: string
   need_restart: boolean
+  update_started: boolean
+  operation_id: string
+  target_version: string
+  strategy: 'binary' | 'source_sync'
 }
 
 export interface RollbackVersionInfo {
@@ -62,10 +83,8 @@ export async function getRollbackVersions(): Promise<{ versions: RollbackVersion
 }
 
 /**
- * In-place update/rollback downloads a full release binary from GitHub, which
- * can take several minutes on slow links. The global 30s axios timeout would
- * abort the request mid-download (#4504), so these calls wait as long as the
- * backend allows (15 minutes server-side).
+ * Binary updates can take several minutes. Source-synchronized deployments
+ * return immediately after atomically queuing the host-side update request.
  */
 const UPDATE_REQUEST_TIMEOUT_MS = 15 * 60 * 1000
 

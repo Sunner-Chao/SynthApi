@@ -115,7 +115,7 @@
               </div>
 
               <!-- Priority 1: Update error (must check before hasUpdate) -->
-              <div v-if="updateError" class="space-y-2">
+              <div v-if="displayUpdateError" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800/50 dark:bg-red-900/20"
                 >
@@ -134,7 +134,7 @@
                       {{ t('version.updateFailed') }}
                     </p>
                     <p class="truncate text-xs text-red-600/70 dark:text-red-400/70">
-                      {{ updateError }}
+                      {{ displayUpdateError }}
                     </p>
                   </div>
                 </div>
@@ -149,7 +149,33 @@
                 </button>
               </div>
 
-              <!-- Priority 2: Update success - need restart -->
+              <!-- Priority 2: Source update queued or running on the host -->
+              <div v-else-if="sourceUpdateActive" class="space-y-2">
+                <div
+                  class="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20"
+                >
+                  <div
+                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50"
+                  >
+                    <Icon
+                      name="refresh"
+                      size="sm"
+                      :stroke-width="2"
+                      class="animate-spin text-blue-600 dark:text-blue-400"
+                    />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                      {{ t('version.sourceSyncRunning') }}
+                    </p>
+                    <p class="truncate text-xs text-blue-600/70 dark:text-blue-400/70">
+                      {{ sourceStatusText }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Priority 3: Update success - need restart -->
               <div v-else-if="updateSuccess && needRestart" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800/50 dark:bg-green-900/20"
@@ -231,8 +257,8 @@
                 </button>
               </div>
 
-              <!-- Priority 3: Update available for source build - show git pull hint -->
-              <div v-else-if="hasUpdate && !isReleaseBuild" class="space-y-2">
+              <!-- Priority 4: Update available for source build - show git pull hint -->
+              <div v-else-if="hasUpdate && !isReleaseBuild && !isSourceSync" class="space-y-2">
                 <a
                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
                   :href="releaseInfo.html_url"
@@ -291,8 +317,8 @@
                 </div>
               </div>
 
-              <!-- Priority 4: Update available for release build - show update button -->
-              <div v-else-if="hasUpdate && isReleaseBuild" class="space-y-2">
+              <!-- Priority 5: Update available for release build - show update button -->
+              <div v-else-if="hasUpdate && (isReleaseBuild || isSourceSync)" class="space-y-2">
                 <!-- Update info card -->
                 <div
                   class="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
@@ -355,7 +381,7 @@
                 </a>
               </div>
 
-              <!-- Priority 5: Up to date - GitHub link + version rollback -->
+              <!-- Priority 6: Up to date - GitHub link + version rollback -->
               <div v-else class="space-y-2">
                 <a
                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
@@ -375,7 +401,10 @@
                 </a>
 
                 <!-- Version rollback entry -->
-                <div class="border-t border-gray-100 pt-2 dark:border-dark-700">
+                <div
+                  v-if="rollbackSupported"
+                  class="border-t border-gray-100 pt-2 dark:border-dark-700"
+                >
                   <button
                     @click="toggleRollbackPanel"
                     class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
@@ -676,6 +705,9 @@ const latestVersion = computed(() => appStore.latestVersion)
 const hasUpdate = computed(() => appStore.hasUpdate)
 const releaseInfo = computed(() => appStore.releaseInfo)
 const buildType = computed(() => appStore.buildType)
+const updateStrategy = computed(() => appStore.updateStrategy)
+const rollbackSupported = computed(() => appStore.rollbackSupported)
+const sourceUpdateStatus = computed(() => appStore.sourceUpdateStatus)
 
 // Update process states (local to this component)
 const updating = ref(false)
@@ -684,6 +716,11 @@ const needRestart = ref(false)
 const updateError = ref('')
 const updateSuccess = ref(false)
 const restartCountdown = ref(0)
+const sourceUpdatePending = ref(false)
+const sourceOperationID = ref('')
+const sourceTargetVersion = ref('')
+let sourcePollTimer: ReturnType<typeof setTimeout> | null = null
+let sourcePollDeadline = 0
 // Distinguishes the success + restart panel between update and rollback flows
 const successKind = ref<'update' | 'rollback'>('update')
 
@@ -730,6 +767,25 @@ const activeManualCommand = computed(() =>
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')
+const isSourceSync = computed(() => updateStrategy.value === 'source_sync')
+const sourceUpdateActive = computed(() => {
+  const state = sourceUpdateStatus.value?.state
+  return sourceUpdatePending.value || (isSourceSync.value && (state === 'queued' || state === 'running'))
+})
+const displayUpdateError = computed(() => {
+  if (updateError.value) return updateError.value
+  const status = sourceUpdateStatus.value
+  if (isSourceSync.value && (status?.state === 'failed' || status?.state === 'rolled_back')) {
+    return status.message || t('version.updateFailed')
+  }
+  return ''
+})
+const sourceStatusText = computed(() => {
+  const status = sourceUpdateStatus.value
+  const target = sourceTargetVersion.value || status?.target_version || latestVersion.value
+  if (status?.message) return status.message
+  return target ? t('version.sourceSyncTarget', { version: `v${target}` }) : t('version.updating')
+})
 
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value
@@ -761,16 +817,73 @@ async function handleUpdate() {
   try {
     const result = await performUpdate()
     successKind.value = 'update'
-    updateSuccess.value = true
-    needRestart.value = result.need_restart
-    // Clear version cache to reflect update completed
-    appStore.clearVersionCache()
+    if (result.strategy === 'source_sync') {
+      sourceUpdatePending.value = true
+      sourceOperationID.value = result.operation_id
+      sourceTargetVersion.value = result.target_version
+      needRestart.value = false
+      startSourceUpdatePolling()
+    } else {
+      updateSuccess.value = true
+      needRestart.value = result.need_restart
+      appStore.clearVersionCache()
+    }
   } catch (error: unknown) {
     const err = error as { response?: { data?: { message?: string } }; message?: string }
     updateError.value = err.response?.data?.message || err.message || t('version.updateFailed')
   } finally {
     updating.value = false
   }
+}
+
+function stopSourceUpdatePolling() {
+  if (sourcePollTimer) {
+    clearTimeout(sourcePollTimer)
+    sourcePollTimer = null
+  }
+}
+
+function startSourceUpdatePolling() {
+  stopSourceUpdatePolling()
+  sourcePollDeadline = Date.now() + 15 * 60 * 1000
+  sourcePollTimer = setTimeout(pollSourceUpdate, 1500)
+}
+
+async function pollSourceUpdate() {
+  const data = await appStore.fetchVersion(true)
+  const status = data?.update_status
+  const operationMatches =
+    !sourceOperationID.value || !status?.operation_id || status.operation_id === sourceOperationID.value
+
+  if (operationMatches && (status?.state === 'failed' || status?.state === 'rolled_back')) {
+    sourceUpdatePending.value = false
+    updateError.value = status.message || t('version.updateFailed')
+    stopSourceUpdatePolling()
+    return
+  }
+
+  const target = sourceTargetVersion.value || status?.target_version || ''
+  if (
+    operationMatches &&
+    status?.state === 'succeeded' &&
+    (!target || data?.current_version === target)
+  ) {
+    sourceUpdatePending.value = false
+    updateSuccess.value = true
+    needRestart.value = false
+    stopSourceUpdatePolling()
+    window.location.reload()
+    return
+  }
+
+  if (Date.now() >= sourcePollDeadline) {
+    sourceUpdatePending.value = false
+    updateError.value = t('version.sourceSyncTimeout')
+    stopSourceUpdatePolling()
+    return
+  }
+
+  sourcePollTimer = setTimeout(pollSourceUpdate, 3000)
 }
 
 function resetRollbackState() {
@@ -783,7 +896,7 @@ function resetRollbackState() {
 }
 
 async function toggleRollbackPanel() {
-  if (!isAdmin.value) return
+  if (!isAdmin.value || !rollbackSupported.value) return
   rollbackPanelOpen.value = !rollbackPanelOpen.value
   // Source builds only show a hint, no version list to fetch
   if (
@@ -912,12 +1025,20 @@ function handleClickOutside(event: MouseEvent) {
 onMounted(() => {
   if (isAdmin.value) {
     // Use cached version if available, otherwise fetch
-    appStore.fetchVersion(false)
+    void appStore.fetchVersion(false).then(() => {
+      if (sourceUpdateActive.value) {
+        sourceUpdatePending.value = true
+        sourceOperationID.value = sourceUpdateStatus.value?.operation_id || ''
+        sourceTargetVersion.value = sourceUpdateStatus.value?.target_version || ''
+        startSourceUpdatePolling()
+      }
+    })
   }
   document.addEventListener('click', handleClickOutside)
 })
 
 onBeforeUnmount(() => {
+  stopSourceUpdatePolling()
   document.removeEventListener('click', handleClickOutside)
 })
 </script>

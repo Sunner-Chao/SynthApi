@@ -19,6 +19,8 @@ import (
 
 type systemHandlerUpdateServiceStub struct {
 	performErr            error
+	performResult         *service.UpdateExecution
+	performOperationIDs   []string
 	updateInfo            *service.UpdateInfo
 	checkErr              error
 	checkForces           []bool
@@ -41,11 +43,24 @@ func (s *systemHandlerUpdateServiceStub) CheckUpdate(_ context.Context, force bo
 	return s.updateInfo, s.checkErr
 }
 
-func (s *systemHandlerUpdateServiceStub) PerformUpdate(ctx context.Context) error {
+func (s *systemHandlerUpdateServiceStub) PerformUpdateOperation(ctx context.Context, operationID string) (*service.UpdateExecution, error) {
 	s.performCall++
 	s.performCtxErr = ctx.Err()
 	_, s.performHasDeadline = ctx.Deadline()
-	return s.performErr
+	s.performOperationIDs = append(s.performOperationIDs, operationID)
+	if s.performResult != nil {
+		result := *s.performResult
+		if result.OperationID == "" {
+			result.OperationID = operationID
+		}
+		return &result, s.performErr
+	}
+	return &service.UpdateExecution{
+		UpdateStarted: true,
+		NeedRestart:   true,
+		OperationID:   operationID,
+		Strategy:      service.UpdateStrategyBinary,
+	}, s.performErr
 }
 
 func (s *systemHandlerUpdateServiceStub) Rollback() error {
@@ -75,6 +90,10 @@ type systemUpdateResponseEnvelope struct {
 		CurrentVersion  string `json:"current_version"`
 		LatestVersion   string `json:"latest_version"`
 		OperationID     string `json:"operation_id"`
+		UpdateStarted   bool   `json:"update_started"`
+		NeedRestart     bool   `json:"need_restart"`
+		TargetVersion   string `json:"target_version"`
+		Strategy        string `json:"strategy"`
 	} `json:"data"`
 }
 
@@ -148,6 +167,37 @@ func TestSystemHandlerPerformUpdateAlreadyUpToDateReturnsOK(t *testing.T) {
 	require.Equal(t, "0.1.132", body.Data.CurrentVersion)
 	require.Equal(t, "0.1.132", body.Data.LatestVersion)
 	require.NotEmpty(t, body.Data.OperationID)
+}
+
+func TestSystemHandlerPerformUpdateReturnsQueuedSourceOperation(t *testing.T) {
+	updateSvc := &systemHandlerUpdateServiceStub{
+		performResult: &service.UpdateExecution{
+			UpdateStarted: true,
+			NeedRestart:   false,
+			TargetVersion: "0.1.168",
+			Strategy:      service.UpdateStrategySourceSync,
+		},
+	}
+	repo := newMemoryIdempotencyRepoStub()
+	router := newSystemHandlerTestRouter(t, updateSvc, repo)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/system/update", nil)
+	req.Header.Set("Idempotency-Key", "source-sync")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, updateSvc.performOperationIDs, 1)
+	require.NotEmpty(t, updateSvc.performOperationIDs[0])
+
+	var body systemUpdateResponseEnvelope
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "Source update started.", body.Data.Message)
+	require.True(t, body.Data.UpdateStarted)
+	require.False(t, body.Data.NeedRestart)
+	require.Equal(t, "0.1.168", body.Data.TargetVersion)
+	require.Equal(t, service.UpdateStrategySourceSync, body.Data.Strategy)
+	require.Equal(t, updateSvc.performOperationIDs[0], body.Data.OperationID)
 }
 
 func TestSystemHandlerPerformUpdateFailureStillReturnsInternalError(t *testing.T) {

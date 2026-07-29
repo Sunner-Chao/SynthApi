@@ -45,7 +45,7 @@ func systemUpdateContext(ctx context.Context) (context.Context, context.CancelFu
 
 type systemUpdateService interface {
 	CheckUpdate(ctx context.Context, force bool) (*service.UpdateInfo, error)
-	PerformUpdate(ctx context.Context) error
+	PerformUpdateOperation(ctx context.Context, operationID string) (*service.UpdateExecution, error)
 	Rollback() error
 	ListRollbackVersions(ctx context.Context) ([]service.RollbackVersion, error)
 	RollbackToVersion(ctx context.Context, version string) error
@@ -80,7 +80,7 @@ func (h *SystemHandler) CheckUpdates(c *gin.Context) {
 	response.Success(c, info)
 }
 
-// PerformUpdate downloads and applies the update
+// PerformUpdate applies a binary update or queues a source-synchronized update.
 // POST /api/v1/admin/system/update
 func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 	operationID := buildSystemOperationID(c, "update")
@@ -99,7 +99,8 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 		updateCtx, cancel := systemUpdateContext(ctx)
 		defer cancel()
 
-		if err := h.updateSvc.PerformUpdate(updateCtx); err != nil {
+		execution, err := h.updateSvc.PerformUpdateOperation(updateCtx, lock.OperationID())
+		if err != nil {
 			if errors.Is(err, service.ErrNoUpdateAvailable) {
 				info, checkErr := h.updateSvc.CheckUpdate(updateCtx, false)
 				if checkErr != nil {
@@ -120,10 +121,17 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 		}
 		succeeded = true
 
+		message := "Update completed. Please restart the service."
+		if execution.Strategy == service.UpdateStrategySourceSync {
+			message = "Source update started."
+		}
 		return gin.H{
-			"message":      "Update completed. Please restart the service.",
-			"need_restart": true,
-			"operation_id": lock.OperationID(),
+			"message":        message,
+			"update_started": execution.UpdateStarted,
+			"need_restart":   execution.NeedRestart,
+			"operation_id":   execution.OperationID,
+			"target_version": execution.TargetVersion,
+			"strategy":       execution.Strategy,
 		}, nil
 	})
 }
