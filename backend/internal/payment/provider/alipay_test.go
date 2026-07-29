@@ -108,6 +108,12 @@ func TestNewAlipay(t *testing.T) {
 			wantErr:   true,
 			errSubstr: "appId",
 		},
+		{
+			name:      "invalid environment",
+			config:    withOverride(map[string]string{"environment": "staging"}),
+			wantErr:   true,
+			errSubstr: "environment",
+		},
 	}
 
 	for _, tt := range tests {
@@ -131,6 +137,41 @@ func TestNewAlipay(t *testing.T) {
 			}
 			if got.instanceID != "test-instance" {
 				t.Errorf("instanceID = %q, want %q", got.instanceID, "test-instance")
+			}
+		})
+	}
+}
+
+func TestNormalizeAlipayEnvironment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		want    string
+		wantErr bool
+	}{
+		{name: "empty defaults to production", value: "", want: alipayEnvironmentProduction},
+		{name: "production", value: " production ", want: alipayEnvironmentProduction},
+		{name: "sandbox", value: "SANDBOX", want: alipayEnvironmentSandbox},
+		{name: "unknown", value: "staging", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := normalizeAlipayEnvironment(tt.value)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("environment = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -246,6 +287,53 @@ func TestCreateTradeRedirectModeSkipsPrecreate(t *testing.T) {
 	}
 	if resp.QRCode != "" {
 		t.Fatalf("qr_code = %q, want empty for redirect mode", resp.QRCode)
+	}
+}
+
+func TestCreatePaymentRedirectModeUsesPagePayForMobile(t *testing.T) {
+	origPagePay := alipayTradePagePay
+	origWapPay := alipayTradeWapPay
+	t.Cleanup(func() {
+		alipayTradePagePay = origPagePay
+		alipayTradeWapPay = origWapPay
+	})
+
+	pagePayCalls := 0
+	wapPayCalls := 0
+	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
+		pagePayCalls++
+		return url.Parse("https://openapi.alipay.com/gateway.do?page-pay-mobile")
+	}
+	alipayTradeWapPay = func(client *alipay.Client, param alipay.TradeWapPay) (*url.URL, error) {
+		wapPayCalls++
+		return url.Parse("https://openapi.alipay.com/gateway.do?wap-pay")
+	}
+
+	provider := &Alipay{
+		config: map[string]string{
+			"paymentMode": "redirect",
+			"notifyUrl":   "https://merchant.example.com/api/v1/payment/webhook/alipay",
+			"returnUrl":   "https://merchant.example.com/payment/result",
+		},
+		client: &alipay.Client{},
+	}
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:  "sub2_mobile_100",
+		Amount:   "18.00",
+		Subject:  "Balance recharge",
+		IsMobile: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pagePayCalls != 1 {
+		t.Fatalf("page pay calls = %d, want 1", pagePayCalls)
+	}
+	if wapPayCalls != 0 {
+		t.Fatalf("wap pay calls = %d, want 0", wapPayCalls)
+	}
+	if resp.PayURL == "" {
+		t.Fatal("expected pay_url for mobile website payment")
 	}
 }
 

@@ -114,6 +114,31 @@ func TestValidateProviderRequest(t *testing.T) {
 	}
 }
 
+func TestHasPendingOrderProtectedConfigChangeNormalizesAlipayEnvironment(t *testing.T) {
+	t.Parallel()
+
+	legacyConfig := map[string]string{
+		"appId":      "alipay-app-test",
+		"privateKey": "private-key",
+		"publicKey":  "public-key",
+	}
+	productionConfig := map[string]string{
+		"appId":       "alipay-app-test",
+		"privateKey":  "private-key",
+		"publicKey":   "public-key",
+		"environment": "production",
+	}
+	sandboxConfig := map[string]string{
+		"appId":       "alipay-app-test",
+		"privateKey":  "private-key",
+		"publicKey":   "public-key",
+		"environment": "sandbox",
+	}
+
+	assert.False(t, hasPendingOrderProtectedConfigChange(payment.TypeAlipay, legacyConfig, productionConfig))
+	assert.True(t, hasPendingOrderProtectedConfigChange(payment.TypeAlipay, productionConfig, sandboxConfig))
+}
+
 func TestValidateEasyPayCustomMethods(t *testing.T) {
 	t.Parallel()
 

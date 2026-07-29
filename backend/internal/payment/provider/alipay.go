@@ -20,6 +20,11 @@ const (
 	alipayProductCodePagePay   = "FAST_INSTANT_TRADE_PAY"
 )
 
+const (
+	alipayEnvironmentProduction = "production"
+	alipayEnvironmentSandbox    = "sandbox"
+)
+
 // Alipay response constants.
 const (
 	alipayFundChangeYes    = "Y"
@@ -56,6 +61,9 @@ func NewAlipay(instanceID string, config map[string]string) (*Alipay, error) {
 			return nil, fmt.Errorf("alipay config missing required key: %s", k)
 		}
 	}
+	if _, err := normalizeAlipayEnvironment(config["environment"]); err != nil {
+		return nil, err
+	}
 	return &Alipay{
 		instanceID: instanceID,
 		config:     config,
@@ -68,7 +76,11 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 	if a.client != nil {
 		return a.client, nil
 	}
-	client, err := alipay.New(a.config["appId"], a.config["privateKey"], true)
+	environment, err := normalizeAlipayEnvironment(a.config["environment"])
+	if err != nil {
+		return nil, err
+	}
+	client, err := alipay.New(a.config["appId"], a.config["privateKey"], environment == alipayEnvironmentProduction)
 	if err != nil {
 		return nil, fmt.Errorf("alipay init client: %w", err)
 	}
@@ -84,6 +96,17 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 	}
 	a.client = client
 	return a.client, nil
+}
+
+func normalizeAlipayEnvironment(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", alipayEnvironmentProduction:
+		return alipayEnvironmentProduction, nil
+	case alipayEnvironmentSandbox:
+		return alipayEnvironmentSandbox, nil
+	default:
+		return "", fmt.Errorf("alipay config invalid environment: must be production or sandbox")
+	}
 }
 
 func (a *Alipay) Name() string        { return "Alipay" }
@@ -104,14 +127,13 @@ func (a *Alipay) MerchantIdentityMetadata() map[string]string {
 }
 
 // CreatePayment creates an Alipay payment using the following routing:
-//   - Mobile (H5): alipay.trade.wap.pay — browser redirect into Alipay.
+//   - Mobile (H5), default: alipay.trade.wap.pay — browser redirect into Alipay.
 //   - Desktop, default: prefer alipay.trade.precreate (FACE_TO_FACE_PAYMENT) to
 //     get a scannable QR payload. If precreate is unavailable for the merchant,
 //     fall back to alipay.trade.page.pay and expose pay_url only — the frontend
 //     opens the Alipay checkout in a new tab.
-//   - Desktop, paymentMode == "redirect": skip precreate and go straight to
-//     alipay.trade.page.pay so the frontend always opens the Alipay checkout
-//     in a new tab. Use this when the merchant has not enabled FACE_TO_FACE_PAYMENT.
+//   - Any browser, paymentMode == "redirect": use alipay.trade.page.pay. This is
+//     the Alipay website-payment flow for both PC and mobile/H5 browsers.
 //
 // Note: alipay.trade.page.pay returns a checkout page URL, not a scannable
 // payment QR. Never expose it via the QRCode field.
@@ -130,10 +152,17 @@ func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		returnURL = req.ReturnURL
 	}
 
+	if a.usesRedirectMode() {
+		return a.createPagePayTrade(client, req, notifyURL, returnURL)
+	}
 	if req.IsMobile {
 		return a.createWapTrade(client, req, notifyURL, returnURL)
 	}
 	return a.createDesktopTrade(ctx, client, req, notifyURL, returnURL)
+}
+
+func (a *Alipay) usesRedirectMode() bool {
+	return strings.EqualFold(strings.TrimSpace(a.config["paymentMode"]), "redirect")
 }
 
 func (a *Alipay) createWapTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
@@ -159,7 +188,7 @@ func (a *Alipay) createDesktopTrade(ctx context.Context, client *alipay.Client, 
 	// Explicit redirect mode: merchant opted into "always open the Alipay
 	// checkout page in a new tab" via the provider instance's payment_mode.
 	// Skip precreate to avoid a wasted API call.
-	if strings.EqualFold(strings.TrimSpace(a.config["paymentMode"]), "redirect") {
+	if a.usesRedirectMode() {
 		return a.createPagePayTrade(client, req, notifyURL, returnURL)
 	}
 

@@ -124,7 +124,7 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 // webhook/refund verification.
 var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
 	payment.TypeEasyPay:   {"pkey": {}, "pid": {}},
-	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}},
+	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}, "environment": {}},
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
 	payment.TypeAirwallex: {"clientid": {}, "apikey": {}, "webhooksecret": {}, "apibase": {}, "accountid": {}, "currency": {}},
@@ -145,11 +145,25 @@ func hasPendingOrderProtectedConfigChange(providerKey string, currentConfig, nex
 		return false
 	}
 	for fieldName := range fields {
-		if providerConfigFieldValue(currentConfig, fieldName) != providerConfigFieldValue(nextConfig, fieldName) {
+		currentValue := normalizedProtectedProviderConfigFieldValue(providerKey, fieldName, currentConfig)
+		nextValue := normalizedProtectedProviderConfigFieldValue(providerKey, fieldName, nextConfig)
+		if currentValue != nextValue {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizedProtectedProviderConfigFieldValue(providerKey, fieldName string, config map[string]string) string {
+	value := providerConfigFieldValue(config, fieldName)
+	if providerKey == payment.TypeAlipay && strings.EqualFold(fieldName, "environment") {
+		environment := strings.ToLower(strings.TrimSpace(value))
+		if environment == "" {
+			return "production"
+		}
+		return environment
+	}
+	return value
 }
 
 func providerConfigFieldValue(config map[string]string, fieldName string) string {

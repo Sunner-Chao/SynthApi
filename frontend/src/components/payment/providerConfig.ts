@@ -18,6 +18,7 @@ export interface ConfigFieldDef {
 export interface TypeOption {
   value: string
   label: string
+  labelKey?: string
   [key: string]: unknown
 }
 
@@ -66,6 +67,11 @@ export const PAYMENT_MODE_POPUP = 'popup'
  * literal (case-insensitive); other values fall back to the default
  * precreate→pagepay flow. */
 export const PAYMENT_MODE_REDIRECT = 'redirect'
+
+export const ALIPAY_ENVIRONMENT_OPTIONS: TypeOption[] = [
+  { value: 'production', label: 'Production', labelKey: 'admin.settings.payment.environmentProduction' },
+  { value: 'sandbox', label: 'Sandbox', labelKey: 'admin.settings.payment.environmentSandbox' },
+]
 
 export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
   { value: 'CNY', label: 'CNY' },
@@ -133,6 +139,7 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'cidWxpay', label: '', sensitive: false, optional: true },
   ],
   alipay: [
+    { key: 'environment', label: '', sensitive: false, defaultValue: 'production', hintKey: 'admin.settings.payment.field_alipayEnvironmentHint', options: ALIPAY_ENVIRONMENT_OPTIONS },
     { key: 'appId', label: 'App ID', sensitive: false },
     { key: 'privateKey', label: '', sensitive: true },
     { key: 'publicKey', label: '', sensitive: true },

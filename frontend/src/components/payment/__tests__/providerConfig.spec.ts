@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ALIPAY_ENVIRONMENT_OPTIONS,
   PAYMENT_CURRENCY_OPTIONS,
   PROVIDER_CONFIG_FIELDS,
   isBuiltInAlipayMethod,
@@ -12,6 +13,16 @@ function findField(providerKey: string, key: string) {
   const fields = PROVIDER_CONFIG_FIELDS[providerKey] || []
   return fields.find(field => field.key === key)
 }
+
+describe('PROVIDER_CONFIG_FIELDS.alipay', () => {
+  it('defaults to production while allowing an explicit sandbox environment', () => {
+    const environment = findField('alipay', 'environment')
+
+    expect(environment?.defaultValue).toBe('production')
+    expect(environment?.options).toBe(ALIPAY_ENVIRONMENT_OPTIONS)
+    expect(ALIPAY_ENVIRONMENT_OPTIONS.map(option => option.value)).toEqual(['production', 'sandbox'])
+  })
+})
 
 describe('PROVIDER_CONFIG_FIELDS.wxpay', () => {
   it('keeps admin form validation aligned with backend-required credentials', () => {
