@@ -9,6 +9,7 @@ User=ubuntu
 Group=ubuntu
 SupplementaryGroups=docker
 UMask=0027
+Environment=SYNTHAPI_DIRTY_WORKTREE_POLICY=snapshot
 EnvironmentFile=-/etc/synthapi-source-update.env
 ExecStart=/home/ubuntu/demo/sub2api/deploy/source-update.sh
 TimeoutStartSec=infinity

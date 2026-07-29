@@ -3,6 +3,10 @@ set -Eeuo pipefail
 
 umask 027
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=source-update-git.sh
+source "$SCRIPT_DIR/source-update-git.sh"
+
 readonly OFFICIAL_REPOSITORY="Wei-Shaw/sub2api"
 readonly OFFICIAL_URL="https://github.com/${OFFICIAL_REPOSITORY}.git"
 
@@ -16,6 +20,7 @@ COMPOSE_LOCAL_FILE="${SYNTHAPI_COMPOSE_LOCAL_FILE:-${DEPLOY_DIR}/docker-compose.
 COMPOSE_OVERRIDE_FILE="${SYNTHAPI_COMPOSE_OVERRIDE_FILE:-${DEPLOY_DIR}/docker-compose.override.yml}"
 IMAGE_NAME="${SYNTHAPI_IMAGE_NAME:-synthapi:local}"
 HEALTH_TIMEOUT_SECONDS="${SYNTHAPI_HEALTH_TIMEOUT_SECONDS:-240}"
+DIRTY_WORKTREE_POLICY="${SYNTHAPI_DIRTY_WORKTREE_POLICY:-fail}"
 
 OPERATION_ID=""
 CURRENT_VERSION=""
@@ -28,6 +33,7 @@ STATUS_FINALIZED=false
 WORKTREE_PARENT=""
 WORKTREE_DIR=""
 CANDIDATE_BRANCH=""
+SNAPSHOT_COMMIT=""
 
 verify_customization_guards() {
   local root=$1
@@ -226,8 +232,24 @@ fi
 if [[ "$(git -C "$REPO_DIR" branch --show-current)" != "main" ]]; then
   finish_failed "failed" "Production repository must be on main" "not_started"
 fi
-if [[ -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no)" ]]; then
-  finish_failed "failed" "Production repository has tracked local changes" "not_started"
+case "$DIRTY_WORKTREE_POLICY" in
+  fail | snapshot) ;;
+  *) finish_failed "failed" "Invalid dirty worktree policy" "not_started" ;;
+esac
+if [[ -n "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
+  if [[ "$DIRTY_WORKTREE_POLICY" != "snapshot" ]]; then
+    finish_failed "failed" "Production repository has local changes" "not_started"
+  fi
+
+  CURRENT_PHASE="snapshotting_customizations"
+  write_status "running" "$CURRENT_PHASE" "Saving local customizations before the official merge" "pending" "$STARTED_AT"
+  if ! SNAPSHOT_COMMIT=$(snapshot_production_changes "$REPO_DIR" "$TARGET_VERSION" "$OPERATION_ID"); then
+    finish_failed "failed" "Could not snapshot local customizations; resolve Git conflicts and retry" "not_started"
+  fi
+  if [[ -z "$SNAPSHOT_COMMIT" || -n "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
+    finish_failed "failed" "Local customization snapshot did not produce a clean repository" "not_started"
+  fi
+  write_status "running" "$CURRENT_PHASE" "Saved local customizations at ${SNAPSHOT_COMMIT:0:12}" "pending" "$STARTED_AT"
 fi
 
 CURRENT_PHASE="fetching_official"

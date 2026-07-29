@@ -5,6 +5,8 @@ backend/internal/payment/provider/alipay.go|usesRedirectMode
 backend/internal/service/payment_config_providers.go|"environment": {}
 backend/internal/service/setting_parse.go|"SynthAPI"
 deploy/Caddyfile|synthapi.ecobim.club
+deploy/source-update.sh|snapshot_production_changes
+deploy/systemd/synthapi-source-update.service|SYNTHAPI_DIRTY_WORKTREE_POLICY=snapshot
 frontend/src/views/admin/RedeemView.vue|purchase_subscription_url
 frontend/src/views/user/RedeemView.vue|purchase_subscription_url
 git_shell_linux/push-github.sh|git push
