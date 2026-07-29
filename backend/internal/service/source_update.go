@@ -110,7 +110,7 @@ func (s *UpdateService) queueSourceUpdate(operationID, targetVersion string) (*U
 		OfficialRepository: githubRepo,
 		RequestedAt:        now,
 	}
-	status := SourceUpdateStatus{
+	status = &SourceUpdateStatus{
 		SchemaVersion:  1,
 		State:          "queued",
 		Phase:          "queued",
