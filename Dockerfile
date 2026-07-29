@@ -19,6 +19,7 @@ ARG NPM_CONFIG_REGISTRY=
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS frontend-builder
+ENV NODE_OPTIONS=--max-old-space-size=2048
 ARG NPM_CONFIG_REGISTRY
 
 WORKDIR /app/frontend
