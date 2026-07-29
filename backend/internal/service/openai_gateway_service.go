@@ -443,6 +443,7 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+	cmccSeedanceAccountStates           sync.Map
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService

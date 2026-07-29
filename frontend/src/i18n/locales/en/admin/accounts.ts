@@ -482,6 +482,15 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      grokMediaApiFormat: {
+        label: 'Media API protocol',
+        xai: 'xAI Grok (default)',
+        cmccSeedance: 'China Mobile Cloud Seedance 2.0',
+        xaiHint: 'Use the xAI-compatible image and video APIs.',
+        cmcc_seedanceHint: 'Use the MoMA Seedance task API with AICC secure transport.',
+        apiKeyPlaceholder: 'China Mobile Cloud API Key',
+        baseUrlRequired: 'Enter the Seedance access-point Base URL assigned in the cloud console'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',

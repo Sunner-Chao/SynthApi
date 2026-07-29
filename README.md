@@ -758,6 +758,37 @@ OAuth credential storage reuses the existing account JSON fields: `access_token`
 
 For API-key accounts, select **Grok → API Key** in the create-account dialog. The official base URL defaults to `https://api.x.ai/v1`; credentials use the existing `base_url` and `api_key` account fields. OAuth accounts continue to use the subscription flow above.
 
+### China Mobile Cloud Seedance 2.0
+
+China Mobile Cloud MoMA Seedance can reuse the public video endpoints and the existing Grok account scheduler. Create a **Grok → API Key** account, select **China Mobile Cloud Seedance 2.0** as the media protocol, and configure the access-point Base URL assigned by the cloud console (ending in `/api/v3`). The stored credentials are equivalent to:
+
+```json
+{
+  "media_api_format": "cmcc_seedance",
+  "base_url": "https://your-access-point.cmecloud.cn/api/v3",
+  "api_key": "your-mobile-cloud-api-key",
+  "model_mapping": {
+    "seedance-2.0": "doubao-seedance-2.0"
+  }
+}
+```
+
+The adapter resolves the provider endpoint through `/mapping/query`, negotiates the AICC secure channel through `/v1/security/token`, and encrypts task request and response bodies. Generated-file encryption is intentionally disabled so the existing authenticated `/v1/videos/{request_id}/content` proxy can stream the resulting video.
+
+Submit and query tasks through the normal public API:
+
+```bash
+curl -X POST https://your-sub2api.example.com/v1/videos/generations \
+  -H "Authorization: Bearer sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"seedance-2.0","prompt":"Ocean waves at sunrise","duration":8,"resolution":"1080p","ratio":"16:9","generate_audio":true}'
+
+curl https://your-sub2api.example.com/v1/videos/REQUEST_ID \
+  -H "Authorization: Bearer sk-your-sub2api-key"
+```
+
+Native Seedance `content` arrays are also accepted. OpenAI-style `image`, `reference_images`, `reference_videos`, and `reference_audios` fields are converted to the corresponding first-frame or reference content roles. Video inputs automatically add `Input-Has-Video: true`.
+
 ### Grok Build CLI Configuration
 
 1. In the Sub2API admin dashboard, add either a `grok` OAuth account and complete xAI authorization, or add a Grok API-key account.

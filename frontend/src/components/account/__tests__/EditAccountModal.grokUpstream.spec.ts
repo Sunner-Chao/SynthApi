@@ -247,6 +247,35 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
     expect(openAIOAuthWrapper.find('[data-testid="grok-client-tool-cache-toggle"]').exists()).toBe(false)
   })
 
+  it('loads and preserves the China Mobile Seedance protocol on API-key accounts', async () => {
+    const account = {
+      ...buildGrokOAuthAccount(),
+      name: 'CMCC Seedance',
+      type: 'apikey',
+      credentials: {
+        base_url: 'https://zhenze-huhehaote.cmecloud.cn/api/v3',
+        media_api_format: 'cmcc_seedance',
+        model_mapping: { 'seedance-2.0': 'doubao-seedance-2.0' }
+      },
+      credentials_status: { has_api_key: true }
+    }
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const format = wrapper.get('[data-testid="grok-media-api-format"]')
+    expect((format.element as HTMLSelectElement).value).toBe('cmcc_seedance')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.credentials).toMatchObject({
+      base_url: 'https://zhenze-huhehaote.cmecloud.cn/api/v3',
+      media_api_format: 'cmcc_seedance',
+      model_mapping: { 'seedance-2.0': 'doubao-seedance-2.0' }
+    })
+  })
+
   it('loads and disables client-tool caching while preserving unrelated extra fields', async () => {
     const account = buildGrokOAuthAccount({}, {
       grok_client_tool_cache_enabled: true,

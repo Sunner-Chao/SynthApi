@@ -28,6 +28,14 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <div v-if="account.platform === 'grok'">
+          <label class="input-label">{{ t('admin.accounts.grokMediaApiFormat.label') }}</label>
+          <select v-model="grokMediaApiFormat" class="input" data-testid="grok-media-api-format">
+            <option value="xai">{{ t('admin.accounts.grokMediaApiFormat.xai') }}</option>
+            <option value="cmcc_seedance">{{ t('admin.accounts.grokMediaApiFormat.cmccSeedance') }}</option>
+          </select>
+          <p class="input-hint">{{ t(`admin.accounts.grokMediaApiFormat.${grokMediaApiFormat}Hint`) }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -42,13 +50,15 @@
                   : account.platform === 'antigravity'
                     ? 'https://cloudcode-pa.googleapis.com'
                     : account.platform === 'grok'
-                      ? 'https://api.x.ai/v1'
+                      ? grokMediaApiFormat === 'cmcc_seedance'
+                        ? 'https://your-access-point.cmecloud.cn/api/v3'
+                        : 'https://api.x.ai/v1'
                       : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
           <GrokBaseUrlPresets
-            v-if="account.platform === 'grok'"
+            v-if="account.platform === 'grok' && grokMediaApiFormat === 'xai'"
             class="mt-2"
             @select="editBaseUrl = $event"
           />
@@ -71,7 +81,9 @@
                   : account.platform === 'antigravity'
                     ? 'sk-...'
                     : account.platform === 'grok'
-                      ? 'xai-...'
+                      ? grokMediaApiFormat === 'cmcc_seedance'
+                        ? t('admin.accounts.grokMediaApiFormat.apiKeyPlaceholder')
+                        : 'xai-...'
                       : 'sk-ant-...'
             "
           />
@@ -2710,6 +2722,8 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+type GrokMediaApiFormat = 'xai' | 'cmcc_seedance'
+const grokMediaApiFormat = ref<GrokMediaApiFormat>('xai')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3134,7 +3148,9 @@ const tempUnschedPresets = computed(() => [
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
-  if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
+  if (props.account?.platform === 'grok') {
+    return grokMediaApiFormat.value === 'cmcc_seedance' ? '' : 'https://api.x.ai/v1'
+  }
   return 'https://api.anthropic.com'
 })
 
@@ -3250,6 +3266,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
+  grokMediaApiFormat.value =
+    newAccount.platform === 'grok' && credentials?.media_api_format === 'cmcc_seedance'
+      ? 'cmcc_seedance'
+      : 'xai'
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
@@ -4054,6 +4074,14 @@ const handleSubmit = async () => {
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
+      if (
+        props.account.platform === 'grok' &&
+        grokMediaApiFormat.value === 'cmcc_seedance' &&
+        !editBaseUrl.value.trim()
+      ) {
+        appStore.showError(t('admin.accounts.grokMediaApiFormat.baseUrlRequired'))
+        return
+      }
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
@@ -4061,6 +4089,11 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = {
         ...currentCredentials,
         base_url: newBaseUrl
+      }
+      if (props.account.platform === 'grok' && grokMediaApiFormat.value === 'cmcc_seedance') {
+        newCredentials.media_api_format = 'cmcc_seedance'
+      } else {
+        delete newCredentials.media_api_format
       }
 
       // Handle API key

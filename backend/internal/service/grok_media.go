@@ -182,6 +182,32 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	appendJSONImageURLs(gjson.GetBytes(body, "images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
 	info.MaskImageURL = grokMediaJSONImageURL(gjson.GetBytes(body, "mask"))
+
+	content := gjson.GetBytes(body, "content")
+	if !content.IsArray() {
+		return
+	}
+	textParts := make([]string, 0, 2)
+	for _, part := range content.Array() {
+		switch strings.ToLower(strings.TrimSpace(part.Get("type").String())) {
+		case "text":
+			if text := strings.TrimSpace(part.Get("text").String()); text != "" {
+				textParts = append(textParts, text)
+			}
+		case "image_url":
+			if imageURL := strings.TrimSpace(part.Get("image_url.url").String()); imageURL != "" {
+				info.InputImageURLs = append(info.InputImageURLs, imageURL)
+			} else if imageURL := strings.TrimSpace(part.Get("image_url").String()); imageURL != "" {
+				info.InputImageURLs = append(info.InputImageURLs, imageURL)
+			}
+		}
+	}
+	if len(textParts) > 0 {
+		if info.Prompt != "" {
+			textParts = append([]string{info.Prompt}, textParts...)
+		}
+		info.Prompt = strings.Join(textParts, "\n")
+	}
 }
 
 func grokMediaJSONImageURL(value gjson.Result) string {
@@ -335,6 +361,9 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
 		return nil, err
+	}
+	if account.IsCMCCSeedanceMediaAPI() {
+		return s.forwardCMCCSeedanceMedia(ctx, c, account, endpoint, requestID, body, contentType, token, startTime)
 	}
 	if endpoint == GrokMediaEndpointVideoContent {
 		return s.forwardGrokMediaVideoContent(ctx, c, account, token, requestID, startTime)
