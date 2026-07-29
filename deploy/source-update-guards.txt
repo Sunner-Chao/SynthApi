@@ -1,5 +1,6 @@
 # Every non-comment line is: repository-relative path|literal that must survive.
 Dockerfile|ENV NODE_OPTIONS=--max-old-space-size=2048
+Dockerfile|chmod 0755 /app/docker-entrypoint.sh
 backend/internal/payment/provider/alipay.go|alipayEnvironmentSandbox
 backend/internal/payment/provider/alipay.go|usesRedirectMode
 backend/internal/service/payment_config_providers.go|"environment": {}
