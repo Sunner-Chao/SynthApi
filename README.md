@@ -760,12 +760,12 @@ For API-key accounts, select **Grok → API Key** in the create-account dialog. 
 
 ### China Mobile Cloud Seedance 2.0
 
-China Mobile Cloud MoMA Seedance can reuse the public video endpoints and the existing Grok account scheduler. Create a **Grok → API Key** account, select **China Mobile Cloud Seedance 2.0** as the media protocol, and configure the access-point Base URL assigned by the cloud console (ending in `/api/v3`). The stored credentials are equivalent to:
+China Mobile Cloud MoMA Seedance can reuse the public video endpoints and the existing Grok account scheduler. Create a **Grok → API Key** account, select **China Mobile Cloud Seedance 2.0** as the media protocol, and use the North China-Hohhot access-point Base URL (ending in `/api/v3`). The stored credentials are equivalent to:
 
 ```json
 {
   "media_api_format": "cmcc_seedance",
-  "base_url": "https://your-access-point.cmecloud.cn/api/v3",
+  "base_url": "https://zhenze-huhehaote.cmecloud.cn/api/v3",
   "api_key": "your-mobile-cloud-api-key",
   "model_mapping": {
     "seedance-2.0": "doubao-seedance-2.0"

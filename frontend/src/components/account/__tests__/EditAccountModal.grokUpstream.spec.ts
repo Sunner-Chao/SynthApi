@@ -276,6 +276,34 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
     })
   })
 
+  it('switches an xAI API-key account to the Seedance endpoint and model mapping', async () => {
+    const account = {
+      ...buildGrokOAuthAccount(),
+      type: 'apikey',
+      credentials: {
+        base_url: 'https://api.x.ai/v1',
+        model_mapping: {}
+      },
+      credentials_status: { has_api_key: true }
+    }
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="grok-media-api-format"]').setValue('cmcc_seedance')
+
+    expect((wrapper.get('[data-testid="grok-api-key-base-url"]').element as HTMLInputElement).value)
+      .toBe('https://zhenze-huhehaote.cmecloud.cn/api/v3')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      base_url: 'https://zhenze-huhehaote.cmecloud.cn/api/v3',
+      media_api_format: 'cmcc_seedance',
+      model_mapping: { 'seedance-2.0': 'doubao-seedance-2.0' }
+    })
+  })
+
   it('loads and disables client-tool caching while preserving unrelated extra fields', async () => {
     const account = buildGrokOAuthAccount({}, {
       grok_client_tool_cache_enabled: true,

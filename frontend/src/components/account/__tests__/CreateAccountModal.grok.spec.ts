@@ -22,7 +22,7 @@ describe('CreateAccountModal Grok account types', () => {
     expect(source).toContain('<option value="cmcc_seedance">')
     expect(source).toContain("credentials.media_api_format = 'cmcc_seedance'")
     expect(source).toContain("{ from: 'seedance-2.0', to: 'doubao-seedance-2.0' }")
-    expect(source).toContain('https://your-access-point.cmecloud.cn/api/v3')
+    expect(source).toContain('https://zhenze-huhehaote.cmecloud.cn/api/v3')
   })
 
   it('exposes custom upstream URL and header override for the OAuth create flow', () => {

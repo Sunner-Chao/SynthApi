@@ -554,7 +554,7 @@ export default {
         xai: 'xAI Grok（默认）',
         cmccSeedance: '中国移动云 Seedance 2.0',
         xaiHint: '使用 xAI 兼容的图片与视频接口。',
-        cmcc_seedanceHint: '使用移动云 MoMA Seedance 任务接口与 AICC 安全传输。',
+        cmcc_seedanceHint: '使用移动云 MoMA Seedance 任务接口与 AICC 安全传输；默认接入华北-呼和浩特资源池。',
         apiKeyPlaceholder: '移动云 API Key',
         baseUrlRequired: '请填写移动云控制台分配的 Seedance 接入点 Base URL'
       },

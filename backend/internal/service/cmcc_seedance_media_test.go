@@ -49,6 +49,19 @@ func TestAccountIsCMCCSeedanceMediaAPI(t *testing.T) {
 	require.False(t, account.IsCMCCSeedanceMediaAPI())
 }
 
+func TestCMCCSeedanceUsageIsClassifiedAsVideo(t *testing.T) {
+	result := &OpenAIForwardResult{
+		Model:         "seedance-2.0",
+		BillingModel:  "seedance-2.0",
+		UpstreamModel: cmccSeedanceVirtualModel,
+		VideoCount:    1,
+	}
+
+	require.True(t, isGrokVideoUsageResult(result, nil))
+	result.VideoCount = 0
+	require.False(t, isGrokVideoUsageResult(result, nil))
+}
+
 func TestBuildCMCCSeedanceBaseURL(t *testing.T) {
 	baseURL, err := buildCMCCSeedanceBaseURL(cmccSeedanceTestAccount(), &config.Config{})
 	require.NoError(t, err)

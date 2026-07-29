@@ -30,7 +30,12 @@
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="account.platform === 'grok'">
           <label class="input-label">{{ t('admin.accounts.grokMediaApiFormat.label') }}</label>
-          <select v-model="grokMediaApiFormat" class="input" data-testid="grok-media-api-format">
+          <select
+            v-model="grokMediaApiFormat"
+            class="input"
+            data-testid="grok-media-api-format"
+            @change="handleGrokMediaApiFormatChange"
+          >
             <option value="xai">{{ t('admin.accounts.grokMediaApiFormat.xai') }}</option>
             <option value="cmcc_seedance">{{ t('admin.accounts.grokMediaApiFormat.cmccSeedance') }}</option>
           </select>
@@ -42,6 +47,7 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
+            data-testid="grok-api-key-base-url"
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
@@ -51,7 +57,7 @@
                     ? 'https://cloudcode-pa.googleapis.com'
                     : account.platform === 'grok'
                       ? grokMediaApiFormat === 'cmcc_seedance'
-                        ? 'https://your-access-point.cmecloud.cn/api/v3'
+                        ? 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
                         : 'https://api.x.ai/v1'
                       : 'https://api.anthropic.com'
             "
@@ -2742,6 +2748,41 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+
+const handleGrokMediaApiFormatChange = () => {
+  if (grokMediaApiFormat.value === 'cmcc_seedance') {
+    try {
+      const hostname = new URL(editBaseUrl.value).hostname.toLowerCase()
+      if (hostname === 'api.x.ai' || hostname.endsWith('.api.x.ai') || hostname === 'cli-chat-proxy.grok.com') {
+        editBaseUrl.value = 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+      }
+    } catch {
+      editBaseUrl.value = 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+    }
+    if (!editBaseUrl.value.trim()) {
+      editBaseUrl.value = 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+    }
+    modelRestrictionMode.value = 'mapping'
+    if (!modelMappings.value.some((mapping) => mapping.from.trim() === 'seedance-2.0')) {
+      modelMappings.value.push({ from: 'seedance-2.0', to: 'doubao-seedance-2.0' })
+    }
+    return
+  }
+
+  try {
+    const hostname = new URL(editBaseUrl.value).hostname.toLowerCase()
+    if (hostname === 'zhenze-huhehaote.cmecloud.cn') {
+      editBaseUrl.value = 'https://api.x.ai/v1'
+    }
+  } catch {
+    editBaseUrl.value = 'https://api.x.ai/v1'
+  }
+  modelMappings.value = modelMappings.value.filter(
+    (mapping) =>
+      mapping.from.trim() !== 'seedance-2.0' ||
+      mapping.to.trim() !== 'doubao-seedance-2.0'
+  )
+}
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -3149,7 +3190,9 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'grok') {
-    return grokMediaApiFormat.value === 'cmcc_seedance' ? '' : 'https://api.x.ai/v1'
+    return grokMediaApiFormat.value === 'cmcc_seedance'
+      ? 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+      : 'https://api.x.ai/v1'
   }
   return 'https://api.anthropic.com'
 })

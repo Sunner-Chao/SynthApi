@@ -487,7 +487,7 @@ export default {
         xai: 'xAI Grok (default)',
         cmccSeedance: 'China Mobile Cloud Seedance 2.0',
         xaiHint: 'Use the xAI-compatible image and video APIs.',
-        cmcc_seedanceHint: 'Use the MoMA Seedance task API with AICC secure transport.',
+        cmcc_seedanceHint: 'Use the MoMA Seedance task API with AICC secure transport; defaults to the North China-Hohhot resource pool.',
         apiKeyPlaceholder: 'China Mobile Cloud API Key',
         baseUrlRequired: 'Enter the Seedance access-point Base URL assigned in the cloud console'
       },

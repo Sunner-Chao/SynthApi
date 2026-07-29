@@ -1119,6 +1119,7 @@
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
+            data-testid="grok-api-key-base-url"
             :placeholder="
               form.platform === 'openai'
                 ? 'https://api.openai.com'
@@ -1126,7 +1127,7 @@
                   ? 'https://generativelanguage.googleapis.com'
                   : form.platform === 'grok'
                     ? grokMediaApiFormat === 'cmcc_seedance'
-                      ? 'https://your-access-point.cmecloud.cn/api/v3'
+                      ? 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
                       : 'https://api.x.ai/v1'
                     : 'https://api.anthropic.com'
             "
@@ -3739,7 +3740,10 @@ const handleGrokMediaApiFormatChange = () => {
         apiKeyBaseUrl.value = ''
       }
     } catch {
-      apiKeyBaseUrl.value = ''
+      apiKeyBaseUrl.value = 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+    }
+    if (!apiKeyBaseUrl.value.trim()) {
+      apiKeyBaseUrl.value = 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
     }
     modelRestrictionMode.value = 'mapping'
     if (!modelMappings.value.some((mapping) => mapping.from.trim() === 'seedance-2.0')) {
@@ -3747,9 +3751,19 @@ const handleGrokMediaApiFormatChange = () => {
     }
     return
   }
-  if (!apiKeyBaseUrl.value.trim()) {
+  try {
+    const hostname = new URL(apiKeyBaseUrl.value).hostname.toLowerCase()
+    if (hostname === 'zhenze-huhehaote.cmecloud.cn') {
+      apiKeyBaseUrl.value = 'https://api.x.ai/v1'
+    }
+  } catch {
     apiKeyBaseUrl.value = 'https://api.x.ai/v1'
   }
+  modelMappings.value = modelMappings.value.filter(
+    (mapping) =>
+      mapping.from.trim() !== 'seedance-2.0' ||
+      mapping.to.trim() !== 'doubao-seedance-2.0'
+  )
 }
 
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
