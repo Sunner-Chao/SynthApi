@@ -10,7 +10,7 @@
           <div
             class="mb-3 inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900"
           >
-            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </div>
           <h1 class="mb-1 break-words text-2xl font-semibold text-gray-950 dark:text-white">
             {{ siteName }}
