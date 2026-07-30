@@ -95,6 +95,19 @@
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
+        <div v-if="account.platform === 'grok' && grokMediaApiFormat === 'cmcc_seedance'">
+          <label class="input-label">{{ t('admin.accounts.grokMediaApiFormat.cnyPerUsd') }}</label>
+          <input
+            v-model.number="cmccCnyPerUsd"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            class="input"
+            data-testid="cmcc-cny-per-usd"
+          />
+          <p class="input-hint">{{ t('admin.accounts.grokMediaApiFormat.cnyPerUsdHint') }}</p>
+        </div>
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -2730,6 +2743,7 @@ const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 type GrokMediaApiFormat = 'xai' | 'cmcc_seedance'
 const grokMediaApiFormat = ref<GrokMediaApiFormat>('xai')
+const cmccCnyPerUsd = ref(7.2)
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3313,6 +3327,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     newAccount.platform === 'grok' && credentials?.media_api_format === 'cmcc_seedance'
       ? 'cmcc_seedance'
       : 'xai'
+  cmccCnyPerUsd.value =
+    typeof credentials?.cmcc_cny_per_usd === 'number' &&
+    Number.isFinite(credentials.cmcc_cny_per_usd) &&
+    credentials.cmcc_cny_per_usd > 0
+      ? credentials.cmcc_cny_per_usd
+      : 7.2
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
@@ -4125,6 +4145,14 @@ const handleSubmit = async () => {
         appStore.showError(t('admin.accounts.grokMediaApiFormat.baseUrlRequired'))
         return
       }
+      if (
+        props.account.platform === 'grok' &&
+        grokMediaApiFormat.value === 'cmcc_seedance' &&
+        (!Number.isFinite(cmccCnyPerUsd.value) || cmccCnyPerUsd.value <= 0)
+      ) {
+        appStore.showError(t('admin.accounts.grokMediaApiFormat.cnyPerUsdRequired'))
+        return
+      }
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
@@ -4135,8 +4163,10 @@ const handleSubmit = async () => {
       }
       if (props.account.platform === 'grok' && grokMediaApiFormat.value === 'cmcc_seedance') {
         newCredentials.media_api_format = 'cmcc_seedance'
+        newCredentials.cmcc_cny_per_usd = cmccCnyPerUsd.value
       } else {
         delete newCredentials.media_api_format
+        delete newCredentials.cmcc_cny_per_usd
       }
 
       // Handle API key

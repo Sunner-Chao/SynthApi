@@ -403,9 +403,22 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					zap.Error(err),
 				)
 			}
+			if account.IsCMCCSeedanceMediaAPI() && result.CMCCSeedanceBilling != nil {
+				if err := h.gatewayService.BindCMCCSeedanceTaskMetadata(
+					requestCtx, apiKey.GroupID, result.ResponseID, subject.UserID, apiKey.ID, result.CMCCSeedanceBilling,
+				); err != nil {
+					reqLog.Warn("grok_media.bind_cmcc_seedance_task_metadata_failed",
+						zap.Int64("account_id", account.ID),
+						zap.String("request_id", result.ResponseID),
+						zap.Error(err),
+					)
+				}
+			}
 		}
-		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
-			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
+		if account.IsCMCCSeedanceMediaAPI() {
+			settleCMCCSeedanceUsage(c, h, reqLog, apiKey, subject, subscription, account, result, endpoint, requestID)
+		} else if shouldRecordGrokMediaUsage(endpoint, requestModel) {
+			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID, "")
 		}
 		reqLog.Debug("grok_media.request_completed",
 			zap.Int64("account_id", account.ID),
@@ -450,6 +463,68 @@ func shouldRecordGrokMediaUsage(endpoint service.GrokMediaEndpoint, requestModel
 	return endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) != ""
 }
 
+func shouldSettleCMCCSeedanceUsage(endpoint service.GrokMediaEndpoint, result *service.OpenAIForwardResult) bool {
+	return (endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent) &&
+		result != nil &&
+		result.CMCCSeedanceBilling != nil &&
+		strings.EqualFold(strings.TrimSpace(result.CMCCSeedanceBilling.TaskStatus), "succeeded") &&
+		result.Usage.OutputTokens > 0
+}
+
+func settleCMCCSeedanceUsage(
+	c *gin.Context,
+	h *OpenAIGatewayHandler,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	subscription *service.UserSubscription,
+	account *service.Account,
+	result *service.OpenAIForwardResult,
+	endpoint service.GrokMediaEndpoint,
+	taskID string,
+) {
+	if !shouldSettleCMCCSeedanceUsage(endpoint, result) {
+		return
+	}
+	taskID = strings.TrimSpace(taskID)
+	metadata, err := h.gatewayService.ResolveCMCCSeedanceTaskMetadata(
+		c.Request.Context(), apiKey.GroupID, taskID, subject.UserID, apiKey.ID,
+	)
+	if err != nil || metadata == nil {
+		reqLog.Warn("grok_media.cmcc_seedance_billing_metadata_missing",
+			zap.String("request_id", taskID),
+			zap.Error(err),
+		)
+		return
+	}
+	if metadata.AccountID != account.ID {
+		reqLog.Warn("grok_media.cmcc_seedance_billing_account_mismatch",
+			zap.String("request_id", taskID),
+			zap.Int64("stored_account_id", metadata.AccountID),
+			zap.Int64("selected_account_id", account.ID),
+		)
+		return
+	}
+	if statusResolution := strings.TrimSpace(result.CMCCSeedanceBilling.VideoResolution); statusResolution != "" {
+		metadata.VideoResolution = statusResolution
+	}
+	if statusDuration := result.CMCCSeedanceBilling.VideoDurationSeconds; statusDuration > 0 {
+		metadata.VideoDurationSeconds = statusDuration
+	}
+	result.Model = metadata.RequestedModel
+	result.BillingModel = metadata.RequestedModel
+	result.ResponseID = taskID
+	result.VideoCount = 1
+	result.ImageCount = 1
+	result.VideoResolution = metadata.VideoResolution
+	result.VideoDurationSeconds = metadata.VideoDurationSeconds
+	result.CMCCSeedanceBilling = metadata
+	recordGrokMediaUsage(
+		c, h, reqLog, apiKey, subject, subscription, account, result, metadata.RequestedModel, nil, taskID,
+		"cmcc-seedance:"+taskID,
+	)
+}
+
 func recordGrokMediaUsage(
 	c *gin.Context,
 	h *OpenAIGatewayHandler,
@@ -462,6 +537,7 @@ func recordGrokMediaUsage(
 	requestModel string,
 	body []byte,
 	requestID string,
+	billingRequestID string,
 ) {
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
@@ -483,6 +559,7 @@ func recordGrokMediaUsage(
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
+			BillingRequestID:   billingRequestID,
 			APIKey:             apiKey,
 			User:               apiKey.User,
 			Account:            account,

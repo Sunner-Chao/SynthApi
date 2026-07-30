@@ -464,6 +464,14 @@ type GatewayCache interface {
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
 }
 
+// CMCCSeedanceTaskMetadataStore is an optional extension implemented by the
+// Redis gateway cache. Keeping it separate avoids widening GatewayCache for
+// lightweight test and alternate cache implementations.
+type CMCCSeedanceTaskMetadataStore interface {
+	SaveCMCCSeedanceTaskMetadata(ctx context.Context, groupID int64, taskHash string, metadata *CMCCSeedanceBillingMetadata, ttl time.Duration) error
+	GetCMCCSeedanceTaskMetadata(ctx context.Context, groupID int64, taskHash string) (*CMCCSeedanceBillingMetadata, error)
+}
+
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {
 	if groupID == nil {

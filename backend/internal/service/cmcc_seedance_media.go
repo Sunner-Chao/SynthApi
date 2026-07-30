@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,11 +21,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/cmccseedance"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 const (
-	CMCCSeedanceMediaAPIFormat = "cmcc_seedance"
-	cmccSeedanceVirtualModel   = "doubao-seedance-2.0"
+	CMCCSeedanceMediaAPIFormat   = "cmcc_seedance"
+	cmccSeedanceVirtualModel     = "doubao-seedance-2.0"
+	CMCCSeedanceDefaultCNYPerUSD = 7.2
 )
 
 type cmccSeedanceAccountState struct {
@@ -80,6 +84,8 @@ func (s *OpenAIGatewayService) forwardCMCCSeedanceMedia(
 
 	requestModel := ""
 	upstreamModel := ""
+	requestInfo := GrokMediaRequestInfo{}
+	inputHasVideo := false
 	var targetURL string
 	var requestBody []byte
 	if endpoint == GrokMediaEndpointVideosGenerations {
@@ -87,11 +93,11 @@ func (s *OpenAIGatewayService) forwardCMCCSeedanceMedia(
 			writeGrokMediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "China Mobile Seedance requests must use JSON")
 			return nil, errors.New("cmcc seedance requires a JSON request body")
 		}
-		requestInfo := ParseGrokMediaRequest(contentType, body)
+		requestInfo = ParseGrokMediaRequest(contentType, body)
 		requestModel = requestInfo.Model
 		virtualModel := normalizeCMCCSeedanceVirtualModel(account.GetMappedModel(requestModel))
 		upstreamModel = s.resolveCMCCSeedanceModel(ctx, account, state, baseURL, token, virtualModel, do)
-		requestBody, _, err = prepareCMCCSeedanceGenerationBody(body, upstreamModel)
+		requestBody, inputHasVideo, err = prepareCMCCSeedanceGenerationBody(body, upstreamModel)
 		if err != nil {
 			writeGrokMediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 			return nil, err
@@ -147,8 +153,21 @@ func (s *OpenAIGatewayService) forwardCMCCSeedanceMedia(
 		return nil, err
 	}
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
-	requestInfo := ParseGrokMediaRequest("application/json", requestBody)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
+	billingMetadata := &CMCCSeedanceBillingMetadata{
+		AccountID:            account.ID,
+		InputHasVideo:        inputHasVideo,
+		RequestedModel:       requestModel,
+		VideoResolution:      usage.VideoResolution,
+		VideoDurationSeconds: usage.VideoDurationSeconds,
+		CNYPerUSD:            resolveCMCCSeedanceCNYPerUSD(account),
+	}
+	if endpoint == GrokMediaEndpointVideoStatus {
+		billingMetadata.TaskStatus = strings.ToLower(strings.TrimSpace(gjson.GetBytes(respBody, "seedance_status").String()))
+		billingMetadata.VideoResolution = normalizeCMCCSeedanceStatusResolution(gjson.GetBytes(respBody, "resolution").String())
+		billingMetadata.VideoDurationSeconds = int(gjson.GetBytes(respBody, "duration").Int())
+		usage.ResponseID = strings.TrimSpace(requestID)
+	}
 	return &OpenAIForwardResult{
 		RequestID:            requestIDHeader,
 		ResponseID:           usage.ResponseID,
@@ -162,7 +181,50 @@ func (s *OpenAIGatewayService) forwardCMCCSeedanceMedia(
 		VideoCount:           usage.VideoCount,
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
+		CMCCSeedanceBilling:  billingMetadata,
 	}, nil
+}
+
+func resolveCMCCSeedanceCNYPerUSD(account *Account) float64 {
+	if account == nil || account.Credentials == nil {
+		return CMCCSeedanceDefaultCNYPerUSD
+	}
+	raw, exists := account.Credentials["cmcc_cny_per_usd"]
+	if !exists || raw == nil {
+		return CMCCSeedanceDefaultCNYPerUSD
+	}
+	var value float64
+	switch typed := raw.(type) {
+	case float64:
+		value = typed
+	case float32:
+		value = float64(typed)
+	case int:
+		value = float64(typed)
+	case int64:
+		value = float64(typed)
+	case json.Number:
+		value, _ = typed.Float64()
+	case string:
+		value, _ = strconv.ParseFloat(strings.TrimSpace(typed), 64)
+	}
+	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return CMCCSeedanceDefaultCNYPerUSD
+	}
+	return value
+}
+
+func normalizeCMCCSeedanceStatusResolution(resolution string) string {
+	switch strings.ToLower(strings.TrimSpace(resolution)) {
+	case "480", "480p", "sd":
+		return VideoBillingResolution480P
+	case "720", "720p", "hd":
+		return VideoBillingResolution720P
+	case "1080", "1080p", "full_hd", "full-hd", "fhd":
+		return VideoBillingResolution1080P
+	default:
+		return ""
+	}
 }
 
 func (s *OpenAIGatewayService) forwardCMCCSeedanceVideoContent(
@@ -208,6 +270,10 @@ func (s *OpenAIGatewayService) forwardCMCCSeedanceVideoContent(
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		return nil, err
 	}
+	statusUsage, _ := extractOpenAIUsageFromJSONBytes(statusBody)
+	statusTaskStatus := strings.ToLower(strings.TrimSpace(gjson.GetBytes(statusBody, "status").String()))
+	statusResolution := normalizeCMCCSeedanceStatusResolution(gjson.GetBytes(statusBody, "resolution").String())
+	statusDurationSeconds := int(gjson.GetBytes(statusBody, "duration").Int())
 	contentURL, err := cmccSeedanceVideoContentURL(statusBody)
 	if err != nil {
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -240,9 +306,20 @@ func (s *OpenAIGatewayService) forwardCMCCSeedanceVideoContent(
 		return nil, err
 	}
 	return &OpenAIForwardResult{
-		RequestID:       statusRequestID,
-		ResponseHeaders: contentResp.Header.Clone(),
-		Duration:        time.Since(startTime),
+		RequestID:            statusRequestID,
+		ResponseID:           strings.TrimSpace(requestID),
+		Usage:                statusUsage,
+		ResponseHeaders:      contentResp.Header.Clone(),
+		Duration:             time.Since(startTime),
+		VideoResolution:      statusResolution,
+		VideoDurationSeconds: statusDurationSeconds,
+		CMCCSeedanceBilling: &CMCCSeedanceBillingMetadata{
+			TaskStatus:           statusTaskStatus,
+			AccountID:            account.ID,
+			VideoResolution:      statusResolution,
+			VideoDurationSeconds: statusDurationSeconds,
+			CNYPerUSD:            resolveCMCCSeedanceCNYPerUSD(account),
+		},
 	}, nil
 }
 

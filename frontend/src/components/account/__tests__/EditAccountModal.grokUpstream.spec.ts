@@ -255,6 +255,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
       credentials: {
         base_url: 'https://zhenze-huhehaote.cmecloud.cn/api/v3',
         media_api_format: 'cmcc_seedance',
+        cmcc_cny_per_usd: 7.35,
         model_mapping: { 'seedance-2.0': 'doubao-seedance-2.0' }
       },
       credentials_status: { has_api_key: true }
@@ -264,6 +265,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
     const wrapper = mountModal(account)
     const format = wrapper.get('[data-testid="grok-media-api-format"]')
     expect((format.element as HTMLSelectElement).value).toBe('cmcc_seedance')
+    expect((wrapper.get('[data-testid="cmcc-cny-per-usd"]').element as HTMLInputElement).value).toBe('7.35')
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
@@ -272,6 +274,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
     expect(payload?.credentials).toMatchObject({
       base_url: 'https://zhenze-huhehaote.cmecloud.cn/api/v3',
       media_api_format: 'cmcc_seedance',
+      cmcc_cny_per_usd: 7.35,
       model_mapping: { 'seedance-2.0': 'doubao-seedance-2.0' }
     })
   })
@@ -293,6 +296,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
 
     expect((wrapper.get('[data-testid="grok-api-key-base-url"]').element as HTMLInputElement).value)
       .toBe('https://zhenze-huhehaote.cmecloud.cn/api/v3')
+    expect((wrapper.get('[data-testid="cmcc-cny-per-usd"]').element as HTMLInputElement).value).toBe('7.2')
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
@@ -300,6 +304,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
       base_url: 'https://zhenze-huhehaote.cmecloud.cn/api/v3',
       media_api_format: 'cmcc_seedance',
+      cmcc_cny_per_usd: 7.2,
       model_mapping: { 'seedance-2.0': 'doubao-seedance-2.0' }
     })
   })

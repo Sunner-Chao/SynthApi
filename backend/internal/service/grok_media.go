@@ -318,11 +318,56 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	if cacheKey == "" || accountID <= 0 {
 		return fmt.Errorf("grok video request binding is invalid")
 	}
+	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, s.grokMediaVideoRequestTTL())
+}
+
+func (s *OpenAIGatewayService) grokMediaVideoRequestTTL() time.Duration {
 	ttl := openaiStickySessionTTL
-	if s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
 		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
 	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, ttl)
+	return ttl
+}
+
+func (s *OpenAIGatewayService) BindCMCCSeedanceTaskMetadata(
+	ctx context.Context,
+	groupID *int64,
+	requestID string,
+	userID, apiKeyID int64,
+	metadata *CMCCSeedanceBillingMetadata,
+) error {
+	if s == nil || s.cache == nil {
+		return fmt.Errorf("cmcc seedance task metadata cache is unavailable")
+	}
+	store, ok := s.cache.(CMCCSeedanceTaskMetadataStore)
+	if !ok {
+		return fmt.Errorf("cmcc seedance task metadata store is unavailable")
+	}
+	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
+	if cacheKey == "" || metadata == nil || metadata.AccountID <= 0 {
+		return fmt.Errorf("cmcc seedance task metadata is invalid")
+	}
+	return store.SaveCMCCSeedanceTaskMetadata(ctx, derefGroupID(groupID), cacheKey, metadata, s.grokMediaVideoRequestTTL())
+}
+
+func (s *OpenAIGatewayService) ResolveCMCCSeedanceTaskMetadata(
+	ctx context.Context,
+	groupID *int64,
+	requestID string,
+	userID, apiKeyID int64,
+) (*CMCCSeedanceBillingMetadata, error) {
+	if s == nil || s.cache == nil {
+		return nil, fmt.Errorf("cmcc seedance task metadata cache is unavailable")
+	}
+	store, ok := s.cache.(CMCCSeedanceTaskMetadataStore)
+	if !ok {
+		return nil, fmt.Errorf("cmcc seedance task metadata store is unavailable")
+	}
+	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
+	if cacheKey == "" {
+		return nil, fmt.Errorf("cmcc seedance task metadata key is invalid")
+	}
+	return store.GetCMCCSeedanceTaskMetadata(ctx, derefGroupID(groupID), cacheKey)
 }
 
 func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(

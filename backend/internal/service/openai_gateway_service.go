@@ -219,6 +219,20 @@ type OpenAIUsage struct {
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 }
 
+// CMCCSeedanceBillingMetadata carries the task attributes required to settle a
+// China Mobile Cloud Seedance task after asynchronous generation completes.
+// Creation results populate the input attributes; status results populate the
+// terminal state and actual output attributes.
+type CMCCSeedanceBillingMetadata struct {
+	TaskStatus           string  `json:"task_status,omitempty"`
+	AccountID            int64   `json:"account_id"`
+	InputHasVideo        bool    `json:"input_has_video"`
+	RequestedModel       string  `json:"requested_model"`
+	VideoResolution      string  `json:"video_resolution"`
+	VideoDurationSeconds int     `json:"video_duration_seconds"`
+	CNYPerUSD            float64 `json:"cny_per_usd"`
+}
+
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
 	RequestID  string
@@ -262,6 +276,10 @@ type OpenAIForwardResult struct {
 	VideoResolution       string
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int
+	// CMCCSeedanceBilling is non-nil only for the China Mobile Cloud Seedance
+	// adapter. The handler persists creation metadata and restores it when a
+	// successful status response reports final completion tokens.
+	CMCCSeedanceBilling *CMCCSeedanceBillingMetadata
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
 	WebSearchCalls int

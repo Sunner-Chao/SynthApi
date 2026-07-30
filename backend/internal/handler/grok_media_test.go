@@ -73,6 +73,23 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 	}
 }
 
+func TestShouldSettleCMCCSeedanceUsage(t *testing.T) {
+	result := &service.OpenAIForwardResult{
+		Usage:               service.OpenAIUsage{OutputTokens: 120},
+		CMCCSeedanceBilling: &service.CMCCSeedanceBillingMetadata{TaskStatus: "succeeded"},
+	}
+	require.True(t, shouldSettleCMCCSeedanceUsage(service.GrokMediaEndpointVideoStatus, result))
+	require.True(t, shouldSettleCMCCSeedanceUsage(service.GrokMediaEndpointVideoContent, result))
+	require.False(t, shouldSettleCMCCSeedanceUsage(service.GrokMediaEndpointVideosGenerations, result))
+	result.CMCCSeedanceBilling.TaskStatus = "running"
+	require.False(t, shouldSettleCMCCSeedanceUsage(service.GrokMediaEndpointVideoStatus, result))
+	result.CMCCSeedanceBilling.TaskStatus = "failed"
+	require.False(t, shouldSettleCMCCSeedanceUsage(service.GrokMediaEndpointVideoStatus, result))
+	result.CMCCSeedanceBilling.TaskStatus = "succeeded"
+	result.Usage.OutputTokens = 0
+	require.False(t, shouldSettleCMCCSeedanceUsage(service.GrokMediaEndpointVideoStatus, result))
+}
+
 func TestGrokMediaRequiredCapability(t *testing.T) {
 	tests := []struct {
 		name     string

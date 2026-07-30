@@ -23,6 +23,9 @@ describe('CreateAccountModal Grok account types', () => {
     expect(source).toContain("credentials.media_api_format = 'cmcc_seedance'")
     expect(source).toContain("{ from: 'seedance-2.0', to: 'doubao-seedance-2.0' }")
     expect(source).toContain('https://zhenze-huhehaote.cmecloud.cn/api/v3')
+    expect(source).toContain('data-testid="cmcc-cny-per-usd"')
+    expect(source).toContain('const cmccCnyPerUsd = ref(7.2)')
+    expect(source).toContain('credentials.cmcc_cny_per_usd = cmccCnyPerUsd.value')
   })
 
   it('exposes custom upstream URL and header override for the OAuth create flow', () => {

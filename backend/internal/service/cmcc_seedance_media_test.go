@@ -49,6 +49,56 @@ func TestAccountIsCMCCSeedanceMediaAPI(t *testing.T) {
 	require.False(t, account.IsCMCCSeedanceMediaAPI())
 }
 
+func TestResolveCMCCSeedanceCNYPerUSD(t *testing.T) {
+	account := cmccSeedanceTestAccount()
+	require.Equal(t, CMCCSeedanceDefaultCNYPerUSD, resolveCMCCSeedanceCNYPerUSD(account))
+	account.Credentials["cmcc_cny_per_usd"] = 7.35
+	require.Equal(t, 7.35, resolveCMCCSeedanceCNYPerUSD(account))
+	account.Credentials["cmcc_cny_per_usd"] = "7.4"
+	require.Equal(t, 7.4, resolveCMCCSeedanceCNYPerUSD(account))
+	account.Credentials["cmcc_cny_per_usd"] = 0
+	require.Equal(t, CMCCSeedanceDefaultCNYPerUSD, resolveCMCCSeedanceCNYPerUSD(account))
+}
+
+func TestCalculateCMCCSeedanceUsageCostOfficialRates(t *testing.T) {
+	tests := []struct {
+		name          string
+		inputHasVideo bool
+		resolution    string
+		priceCNY      float64
+	}{
+		{name: "no video 720p", resolution: "720p", priceCNY: 92},
+		{name: "video 720p", inputHasVideo: true, resolution: "720p", priceCNY: 56},
+		{name: "no video 1080p", resolution: "1080p", priceCNY: 102},
+		{name: "video 1080p", inputHasVideo: true, resolution: "1080p", priceCNY: 62},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := &OpenAIForwardResult{
+				Usage: OpenAIUsage{OutputTokens: 1_000_000},
+				CMCCSeedanceBilling: &CMCCSeedanceBillingMetadata{
+					InputHasVideo:   tt.inputHasVideo,
+					VideoResolution: tt.resolution,
+					CNYPerUSD:       7.2,
+				},
+			}
+			cost, err := calculateCMCCSeedanceUsageCost(result, 1.25)
+			require.NoError(t, err)
+			require.InDelta(t, tt.priceCNY/7.2, cost.TotalCost, 1e-12)
+			require.InDelta(t, tt.priceCNY/7.2*1.25, cost.ActualCost, 1e-12)
+			require.InDelta(t, cost.TotalCost, cost.OutputCost, 1e-12)
+			require.Equal(t, string(BillingModeToken), cost.BillingMode)
+		})
+	}
+}
+
+func TestCalculateCMCCSeedanceUsageCostRequiresFinalUsage(t *testing.T) {
+	_, err := calculateCMCCSeedanceUsageCost(&OpenAIForwardResult{
+		CMCCSeedanceBilling: &CMCCSeedanceBillingMetadata{VideoResolution: "720p", CNYPerUSD: 7.2},
+	}, 1)
+	require.ErrorContains(t, err, "completion tokens")
+}
+
 func TestCMCCSeedanceUsageIsClassifiedAsVideo(t *testing.T) {
 	result := &OpenAIForwardResult{
 		Model:         "seedance-2.0",
@@ -248,7 +298,8 @@ func TestForwardCMCCSeedanceMediaCreateAndStatus(t *testing.T) {
 				"status":"succeeded",
 				"content":{"video_url":"https://storage.example/task-1.mp4"},
 				"duration":8,
-				"resolution":"1080p"
+				"resolution":"1080p",
+				"usage":{"completion_tokens":120}
 			}`))
 		default:
 			http.NotFound(w, r)
@@ -284,6 +335,9 @@ func TestForwardCMCCSeedanceMediaCreateAndStatus(t *testing.T) {
 	require.Equal(t, "endpoint-seedance-2", createResult.UpstreamModel)
 	require.Equal(t, 8, createResult.VideoDurationSeconds)
 	require.Equal(t, "1080p", createResult.VideoResolution)
+	require.NotNil(t, createResult.CMCCSeedanceBilling)
+	require.True(t, createResult.CMCCSeedanceBilling.InputHasVideo)
+	require.Equal(t, CMCCSeedanceDefaultCNYPerUSD, createResult.CMCCSeedanceBilling.CNYPerUSD)
 
 	statusContext, statusRecorder := cmccSeedanceTestContext(http.MethodGet, "/v1/videos/task-1")
 	statusResult, err := svc.ForwardGrokMedia(
@@ -292,6 +346,10 @@ func TestForwardCMCCSeedanceMediaCreateAndStatus(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, statusResult)
+	require.Equal(t, 120, statusResult.Usage.OutputTokens)
+	require.NotNil(t, statusResult.CMCCSeedanceBilling)
+	require.Equal(t, "succeeded", statusResult.CMCCSeedanceBilling.TaskStatus)
+	require.Equal(t, "1080p", statusResult.CMCCSeedanceBilling.VideoResolution)
 	require.Equal(t, "done", gjson.Get(statusRecorder.Body.String(), "status").String())
 	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(statusRecorder.Body.String(), "video.url").String())
 

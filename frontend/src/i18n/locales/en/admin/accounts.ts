@@ -489,7 +489,10 @@ export default {
         xaiHint: 'Use the xAI-compatible image and video APIs.',
         cmcc_seedanceHint: 'Use the MoMA Seedance task API with AICC secure transport; defaults to the North China-Hohhot resource pool.',
         apiKeyPlaceholder: 'China Mobile Cloud API Key',
-        baseUrlRequired: 'Enter the Seedance access-point Base URL assigned in the cloud console'
+        baseUrlRequired: 'Enter the Seedance access-point Base URL assigned in the cloud console',
+        cnyPerUsd: 'CNY per USD',
+        cnyPerUsdHint: 'Converts official China Mobile Cloud CNY token charges into the SynthAPI USD balance; defaults to 7.2.',
+        cnyPerUsdRequired: 'Enter a valid CNY per USD exchange rate'
       },
       // OpenAI specific hints
       openai: {

@@ -1160,6 +1160,19 @@
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
+        <div v-if="form.platform === 'grok' && grokMediaApiFormat === 'cmcc_seedance'">
+          <label class="input-label">{{ t('admin.accounts.grokMediaApiFormat.cnyPerUsd') }}</label>
+          <input
+            v-model.number="cmccCnyPerUsd"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            class="input"
+            data-testid="cmcc-cny-per-usd"
+          />
+          <p class="input-hint">{{ t('admin.accounts.grokMediaApiFormat.cnyPerUsdHint') }}</p>
+        </div>
 
         <div
           v-if="form.platform === 'openai'"
@@ -3706,6 +3719,7 @@ const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 type GrokMediaApiFormat = 'xai' | 'cmcc_seedance'
 const grokMediaApiFormat = ref<GrokMediaApiFormat>('xai')
+const cmccCnyPerUsd = ref(7.2)
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 const syncPreviewCredentials = computed(() => {
@@ -4680,6 +4694,7 @@ const resetForm = () => {
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   grokMediaApiFormat.value = 'xai'
+  cmccCnyPerUsd.value = 7.2
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5113,6 +5128,14 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.grokMediaApiFormat.baseUrlRequired'))
     return
   }
+  if (
+    form.platform === 'grok' &&
+    grokMediaApiFormat.value === 'cmcc_seedance' &&
+    (!Number.isFinite(cmccCnyPerUsd.value) || cmccCnyPerUsd.value <= 0)
+  ) {
+    appStore.showError(t('admin.accounts.grokMediaApiFormat.cnyPerUsdRequired'))
+    return
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
@@ -5134,6 +5157,7 @@ const handleSubmit = async () => {
   }
   if (form.platform === 'grok' && grokMediaApiFormat.value === 'cmcc_seedance') {
     credentials.media_api_format = 'cmcc_seedance'
+    credentials.cmcc_cny_per_usd = cmccCnyPerUsd.value
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
