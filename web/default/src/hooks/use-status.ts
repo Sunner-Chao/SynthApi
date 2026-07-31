@@ -35,7 +35,12 @@ function getInitialStatus(): SystemStatus | undefined {
   return undefined
 }
 
-export function useStatus() {
+interface UseStatusOptions {
+  refetchInterval?: number | false
+  refetchIntervalInBackground?: boolean
+}
+
+export function useStatus(options: UseStatusOptions = {}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['status'],
     queryFn: async () => {
@@ -72,6 +77,8 @@ export function useStatus() {
     gcTime: 5 * 60 * 1000,
     // Refetch on window focus to sync settings
     refetchOnWindowFocus: true,
+    refetchInterval: options.refetchInterval,
+    refetchIntervalInBackground: options.refetchIntervalInBackground,
   })
 
   return {

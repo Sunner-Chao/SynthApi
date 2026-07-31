@@ -253,7 +253,18 @@ func ConfirmMPayOrder(tradeNo string, callbackMoney float64, callerIP string) er
 
 	logger.LogInfo(context.Background(), fmt.Sprintf("MPay 充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f",
 		tradeNo, topUp.UserId, quotaToAdd, topUp.Money))
-	model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用 MPay 在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIP, topUp.PaymentMethod, model.PaymentProviderMPay)
+	model.RecordPaymentLog(topUp.UserId,
+		fmt.Sprintf("使用 MPay 在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money),
+		model.PaymentAuditInfo{
+			Event:                 "topup_completed",
+			Source:                "callback",
+			TradeNo:               topUp.TradeNo,
+			ProviderTradeNo:       topUp.ProviderTradeNo,
+			PaymentMethod:         topUp.PaymentMethod,
+			PaymentProvider:       model.PaymentProviderMPay,
+			CallbackPaymentMethod: model.PaymentProviderMPay,
+			CallerIp:              callerIP,
+		})
 	return nil
 }
 

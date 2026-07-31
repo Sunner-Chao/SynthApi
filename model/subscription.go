@@ -632,16 +632,28 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
 // actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
-	return completeSubscriptionOrder(tradeNo, providerPayload, expectedPaymentProvider, actualPaymentMethod, "")
+	return CompleteSubscriptionOrderWithAudit(tradeNo, providerPayload, expectedPaymentProvider, actualPaymentMethod, PaymentAuditInfo{})
 }
 
-func CompleteAlipayDirectSubscriptionOrder(tradeNo string, providerPayload string, paidMoney string) error {
-	return completeSubscriptionOrder(tradeNo, providerPayload, PaymentProviderAlipayDirect, PaymentMethodAlipay, paidMoney)
+func CompleteAlipayDirectSubscriptionOrder(tradeNo string, providerPayload string, paidMoney string, callerIp ...string) error {
+	audit := PaymentAuditInfo{Source: "verified_completion"}
+	if len(callerIp) > 0 {
+		audit.CallerIp = callerIp[0]
+	}
+	var payload map[string]string
+	if err := common.UnmarshalJsonStr(providerPayload, &payload); err == nil {
+		audit.ProviderTradeNo = strings.TrimSpace(payload["trade_no"])
+	}
+	return CompleteSubscriptionOrderWithAudit(tradeNo, providerPayload, PaymentProviderAlipayDirect, PaymentMethodAlipay, audit, paidMoney)
 }
 
-func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string, paidMoney string) error {
+func CompleteSubscriptionOrderWithAudit(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string, audit PaymentAuditInfo, paidMoney ...string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
+	}
+	paidAmount := ""
+	if len(paidMoney) > 0 {
+		paidAmount = strings.TrimSpace(paidMoney[0])
 	}
 	incomingProviderTradeNo, err := subscriptionProviderTradeNo(expectedPaymentProvider, providerPayload)
 	if err != nil {
@@ -656,6 +668,7 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var logMoney float64
 	var logPaymentMethod string
 	var upgradeGroup string
+	var logPaymentProvider string
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
@@ -664,7 +677,7 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
 		}
-		if paidMoney != "" && !paymentAmountMatches(order.Money, paidMoney) {
+		if paidAmount != "" && !paymentAmountMatches(order.Money, paidAmount) {
 			return ErrPaymentAmountMismatch
 		}
 		if order.Status == common.TopUpStatusSuccess {
@@ -725,6 +738,7 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		logPlanTitle = plan.Title
 		logMoney = order.Money
 		logPaymentMethod = order.PaymentMethod
+		logPaymentProvider = order.PaymentProvider
 		return nil
 	})
 	if errors.Is(err, errPaymentOrderCASConflict) {
@@ -735,7 +749,7 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if expectedPaymentProvider != "" && current.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
 		}
-		if paidMoney != "" && !paymentAmountMatches(current.Money, paidMoney) {
+		if paidAmount != "" && !paymentAmountMatches(current.Money, paidAmount) {
 			return ErrPaymentAmountMismatch
 		}
 		if current.Status == common.TopUpStatusSuccess {
@@ -751,7 +765,24 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	}
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
-		RecordLog(logUserId, LogTypeTopup, msg)
+		audit.Event = "subscription_completed"
+		audit.TradeNo = tradeNo
+		if audit.ProviderTradeNo == "" {
+			audit.ProviderTradeNo = incomingProviderTradeNo
+		}
+		if audit.PaymentMethod == "" {
+			audit.PaymentMethod = logPaymentMethod
+		}
+		if audit.PaymentProvider == "" {
+			audit.PaymentProvider = logPaymentProvider
+		}
+		if audit.CallbackPaymentMethod == "" {
+			audit.CallbackPaymentMethod = actualPaymentMethod
+		}
+		if audit.Source == "" {
+			audit.Source = "callback"
+		}
+		RecordPaymentLog(logUserId, msg, audit)
 	}
 	return nil
 }
@@ -907,6 +938,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	var logMoney float64
 	var chargedQuota int
 	var upgradeGroup string
+	var logTradeNo string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		plan, err := getSubscriptionPlanByIdTx(tx, planId)
 		if err != nil {
@@ -965,6 +997,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 
 		logPlanTitle = plan.Title
 		logMoney = plan.PriceAmount
+		logTradeNo = tradeNo
 		chargedQuota = requiredQuota
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
 		return nil
@@ -982,7 +1015,13 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		_ = UpdateUserGroupCache(userId, upgradeGroup)
 	}
 	msg := fmt.Sprintf("使用余额购买订阅成功，套餐: %s，支付金额: %.2f，扣除额度: %.2f", logPlanTitle, logMoney, logMoney)
-	RecordLog(userId, LogTypeTopup, msg)
+	RecordPaymentLog(userId, msg, PaymentAuditInfo{
+		Event:           "subscription_completed",
+		Source:          "user_balance",
+		TradeNo:         logTradeNo,
+		PaymentMethod:   PaymentMethodBalance,
+		PaymentProvider: PaymentProviderBalance,
+	})
 	return nil
 }
 
@@ -1219,7 +1258,15 @@ func CancelUserSubscriptionWithRefund(userId int, userSubscriptionId int) (*Subs
 	if downgradeGroup != "" {
 		result.Message = fmt.Sprintf("用户分组将回退到 %s", downgradeGroup)
 	}
-	RecordLog(userId, LogTypeTopup, fmt.Sprintf("退订订阅成功，套餐: %s，返还额度: %d，返还金额: %.6f", planTitle, refundQuota, result.RefundAmount))
+	RecordPaymentLog(userId,
+		fmt.Sprintf("退订订阅成功，套餐: %s，返还额度: %d，返还金额: %.6f", planTitle, refundQuota, result.RefundAmount),
+		PaymentAuditInfo{
+			Event:           "subscription_refunded",
+			Source:          "user",
+			ReferenceId:     strconv.Itoa(userSubscriptionId),
+			PaymentMethod:   PaymentMethodBalance,
+			PaymentProvider: PaymentProviderBalance,
+		})
 	return result, nil
 }
 

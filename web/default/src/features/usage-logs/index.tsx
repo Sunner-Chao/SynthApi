@@ -110,27 +110,36 @@ function UsageLogsContent() {
 
   return (
     <>
-      <SectionPageLayout>
-        <SectionPageLayout.Title>
-          {t(pageMeta.titleKey)}
-        </SectionPageLayout.Title>
-        <SectionPageLayout.Content>
-          <div className='space-y-4'>
-            {showTaskSwitcher && (
-              <Tabs value={activeCategory} onValueChange={handleSectionChange}>
-                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-                  {visibleSections.map((section) => (
-                    <TabsTrigger key={section} value={section}>
-                      {t(SECTION_META[section].titleKey)}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-            )}
-            <UsageLogsTable logCategory={activeCategory} />
-          </div>
-        </SectionPageLayout.Content>
-      </SectionPageLayout>
+      {activeCategory === 'common' ? (
+        <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+          <UsageLogsTable logCategory={activeCategory} />
+        </div>
+      ) : (
+        <SectionPageLayout>
+          <SectionPageLayout.Title>
+            {t(pageMeta.titleKey)}
+          </SectionPageLayout.Title>
+          <SectionPageLayout.Content>
+            <div className='space-y-4'>
+              {showTaskSwitcher && (
+                <Tabs
+                  value={activeCategory}
+                  onValueChange={handleSectionChange}
+                >
+                  <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                    {visibleSections.map((section) => (
+                      <TabsTrigger key={section} value={section}>
+                        {t(SECTION_META[section].titleKey)}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              )}
+              <UsageLogsTable logCategory={activeCategory} />
+            </div>
+          </SectionPageLayout.Content>
+        </SectionPageLayout>
+      )}
 
       <UserInfoDialog
         userId={selectedUserId}

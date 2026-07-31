@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -171,15 +172,82 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 	}
 }
 
-func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
-	username, _ := GetUsernameById(userId, false)
+const paymentAuditSchemaVersion = 2
+
+// PaymentAuditInfo describes how a balance-affecting payment event reached the
+// application. Keep provider payloads and credentials out of this structure.
+type PaymentAuditInfo struct {
+	Event                 string
+	Source                string
+	TradeNo               string
+	ProviderTradeNo       string
+	ReferenceId           string
+	PaymentMethod         string
+	PaymentProvider       string
+	CallbackPaymentMethod string
+	CallerIp              string
+}
+
+func paymentAuditServerIp() string {
+	if configured := strings.TrimSpace(os.Getenv("AUDIT_SERVER_IP")); configured != "" {
+		return configured
+	}
+	return strings.TrimSpace(common.GetIp())
+}
+
+func paymentAuditNodeName() string {
+	if configured := strings.TrimSpace(common.NodeName); configured != "" {
+		return configured
+	}
+	hostname, _ := os.Hostname()
+	return strings.TrimSpace(hostname)
+}
+
+func normalizePaymentAuditSource(source string, callerIp *string) string {
+	source = strings.TrimSpace(source)
+	*callerIp = strings.TrimSpace(*callerIp)
+	if *callerIp != "" && net.ParseIP(*callerIp) == nil {
+		source = *callerIp
+		*callerIp = ""
+	}
+	return source
+}
+
+func buildPaymentAuditAdminInfo(audit PaymentAuditInfo) map[string]interface{} {
+	audit.Source = normalizePaymentAuditSource(audit.Source, &audit.CallerIp)
 	adminInfo := map[string]interface{}{
-		"server_ip":               common.GetIp(),
-		"node_name":               common.NodeName,
-		"caller_ip":               callerIp,
-		"payment_method":          paymentMethod,
-		"callback_payment_method": callbackPaymentMethod,
-		"version":                 common.Version,
+		"audit_schema_version": paymentAuditSchemaVersion,
+		"server_ip":            paymentAuditServerIp(),
+		"node_name":            paymentAuditNodeName(),
+		"version":              strings.TrimSpace(common.Version),
+	}
+	fields := map[string]string{
+		"event":                   audit.Event,
+		"source":                  audit.Source,
+		"trade_no":                audit.TradeNo,
+		"provider_trade_no":       audit.ProviderTradeNo,
+		"reference_id":            audit.ReferenceId,
+		"payment_method":          audit.PaymentMethod,
+		"payment_provider":        audit.PaymentProvider,
+		"callback_payment_method": audit.CallbackPaymentMethod,
+		"caller_ip":               audit.CallerIp,
+	}
+	for key, value := range fields {
+		if value = strings.TrimSpace(value); value != "" {
+			adminInfo[key] = value
+		}
+	}
+	return adminInfo
+}
+
+func RecordPaymentLog(userId int, content string, audit PaymentAuditInfo) {
+	username, _ := GetUsernameById(userId, false)
+	callerIp := strings.TrimSpace(audit.CallerIp)
+	adminInfo := buildPaymentAuditAdminInfo(audit)
+	if value, ok := adminInfo["caller_ip"].(string); ok {
+		callerIp = value
+	} else {
+		callerIp = ""
 	}
 	other := map[string]interface{}{
 		"admin_info": adminInfo,
@@ -193,10 +261,20 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 		Ip:        callerIp,
 		Other:     common.MapToJsonStr(other),
 	}
-	err := LOG_DB.Create(log).Error
-	if err != nil {
-		common.SysLog("failed to record topup log: " + err.Error())
+	if err := LOG_DB.Create(log).Error; err != nil {
+		common.SysLog("failed to record payment log: " + err.Error())
 	}
+}
+
+func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
+	RecordPaymentLog(userId, content, PaymentAuditInfo{
+		Event:                 "topup_completed",
+		Source:                "callback",
+		PaymentMethod:         paymentMethod,
+		PaymentProvider:       callbackPaymentMethod,
+		CallbackPaymentMethod: callbackPaymentMethod,
+		CallerIp:              callerIp,
+	})
 }
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,

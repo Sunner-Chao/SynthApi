@@ -24,14 +24,18 @@ interface NotificationState {
   lastReadNotice: string
   // Array of read announcement keys (id or content hash)
   readAnnouncementKeys: string[]
+  // Announcements already delivered through the operating-system notifier
+  notifiedAnnouncementKeys: string[]
   // Timestamp of last "Close Today" action
   closedUntilDate: string | null
 
   // Actions
   markNoticeRead: (noticeContent: string) => void
   markAnnouncementsRead: (keys: string[]) => void
+  markAnnouncementsNotified: (keys: string[]) => void
   setClosedUntilDate: (date: string | null) => void
   isAnnouncementRead: (key: string) => boolean
+  isAnnouncementNotified: (key: string) => boolean
   isNoticeClosed: () => boolean
 }
 
@@ -44,6 +48,7 @@ export const useNotificationStore = create<NotificationState>()(
     (set, get) => ({
       lastReadNotice: '',
       readAnnouncementKeys: [],
+      notifiedAnnouncementKeys: [],
       closedUntilDate: null,
 
       markNoticeRead: (noticeContent: string) => {
@@ -60,12 +65,24 @@ export const useNotificationStore = create<NotificationState>()(
         }))
       },
 
+      markAnnouncementsNotified: (keys: string[]) => {
+        set((state) => ({
+          notifiedAnnouncementKeys: [
+            ...new Set([...state.notifiedAnnouncementKeys, ...keys]),
+          ],
+        }))
+      },
+
       setClosedUntilDate: (date: string | null) => {
         set({ closedUntilDate: date })
       },
 
       isAnnouncementRead: (key: string) => {
         return get().readAnnouncementKeys.includes(key)
+      },
+
+      isAnnouncementNotified: (key: string) => {
+        return get().notifiedAnnouncementKeys.includes(key)
       },
 
       isNoticeClosed: () => {
@@ -81,6 +98,7 @@ export const useNotificationStore = create<NotificationState>()(
       partialize: (state) => ({
         lastReadNotice: state.lastReadNotice,
         readAnnouncementKeys: state.readAnnouncementKeys,
+        notifiedAnnouncementKeys: state.notifiedAnnouncementKeys,
         closedUntilDate: state.closedUntilDate,
       }),
     }

@@ -494,6 +494,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				}
 				sentStop = true
 			}
+			// The upstream response is complete; no trailing transport data is
+			// needed and waiting for it can turn a successful response into a
+			// scanner_error when a proxy closes the stream.
+			sr.Done()
 
 		case "response.error", "response.failed":
 			if streamResp.Response != nil {

@@ -71,6 +71,19 @@ func (s *slowReader) Read(p []byte) (int, error) {
 	return s.r.Read(p)
 }
 
+type errorAfterDataReader struct {
+	data []byte
+	done bool
+}
+
+func (r *errorAfterDataReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.ErrUnexpectedEOF
+	}
+	r.done = true
+	return copy(p, r.data), io.ErrUnexpectedEOF
+}
+
 // ---------- Basic correctness ----------
 
 func TestStreamScannerHandler_NilInputs(t *testing.T) {
@@ -186,6 +199,39 @@ func TestStreamScannerHandler_DoneStopsScanner(t *testing.T) {
 	})
 
 	assert.Equal(t, int64(50), count.Load(), "data after [DONE] must not be processed")
+}
+
+func TestStreamScannerHandler_DelaysScannerErrorUntilHandlerDrains(t *testing.T) {
+	c, resp, info := setupStreamTest(t, &errorAfterDataReader{data: []byte("data: terminal\n")})
+
+	handlerStarted := make(chan struct{})
+	releaseHandler := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		StreamScannerHandler(c, resp, info, func(_ string, sr *StreamResult) {
+			close(handlerStarted)
+			<-releaseHandler
+			sr.Done()
+		})
+		close(done)
+	}()
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not receive queued event")
+	}
+	close(releaseHandler)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream handler did not finish")
+	}
+
+	require.NotNil(t, info.StreamStatus)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	assert.False(t, info.StreamStatus.HasErrors())
 }
 
 func TestStreamScannerHandler_StopStopsStream(t *testing.T) {

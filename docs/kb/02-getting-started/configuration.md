@@ -17,6 +17,7 @@
 | `TZ` | 时区 | UTC | `TZ=Asia/Shanghai` |
 | `NODE_TYPE` | 节点类型 | master | `NODE_TYPE=slave` |
 | `NODE_NAME` | 节点名称 | 空 | `NODE_NAME=node-1` |
+| `AUDIT_SERVER_IP` | 支付审计日志记录的服务器公网 IP；未设置时使用本机网卡地址 | 空 | `AUDIT_SERVER_IP=203.0.113.10` |
 
 ### 数据库配置
 

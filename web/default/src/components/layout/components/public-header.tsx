@@ -279,11 +279,18 @@ export function PublicHeader(props: PublicHeaderProps) {
                   notice={notifications.notice}
                   announcements={notifications.announcements}
                   popupAnnouncements={notifications.unreadAnnouncements}
-                  announcementDialogOpen={
-                    notifications.announcementDialogOpen
-                  }
+                  announcementDialogOpen={notifications.announcementDialogOpen}
                   onAnnouncementDialogOpenChange={
                     notifications.setAnnouncementDialogOpen
+                  }
+                  desktopNotificationsSupported={
+                    notifications.desktopNotificationsSupported
+                  }
+                  desktopNotificationPermission={
+                    notifications.desktopNotificationPermission
+                  }
+                  onRequestDesktopNotifications={
+                    notifications.requestDesktopNotifications
                   }
                   loading={notifications.loading}
                 />

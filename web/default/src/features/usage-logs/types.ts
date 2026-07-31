@@ -212,7 +212,14 @@ export interface LogOtherData {
     channel_affinity?: ChannelAffinityInfo
     // Top-up audit fields (type=1, admin only)
     payment_method?: string
+    payment_provider?: string
     callback_payment_method?: string
+    event?: string
+    source?: string
+    trade_no?: string
+    provider_trade_no?: string
+    reference_id?: string
+    audit_schema_version?: number
     caller_ip?: string
     server_ip?: string
     version?: string

@@ -67,6 +67,17 @@ func ExtendWriteDeadline(c *gin.Context) {
 	_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Now().Add(streamWriteTimeout))
 }
 
+func streamStopRequested(c *gin.Context, ctx context.Context, stopChan <-chan bool) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	case <-stopChan:
+		return true
+	default:
+	}
+	return c != nil && c.Request != nil && c.Request.Context().Err() != nil
+}
+
 func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
 
 	if resp == nil || dataHandler == nil {
@@ -187,6 +198,13 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}
 
 	dataChan := make(chan string, 10)
+	var dataChanCloseOnce sync.Once
+	closeDataChan := func() {
+		dataChanCloseOnce.Do(func() {
+			close(dataChan)
+		})
+	}
+	handlerDone := make(chan struct{})
 
 	wg.Add(1)
 	gopool.Go(func() {
@@ -196,6 +214,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPanic, fmt.Errorf("handler panic: %v", r))
 			}
 			stop()
+			close(handlerDone)
 			wg.Done()
 		}()
 		sr := newStreamResult(info.StreamStatus)
@@ -217,7 +236,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	wg.Add(1)
 	common.RelayCtxGo(ctx, func() {
 		defer func() {
-			close(dataChan)
+			closeDataChan()
 			if r := recover(); r != nil {
 				logger.LogError(c, fmt.Sprintf("scanner goroutine panic: %v", r))
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPanic, fmt.Errorf("scanner panic: %v", r))
@@ -270,13 +289,30 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			}
 		}
 
-		if err := scanner.Err(); err != nil {
-			if err != io.EOF {
-				logger.LogError(c, "scanner error: "+err.Error())
-				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
-			}
+		// The scanner can read ahead of the handler. Defer classifying a transport
+		// error until all queued events have been delivered, so a terminal event
+		// (for example response.completed) can mark the stream as complete first.
+		var scannerErr error
+		scannerStopRequested := streamStopRequested(c, ctx, stopChan)
+		if err := scanner.Err(); err != nil && err != io.EOF {
+			scannerErr = err
 		}
-		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+		closeDataChan()
+		<-handlerDone
+
+		if scannerErr != nil {
+			// Closing the upstream body is intentional during client cancellation or
+			// handler shutdown. Do not turn that cleanup error into scanner_error.
+			if scannerStopRequested || info.StreamStatus.EndReason != relaycommon.StreamEndReasonNone {
+				return
+			}
+			logger.LogError(c, "scanner error: "+scannerErr.Error())
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, scannerErr)
+			return
+		}
+		if !scannerStopRequested {
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+		}
 	})
 
 	// 主循环等待完成或超时

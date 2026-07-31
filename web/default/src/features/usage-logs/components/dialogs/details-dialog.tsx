@@ -32,7 +32,12 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatTimestampToDate,
+  formatTokens,
+  formatUseTime,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Button } from '@/components/ui/button'
@@ -69,7 +74,7 @@ import {
   getFinalRelayAttempt,
   getUpstreamFirstResponseLatency,
 } from '../../lib/latency'
-import { getLogThroughput } from '../../lib/throughput'
+import { formatTokensPerSecond, getLogThroughput } from '../../lib/throughput'
 import {
   getLogTypeConfig,
   isPerCallBilling,
@@ -77,6 +82,7 @@ import {
 } from '../../lib/utils'
 import type { LogOtherData, RelayTrace, UsageLog } from '../../types'
 import { ApiLineBadge } from '../api-line-badge'
+import { useUsageLogsContext } from '../usage-logs-provider'
 
 function timingTextColorClass(
   variant: 'success' | 'warning' | 'danger'
@@ -1017,6 +1023,7 @@ interface DetailsDialogProps {
 
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
+  const { sensitiveVisible } = useUsageLogsContext()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
@@ -1062,13 +1069,37 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
       ? ([
+          adminInfo.event && {
+            label: t('Payment Event'),
+            value: adminInfo.event,
+          },
+          adminInfo.trade_no && {
+            label: t('Order Number'),
+            value: adminInfo.trade_no,
+          },
+          adminInfo.provider_trade_no && {
+            label: t('Provider Trade Number'),
+            value: adminInfo.provider_trade_no,
+          },
+          adminInfo.reference_id && {
+            label: t('Reference ID'),
+            value: adminInfo.reference_id,
+          },
           adminInfo.payment_method && {
             label: t('Order Payment Method'),
             value: adminInfo.payment_method,
           },
+          adminInfo.payment_provider && {
+            label: t('Payment Provider'),
+            value: adminInfo.payment_provider,
+          },
           adminInfo.callback_payment_method && {
             label: t('Callback Payment Method'),
             value: adminInfo.callback_payment_method,
+          },
+          adminInfo.source && {
+            label: t('Payment Source'),
+            value: adminInfo.source,
           },
           adminInfo.caller_ip && {
             label: t('Callback Caller IP'),
@@ -1086,9 +1117,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
             label: t('System Version'),
             value: adminInfo.version,
           },
+          adminInfo.audit_schema_version && {
+            label: t('Audit Schema Version'),
+            value: String(adminInfo.audit_schema_version),
+          },
         ].filter(Boolean) as Array<{ label: string; value: string }>)
       : []
-  const showLegacyTopupWarning = isTopup && props.isAdmin && !adminInfo
+  const isLegacyInternalTopup =
+    isTopup &&
+    /^(使用余额购买订阅成功|通过兑换码充值|退订订阅成功)/.test(details.trim())
+  const showLegacyTopupWarning =
+    isTopup && props.isAdmin && !adminInfo && !isLegacyInternalTopup
   const showTopupAuditSection =
     isTopup &&
     props.isAdmin &&
@@ -1156,6 +1195,45 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <div className='w-full max-w-full min-w-0 space-y-2.5 overflow-hidden py-1 sm:space-y-3'>
             {/* Overview section - key identifiers */}
             <div className='min-w-0 space-y-1'>
+              {props.log.created_at > 0 && (
+                <DetailRow
+                  label={t('Created At')}
+                  value={formatTimestampToDate(props.log.created_at)}
+                  mono
+                />
+              )}
+
+              {props.log.model_name && (
+                <DetailRow
+                  label={t('Model')}
+                  value={props.log.model_name}
+                  mono
+                />
+              )}
+
+              {isDisplayableType(props.log.type) && (
+                <>
+                  <DetailRow
+                    label='Tokens'
+                    value={`${formatTokens(props.log.prompt_tokens || 0)} / ${formatTokens(props.log.completion_tokens || 0)}`}
+                    mono
+                  />
+                  <DetailRow
+                    label={t('Cost')}
+                    value={
+                      sensitiveVisible
+                        ? formatLogQuota(
+                            isSubscription
+                              ? subscriptionActualConsumed
+                              : props.log.quota
+                          )
+                        : '••••'
+                    }
+                    mono
+                  />
+                </>
+              )}
+
               {props.log.request_id && (
                 <DetailRow
                   label={t('Request ID')}
@@ -1172,7 +1250,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
               )}
 
               {props.isAdmin && props.log.username && (
-                <DetailRow label={t('User')} value={props.log.username} mono />
+                <DetailRow
+                  label={t('User')}
+                  value={sensitiveVisible ? props.log.username : '••••'}
+                  mono
+                />
               )}
 
               {props.isAdmin && props.log.user_id > 0 && (
@@ -1192,7 +1274,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                       {props.log.channel_name && (
                         <span className='text-muted-foreground'>
                           {' '}
-                          ({props.log.channel_name})
+                          ({sensitiveVisible ? props.log.channel_name : '••••'})
                         </span>
                       )}
                     </span>
@@ -1208,7 +1290,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
               {props.log.token_name && (
                 <DetailRow
                   label={t('Token')}
-                  value={props.log.token_name}
+                  value={sensitiveVisible ? props.log.token_name : '••••'}
                   mono
                 />
               )}
@@ -1224,7 +1306,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
               {(props.log.group || other?.group) && (
                 <DetailRow
                   label={t('Group')}
-                  value={props.log.group || other?.group || ''}
+                  value={
+                    sensitiveVisible
+                      ? props.log.group || other?.group || ''
+                      : '••••'
+                  }
                   mono
                 />
               )}
@@ -1238,7 +1324,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                         className='size-3 text-amber-500'
                         aria-hidden='true'
                       />
-                      {props.log.ip}
+                      {sensitiveVisible ? props.log.ip : '••••'}
                     </span>
                   }
                   mono
@@ -1310,6 +1396,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   value={formatTraceDuration(
                     finalRelayAttempt?.request_write_approx_ms
                   )}
+                  mono
+                />
+                <DetailRow
+                  label={t('Request Mode')}
+                  value={props.log.is_stream ? t('Stream') : t('Non-stream')}
+                />
+                <DetailRow
+                  label={t('Token Throughput')}
+                  value={
+                    throughput != null ? (
+                      `${formatTokensPerSecond(throughput.tokensPerSecond)} t/s`
+                    ) : (
+                      <span className='text-muted-foreground'>N/A</span>
+                    )
+                  }
                   mono
                 />
               </DetailSection>
@@ -1435,7 +1536,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                     />
                     <span>
                       {t(
-                        'This record was written by a pre-upgrade instance and lacks audit info. Upgrade the instance to record server IP, callback IP, payment method and system version.'
+                        'This historical payment record does not contain audit metadata, so its original server and callback source cannot be reconstructed.'
                       )}
                     </span>
                   </div>
@@ -1598,48 +1699,46 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 />
               )}
 
-            {/* Stream status details (admin only) */}
-            {props.isAdmin &&
-              other?.stream_status &&
-              other.stream_status.status !== 'ok' && (
-                <DetailSection label={t('Stream Status')}>
+            {/* Stream failures are useful to both users and administrators. */}
+            {other?.stream_status && other.stream_status.status !== 'ok' && (
+              <DetailSection label={t('Stream Status')}>
+                <DetailRow
+                  label={t('Status')}
+                  value={
+                    <StatusBadge
+                      label={other.stream_status.status || t('Error')}
+                      variant='red'
+                      size='sm'
+                      copyable={false}
+                    />
+                  }
+                />
+                {other.stream_status.end_reason && (
                   <DetailRow
-                    label={t('Status')}
-                    value={
-                      <StatusBadge
-                        label={other.stream_status.status || t('Error')}
-                        variant='red'
-                        size='sm'
-                        copyable={false}
-                      />
-                    }
+                    label={t('End Reason')}
+                    value={other.stream_status.end_reason}
                   />
-                  {other.stream_status.end_reason && (
-                    <DetailRow
-                      label={t('End Reason')}
-                      value={other.stream_status.end_reason}
-                    />
+                )}
+                {(other.stream_status.error_count ?? 0) > 0 && (
+                  <DetailRow
+                    label={t('Soft Errors')}
+                    value={String(other.stream_status.error_count)}
+                  />
+                )}
+                {other.stream_status.end_error && (
+                  <DetailRow
+                    label={t('End Error')}
+                    value={other.stream_status.end_error}
+                  />
+                )}
+                {Array.isArray(other.stream_status.errors) &&
+                  other.stream_status.errors.length > 0 && (
+                    <pre className='bg-background/60 mt-1 max-h-32 overflow-y-auto rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap'>
+                      {other.stream_status.errors.join('\n')}
+                    </pre>
                   )}
-                  {(other.stream_status.error_count ?? 0) > 0 && (
-                    <DetailRow
-                      label={t('Soft Errors')}
-                      value={String(other.stream_status.error_count)}
-                    />
-                  )}
-                  {other.stream_status.end_error && (
-                    <DetailRow
-                      label={t('End Error')}
-                      value={other.stream_status.end_error}
-                    />
-                  )}
-                  {Array.isArray(other.stream_status.errors) &&
-                    other.stream_status.errors.length > 0 && (
-                      <pre className='bg-background/60 mt-1 max-h-32 overflow-y-auto rounded border p-2 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap'>
-                        {other.stream_status.errors.join('\n')}
-                      </pre>
-                    )}
-                </DetailSection>
-              )}
+              </DetailSection>
+            )}
 
             {/* Subscription billing details */}
             {isSubscription && other && (

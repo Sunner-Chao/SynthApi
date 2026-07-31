@@ -16,99 +16,127 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { LogOtherData, UsageLog } from '../types'
+import type { LogOtherData, RelayTraceAttempt, UsageLog } from '../types'
 
-export type ThroughputDurationSource =
-  | 'upstream_after_first_event'
-  | 'client_stream_span'
-  | 'gateway_after_first_event'
-  | 'request_after_first_response'
+export type ThroughputDurationSource = 'upstream_after_first_event'
+
+export type ThroughputUnavailabilityReason =
+  | 'buffered_stream'
+  | 'incomplete_stream'
+  | 'unreliable_timing'
+  | 'unreliable_tokens'
+  | 'implausible_rate'
 
 export interface LogThroughput {
   tokensPerSecond: number
   durationMs: number
   source: ThroughputDurationSource
-  estimated: boolean
 }
 
-interface DurationCandidate {
-  durationMs: number | null | undefined
-  source: ThroughputDurationSource
-  estimated: boolean
+export interface LogThroughputAssessment {
+  throughput: LogThroughput | null
+  unavailableReason: ThroughputUnavailabilityReason | null
 }
+
+// A sub-second tail after an SSE event is too short to be a useful generation
+// sample. It is commonly the final flush of a buffered upstream response.
+const minimumMeasuredDurationMs = 1_000
+const maximumMeasuredTokensPerSecond = 1_000
 
 function positiveFinite(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) && value > 0 ? value : null
 }
 
-/**
- * Calculate streaming output throughput without including request upload,
- * queueing, preprocessing, or time-to-first-token in the denominator.
- */
-export function getLogThroughput(
-  log: UsageLog,
-  other: LogOtherData | null | undefined
+function hasLargeUnparsedBodyLead(attempt: RelayTraceAttempt): boolean {
+  const bodyReadSpan = positiveFinite(attempt.application_body_read_span_ms)
+  const streamSpan = positiveFinite(
+    attempt.application_stream_after_first_event_ms
+  )
+  if (bodyReadSpan == null || streamSpan == null || bodyReadSpan <= streamSpan) {
+    return false
+  }
+
+  // The difference is time spent reading an upstream response body before the
+  // first valid SSE event. A substantial lead means this is not a continuous
+  // token stream even when the final SSE tail happens to be long enough.
+  const unparsedBodyLead = bodyReadSpan - streamSpan
+  return unparsedBodyLead >= Math.max(minimumMeasuredDurationMs, streamSpan / 4)
+}
+
+function makeThroughput(
+  completionTokens: number,
+  durationMs: number,
+  source: ThroughputDurationSource
 ): LogThroughput | null {
+  if (durationMs < minimumMeasuredDurationMs) return null
+
+  const tokensPerSecond = (completionTokens * 1000) / durationMs
   if (
-    !log.is_stream ||
-    !Number.isFinite(log.completion_tokens) ||
-    log.completion_tokens <= 0
+    !Number.isFinite(tokensPerSecond) ||
+    tokensPerSecond <= 0 ||
+    tokensPerSecond > maximumMeasuredTokensPerSecond
   ) {
     return null
+  }
+
+  return { tokensPerSecond, durationMs, source }
+}
+
+/**
+ * Show exact TPS only when the upstream trace establishes a continuous SSE
+ * window. Full relay time and old second-resolution fields include upload,
+ * queueing, and prompt processing, so they are never used as TPS fallbacks.
+ */
+export function getLogThroughputAssessment(
+  log: UsageLog,
+  other: LogOtherData | null | undefined
+): LogThroughputAssessment {
+  if (!log.is_stream) {
+    return { throughput: null, unavailableReason: null }
+  }
+  if (!Number.isFinite(log.completion_tokens) || log.completion_tokens <= 0) {
+    return { throughput: null, unavailableReason: 'unreliable_tokens' }
+  }
+  if (other?.stream_status != null && other.stream_status.status !== 'ok') {
+    return { throughput: null, unavailableReason: 'incomplete_stream' }
+  }
+  if (other?.admin_info?.local_count_tokens === true) {
+    return { throughput: null, unavailableReason: 'unreliable_tokens' }
   }
 
   const trace = other?.relay_trace
   const attempts = trace?.attempts
   const lastAttempt =
     attempts && attempts.length > 0 ? attempts[attempts.length - 1] : undefined
-  const gatewayAfterFirstEvent =
-    trace?.total_ms != null && trace.gateway?.first_event_ms != null
-      ? trace.total_ms - trace.gateway.first_event_ms
-      : null
-  const requestAfterFirstResponse =
-    other?.frt != null && Number.isFinite(log.use_time)
-      ? log.use_time * 1000 - other.frt
-      : null
 
-  const candidates: DurationCandidate[] = [
-    {
-      durationMs: lastAttempt?.application_stream_after_first_event_ms,
-      source: 'upstream_after_first_event',
-      estimated: false,
-    },
-    {
-      durationMs: trace?.client?.stream_span_ms,
-      source: 'client_stream_span',
-      estimated: false,
-    },
-    {
-      durationMs: gatewayAfterFirstEvent,
-      source: 'gateway_after_first_event',
-      estimated: true,
-    },
-    {
-      durationMs: requestAfterFirstResponse,
-      source: 'request_after_first_response',
-      estimated: true,
-    },
-  ]
-
-  for (const candidate of candidates) {
-    const durationMs = positiveFinite(candidate.durationMs)
-    if (durationMs == null) continue
-
-    const tokensPerSecond = (log.completion_tokens * 1000) / durationMs
-    if (!Number.isFinite(tokensPerSecond) || tokensPerSecond <= 0) continue
-
-    return {
-      tokensPerSecond,
-      durationMs,
-      source: candidate.source,
-      estimated: candidate.estimated,
-    }
+  const streamDuration = positiveFinite(
+    lastAttempt?.application_stream_after_first_event_ms
+  )
+  if (lastAttempt == null || streamDuration == null) {
+    return { throughput: null, unavailableReason: 'unreliable_timing' }
+  }
+  if (
+    streamDuration < minimumMeasuredDurationMs ||
+    hasLargeUnparsedBodyLead(lastAttempt)
+  ) {
+    return { throughput: null, unavailableReason: 'buffered_stream' }
   }
 
-  return null
+  const throughput = makeThroughput(
+    log.completion_tokens,
+    streamDuration,
+    'upstream_after_first_event'
+  )
+  return throughput == null
+    ? { throughput: null, unavailableReason: 'implausible_rate' }
+    : { throughput, unavailableReason: null }
+}
+
+export function getLogThroughput(
+  log: UsageLog,
+  other: LogOtherData | null | undefined
+): LogThroughput | null {
+  return getLogThroughputAssessment(log, other).throughput
 }
 
 export function formatTokensPerSecond(tokensPerSecond: number): string {

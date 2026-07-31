@@ -16,11 +16,70 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useMemo, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { useNotificationStore } from '@/stores/notification-store'
 import { getNotice } from '@/lib/api'
+import { applyFaviconToDom } from '@/lib/dom-utils'
 import { useStatus } from '@/hooks/use-status'
+
+export type DesktopNotificationPermission =
+  | NotificationPermission
+  | 'unsupported'
+
+function getDesktopNotificationPermission(): DesktopNotificationPermission {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported'
+  }
+  return window.Notification.permission
+}
+
+function getAnnouncementPlainText(item: Record<string, unknown>): string {
+  const content = String(item.content || item.extra || '')
+  return content
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[#*_`>[\]()~-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+}
+
+function createUnreadFavicon(): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = 64
+  const context = canvas.getContext('2d')
+  if (!context) return '/favicon.ico'
+
+  context.fillStyle = '#dc2626'
+  context.beginPath()
+  context.arc(32, 32, 30, 0, Math.PI * 2)
+  context.fill()
+  context.fillStyle = '#ffffff'
+  context.font = '700 42px sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText('!', 32, 34)
+  return canvas.toDataURL('image/png')
+}
+
+type BadgeNavigator = Navigator & {
+  setAppBadge?: (contents?: number) => Promise<void>
+  clearAppBadge?: () => Promise<void>
+}
+
+function setUnreadAppBadge(count: number): void {
+  if (typeof navigator === 'undefined') return
+  const badgeNavigator = navigator as BadgeNavigator
+  void badgeNavigator.setAppBadge?.(count).catch(() => undefined)
+}
+
+function clearUnreadAppBadge(): void {
+  if (typeof navigator === 'undefined') return
+  const badgeNavigator = navigator as BadgeNavigator
+  void badgeNavigator.clearAppBadge?.().catch(() => undefined)
+}
 
 function hashString(input: string): string {
   let hash = 0
@@ -62,6 +121,7 @@ function getAnnouncementKey(item: Record<string, unknown>): string {
  * Provides unread counts and read status management
  */
 export function useNotifications() {
+  const { t } = useTranslation()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'notice' | 'announcements'>(
     'notice'
@@ -79,7 +139,10 @@ export function useNotifications() {
   })
 
   // Fetch Announcements from status
-  const { status, loading: statusLoading } = useStatus()
+  const { status, loading: statusLoading } = useStatus({
+    refetchInterval: 60 * 1000,
+    refetchIntervalInBackground: true,
+  })
   const announcementsEnabled = status?.announcements_enabled ?? false
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const announcements: Record<string, unknown>[] = announcementsEnabled
@@ -91,7 +154,9 @@ export function useNotifications() {
     lastReadNotice,
     markNoticeRead,
     markAnnouncementsRead,
+    markAnnouncementsNotified,
     isAnnouncementRead,
+    isAnnouncementNotified,
   } = useNotificationStore()
 
   // Extract notice content
@@ -127,12 +192,151 @@ export function useNotifications() {
     [announcements, isAnnouncementRead]
   )
 
-  const [announcementDialogOpen, setAnnouncementDialogOpen] = useState(false)
+  const [dismissedAnnouncementDialogKey, setDismissedAnnouncementDialogKey] =
+    useState<string | null>(null)
+  const [desktopNotificationPermission, setDesktopNotificationPermission] =
+    useState<DesktopNotificationPermission>(getDesktopNotificationPermission)
+  const announcementDialogKey = useMemo(
+    () =>
+      unreadAnnouncements
+        .map((item) => getAnnouncementKey(item))
+        .filter(Boolean)
+        .join('|'),
+    [unreadAnnouncements]
+  )
+  const announcementDialogOpen =
+    !statusLoading &&
+    announcementDialogKey.length > 0 &&
+    dismissedAnnouncementDialogKey !== announcementDialogKey
 
   useEffect(() => {
-    if (statusLoading || unreadAnnouncements.length === 0) return
-    setAnnouncementDialogOpen(true)
-  }, [statusLoading, unreadAnnouncements.length])
+    if (typeof window === 'undefined') return
+    const syncPermission = () => {
+      setDesktopNotificationPermission(getDesktopNotificationPermission())
+    }
+    let permissionStatus: PermissionStatus | null = null
+    let active = true
+
+    window.addEventListener('focus', syncPermission)
+    if (navigator.permissions) {
+      void navigator.permissions
+        .query({ name: 'notifications' })
+        .then((status) => {
+          if (!active) return
+          permissionStatus = status
+          permissionStatus.addEventListener('change', syncPermission)
+        })
+        .catch(() => undefined)
+    }
+
+    return () => {
+      active = false
+      window.removeEventListener('focus', syncPermission)
+      permissionStatus?.removeEventListener('change', syncPermission)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (
+      statusLoading ||
+      unreadAnnouncements.length === 0 ||
+      typeof document === 'undefined'
+    ) {
+      return
+    }
+
+    const systemName = String(status?.system_name || '').trim()
+    const baseTitle = systemName || document.title
+    const originalFavicon =
+      document.querySelector<HTMLLinkElement>('link[rel~="icon"]')?.href ||
+      '/favicon.ico'
+    const unreadFavicon = createUnreadFavicon()
+    let showAlertState = true
+
+    const updateAttentionSignal = () => {
+      document.title = showAlertState
+        ? `【${t('{{count}} new system announcements', {
+            count: unreadAnnouncements.length,
+          })}】 ${baseTitle}`
+        : baseTitle
+      applyFaviconToDom(showAlertState ? unreadFavicon : originalFavicon)
+      showAlertState = !showAlertState
+    }
+
+    setUnreadAppBadge(unreadAnnouncements.length)
+    updateAttentionSignal()
+    const interval = window.setInterval(updateAttentionSignal, 800)
+
+    return () => {
+      window.clearInterval(interval)
+      document.title = baseTitle
+      applyFaviconToDom(originalFavicon)
+      clearUnreadAppBadge()
+    }
+  }, [status?.system_name, statusLoading, t, unreadAnnouncements.length])
+
+  useEffect(() => {
+    if (
+      statusLoading ||
+      desktopNotificationPermission !== 'granted' ||
+      typeof window === 'undefined'
+    ) {
+      return
+    }
+
+    const pendingAnnouncements = unreadAnnouncements.filter((item) => {
+      const key = getAnnouncementKey(item)
+      return !isAnnouncementNotified(key)
+    })
+    if (pendingAnnouncements.length === 0) return
+
+    const latest = pendingAnnouncements[0]
+    const keys = pendingAnnouncements.map((item) => getAnnouncementKey(item))
+    const title =
+      pendingAnnouncements.length === 1
+        ? t('New system announcement')
+        : t('{{count}} new system announcements', {
+            count: pendingAnnouncements.length,
+          })
+
+    try {
+      const notification = new window.Notification(title, {
+        body: getAnnouncementPlainText(latest),
+        icon: String(status?.logo || '/favicon.ico'),
+        badge: '/favicon.ico',
+        tag: 'synthapi-system-announcements',
+        requireInteraction: true,
+        silent: false,
+      })
+      notification.onclick = () => {
+        window.focus()
+        setDismissedAnnouncementDialogKey(null)
+        notification.close()
+      }
+      markAnnouncementsNotified(keys)
+    } catch {
+      // The in-page dialog and red tab indicator remain available as fallback.
+    }
+  }, [
+    desktopNotificationPermission,
+    isAnnouncementNotified,
+    markAnnouncementsNotified,
+    status?.logo,
+    statusLoading,
+    t,
+    unreadAnnouncements,
+  ])
+
+  const requestDesktopNotifications = async () => {
+    const currentPermission = getDesktopNotificationPermission()
+    if (currentPermission === 'unsupported') return
+    if (currentPermission === 'denied') {
+      setDesktopNotificationPermission(currentPermission)
+      return
+    }
+    const permission = await window.Notification.requestPermission()
+    setDesktopNotificationPermission(permission)
+  }
 
   const markAnnouncementsAsRead = () => {
     if (announcements.length > 0) {
@@ -144,13 +348,13 @@ export function useNotifications() {
   }
 
   const closeAnnouncementDialog = () => {
+    setDismissedAnnouncementDialogKey(announcementDialogKey)
     if (unreadAnnouncements.length > 0) {
       const unreadKeys = unreadAnnouncements.map(
         (item: Record<string, unknown>) => getAnnouncementKey(item)
       )
       markAnnouncementsRead(unreadKeys)
     }
-    setAnnouncementDialogOpen(false)
   }
 
   // Handle popover open
@@ -205,9 +409,13 @@ export function useNotifications() {
     activeTab,
     setActiveTab: handleTabChange,
     announcementDialogOpen,
+    desktopNotificationPermission,
+    desktopNotificationsSupported:
+      desktopNotificationPermission !== 'unsupported',
+    requestDesktopNotifications,
     setAnnouncementDialogOpen: (open: boolean) => {
       if (open) {
-        setAnnouncementDialogOpen(true)
+        setDismissedAnnouncementDialogKey(null)
       } else {
         closeAnnouncementDialog()
       }

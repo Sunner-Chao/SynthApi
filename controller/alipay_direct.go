@@ -62,7 +62,7 @@ func AlipayDirectNotify(c *gin.Context) {
 	}
 	tradeNo := strings.TrimSpace(params["out_trade_no"])
 	tradeStatus := strings.TrimSpace(params["trade_status"])
-	if err := service.HandleAlipayDirectNotification(c.Request.Context(), params, ""); err != nil {
+	if err := service.HandleAlipayDirectNotification(c.Request.Context(), params, c.ClientIP()); err != nil {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("支付宝官方异步通知处理失败 trade_no=%s trade_status=%s client_ip=%s error=%q", tradeNo, tradeStatus, c.ClientIP(), err.Error()))
 		c.String(http.StatusOK, "fail")
 		return
