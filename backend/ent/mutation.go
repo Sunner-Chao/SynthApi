@@ -14609,6 +14609,7 @@ type ChannelMonitorMutation struct {
 	name                    *string
 	provider                *channelmonitor.Provider
 	api_mode                *string
+	probe_mode              *string
 	endpoint                *string
 	api_key_encrypted       *string
 	primary_model           *string
@@ -14916,6 +14917,42 @@ func (m *ChannelMonitorMutation) OldAPIMode(ctx context.Context) (v string, err 
 // ResetAPIMode resets all changes to the "api_mode" field.
 func (m *ChannelMonitorMutation) ResetAPIMode() {
 	m.api_mode = nil
+}
+
+// SetProbeMode sets the "probe_mode" field.
+func (m *ChannelMonitorMutation) SetProbeMode(s string) {
+	m.probe_mode = &s
+}
+
+// ProbeMode returns the value of the "probe_mode" field in the mutation.
+func (m *ChannelMonitorMutation) ProbeMode() (r string, exists bool) {
+	v := m.probe_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProbeMode returns the old "probe_mode" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldProbeMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProbeMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProbeMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProbeMode: %w", err)
+	}
+	return oldValue.ProbeMode, nil
+}
+
+// ResetProbeMode resets all changes to the "probe_mode" field.
+func (m *ChannelMonitorMutation) ResetProbeMode() {
+	m.probe_mode = nil
 }
 
 // SetEndpoint sets the "endpoint" field.
@@ -15731,7 +15768,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 20)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -15746,6 +15783,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.api_mode != nil {
 		fields = append(fields, channelmonitor.FieldAPIMode)
+	}
+	if m.probe_mode != nil {
+		fields = append(fields, channelmonitor.FieldProbeMode)
 	}
 	if m.endpoint != nil {
 		fields = append(fields, channelmonitor.FieldEndpoint)
@@ -15807,6 +15847,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.Provider()
 	case channelmonitor.FieldAPIMode:
 		return m.APIMode()
+	case channelmonitor.FieldProbeMode:
+		return m.ProbeMode()
 	case channelmonitor.FieldEndpoint:
 		return m.Endpoint()
 	case channelmonitor.FieldAPIKeyEncrypted:
@@ -15854,6 +15896,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldProvider(ctx)
 	case channelmonitor.FieldAPIMode:
 		return m.OldAPIMode(ctx)
+	case channelmonitor.FieldProbeMode:
+		return m.OldProbeMode(ctx)
 	case channelmonitor.FieldEndpoint:
 		return m.OldEndpoint(ctx)
 	case channelmonitor.FieldAPIKeyEncrypted:
@@ -15925,6 +15969,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAPIMode(v)
+		return nil
+	case channelmonitor.FieldProbeMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProbeMode(v)
 		return nil
 	case channelmonitor.FieldEndpoint:
 		v, ok := value.(string)
@@ -16153,6 +16204,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldAPIMode:
 		m.ResetAPIMode()
+		return nil
+	case channelmonitor.FieldProbeMode:
+		m.ResetProbeMode()
 		return nil
 	case channelmonitor.FieldEndpoint:
 		m.ResetEndpoint()

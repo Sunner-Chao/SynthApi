@@ -625,6 +625,7 @@ var (
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok"}},
 		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"},
+		{Name: "probe_mode", Type: field.TypeString, Size: 32, Default: "model_request"},
 		{Name: "endpoint", Type: field.TypeString, Size: 500},
 		{Name: "api_key_encrypted", Type: field.TypeString},
 		{Name: "primary_model", Type: field.TypeString, Size: 200},
@@ -648,7 +649,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[19]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[20]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -657,7 +658,7 @@ var (
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[11], ChannelMonitorsColumns[14]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[12], ChannelMonitorsColumns[15]},
 			},
 			{
 				Name:    "channelmonitor_provider",
@@ -672,12 +673,12 @@ var (
 			{
 				Name:    "channelmonitor_group_name",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[10]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[11]},
 			},
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[19]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[20]},
 			},
 		},
 	}

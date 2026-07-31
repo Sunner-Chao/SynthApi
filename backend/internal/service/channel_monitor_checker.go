@@ -127,26 +127,68 @@ func bodyOverrideMode(opts *CheckOptions) string {
 	return opts.BodyOverrideMode
 }
 
-// pingEndpointOrigin 对 endpoint 的 origin (scheme://host) 发起 HEAD 请求，返回耗时。
-// 失败时返回 nil（不影响主状态判定）。
-func pingEndpointOrigin(ctx context.Context, endpoint string) *int {
+type endpointProbeResult struct {
+	LatencyMs int
+	HTTPCode  int
+}
+
+// probeEndpointOrigin only verifies transport reachability. Any HTTP response
+// proves DNS/TCP/TLS/HTTP connectivity; it never sends credentials or a body.
+func probeEndpointOrigin(ctx context.Context, endpoint string) (*endpointProbeResult, error) {
 	origin, err := extractOrigin(endpoint)
 	if err != nil || origin == "" {
-		return nil
+		return nil, fmt.Errorf("invalid endpoint origin")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, origin, nil)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	start := time.Now()
 	resp, err := monitorPingHTTPClient.Do(req)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, monitorPingDiscardMaxBytes))
 	ms := int(time.Since(start) / time.Millisecond)
-	return &ms
+	return &endpointProbeResult{LatencyMs: ms, HTTPCode: resp.StatusCode}, nil
+}
+
+// pingEndpointOrigin adds transport latency to model-request checks without
+// affecting their model status when HEAD is unavailable.
+func pingEndpointOrigin(ctx context.Context, endpoint string) *int {
+	probe, err := probeEndpointOrigin(ctx, endpoint)
+	if err != nil {
+		return nil
+	}
+	return &probe.LatencyMs
+}
+
+// runConnectivityChecks performs exactly one credential-free HEAD request and
+// mirrors that endpoint-level result across the configured model labels.
+func runConnectivityChecks(ctx context.Context, endpoint string, models []string) []*CheckResult {
+	checkedAt := time.Now()
+	probe, err := probeEndpointOrigin(ctx, endpoint)
+	results := make([]*CheckResult, 0, len(models))
+	for _, model := range models {
+		result := &CheckResult{Model: model, Status: MonitorStatusError, CheckedAt: checkedAt}
+		if err != nil {
+			result.Message = truncateMessage(sanitizeErrorMessage("connectivity-only HEAD failed: " + err.Error()))
+			results = append(results, result)
+			continue
+		}
+		latencyMs := probe.LatencyMs
+		result.LatencyMs = &latencyMs
+		result.PingLatencyMs = &latencyMs
+		result.Status = MonitorStatusOperational
+		result.Message = truncateMessage(fmt.Sprintf("connectivity-only HEAD returned HTTP %d", probe.HTTPCode))
+		if time.Duration(latencyMs)*time.Millisecond >= monitorDegradedThreshold {
+			result.Status = MonitorStatusDegraded
+			result.Message = truncateMessage(fmt.Sprintf("connectivity-only HEAD returned HTTP %d slowly: %dms", probe.HTTPCode, latencyMs))
+		}
+		results = append(results, result)
+	}
+	return results
 }
 
 // providerAdapter 描述某个 provider 在 challenge 检测中需要的几件事：

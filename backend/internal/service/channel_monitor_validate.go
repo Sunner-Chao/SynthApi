@@ -35,6 +35,15 @@ func validateAPIMode(provider, apiMode string) error {
 	}
 }
 
+func validateProbeMode(probeMode string) error {
+	switch defaultProbeMode(probeMode) {
+	case MonitorProbeModeModelRequest, MonitorProbeModeConnectivityOnly:
+		return nil
+	default:
+		return ErrChannelMonitorInvalidProbeMode
+	}
+}
+
 // validateInterval 校验 interval_seconds 范围。
 func validateInterval(sec int) error {
 	if sec < monitorMinIntervalSeconds || sec > monitorMaxIntervalSeconds {
@@ -140,4 +149,12 @@ func defaultAPIMode(apiMode string) string {
 		return MonitorAPIModeChatCompletions
 	}
 	return strings.TrimSpace(apiMode)
+}
+
+// defaultProbeMode keeps existing rows and older clients on challenge-based checks.
+func defaultProbeMode(probeMode string) string {
+	if strings.TrimSpace(probeMode) == "" {
+		return MonitorProbeModeModelRequest
+	}
+	return strings.TrimSpace(probeMode)
 }

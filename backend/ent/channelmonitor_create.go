@@ -79,6 +79,20 @@ func (_c *ChannelMonitorCreate) SetNillableAPIMode(v *string) *ChannelMonitorCre
 	return _c
 }
 
+// SetProbeMode sets the "probe_mode" field.
+func (_c *ChannelMonitorCreate) SetProbeMode(v string) *ChannelMonitorCreate {
+	_c.mutation.SetProbeMode(v)
+	return _c
+}
+
+// SetNillableProbeMode sets the "probe_mode" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableProbeMode(v *string) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetProbeMode(*v)
+	}
+	return _c
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_c *ChannelMonitorCreate) SetEndpoint(v string) *ChannelMonitorCreate {
 	_c.mutation.SetEndpoint(v)
@@ -307,6 +321,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultAPIMode
 		_c.mutation.SetAPIMode(v)
 	}
+	if _, ok := _c.mutation.ProbeMode(); !ok {
+		v := channelmonitor.DefaultProbeMode
+		_c.mutation.SetProbeMode(v)
+	}
 	if _, ok := _c.mutation.ExtraModels(); !ok {
 		v := channelmonitor.DefaultExtraModels
 		_c.mutation.SetExtraModels(v)
@@ -363,6 +381,14 @@ func (_c *ChannelMonitorCreate) check() error {
 	if v, ok := _c.mutation.APIMode(); ok {
 		if err := channelmonitor.APIModeValidator(v); err != nil {
 			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ProbeMode(); !ok {
+		return &ValidationError{Name: "probe_mode", err: errors.New(`ent: missing required field "ChannelMonitor.probe_mode"`)}
+	}
+	if v, ok := _c.mutation.ProbeMode(); ok {
+		if err := channelmonitor.ProbeModeValidator(v); err != nil {
+			return &ValidationError{Name: "probe_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.probe_mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
@@ -476,6 +502,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.APIMode(); ok {
 		_spec.SetField(channelmonitor.FieldAPIMode, field.TypeString, value)
 		_node.APIMode = value
+	}
+	if value, ok := _c.mutation.ProbeMode(); ok {
+		_spec.SetField(channelmonitor.FieldProbeMode, field.TypeString, value)
+		_node.ProbeMode = value
 	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(channelmonitor.FieldEndpoint, field.TypeString, value)
@@ -675,6 +705,18 @@ func (u *ChannelMonitorUpsert) SetAPIMode(v string) *ChannelMonitorUpsert {
 // UpdateAPIMode sets the "api_mode" field to the value that was provided on create.
 func (u *ChannelMonitorUpsert) UpdateAPIMode() *ChannelMonitorUpsert {
 	u.SetExcluded(channelmonitor.FieldAPIMode)
+	return u
+}
+
+// SetProbeMode sets the "probe_mode" field.
+func (u *ChannelMonitorUpsert) SetProbeMode(v string) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldProbeMode, v)
+	return u
+}
+
+// UpdateProbeMode sets the "probe_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateProbeMode() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldProbeMode)
 	return u
 }
 
@@ -986,6 +1028,20 @@ func (u *ChannelMonitorUpsertOne) SetAPIMode(v string) *ChannelMonitorUpsertOne 
 func (u *ChannelMonitorUpsertOne) UpdateAPIMode() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateAPIMode()
+	})
+}
+
+// SetProbeMode sets the "probe_mode" field.
+func (u *ChannelMonitorUpsertOne) SetProbeMode(v string) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetProbeMode(v)
+	})
+}
+
+// UpdateProbeMode sets the "probe_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateProbeMode() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateProbeMode()
 	})
 }
 
@@ -1498,6 +1554,20 @@ func (u *ChannelMonitorUpsertBulk) SetAPIMode(v string) *ChannelMonitorUpsertBul
 func (u *ChannelMonitorUpsertBulk) UpdateAPIMode() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateAPIMode()
+	})
+}
+
+// SetProbeMode sets the "probe_mode" field.
+func (u *ChannelMonitorUpsertBulk) SetProbeMode(v string) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetProbeMode(v)
+	})
+}
+
+// UpdateProbeMode sets the "probe_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateProbeMode() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateProbeMode()
 	})
 }
 

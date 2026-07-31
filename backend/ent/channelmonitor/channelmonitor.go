@@ -25,6 +25,8 @@ const (
 	FieldProvider = "provider"
 	// FieldAPIMode holds the string denoting the api_mode field in the database.
 	FieldAPIMode = "api_mode"
+	// FieldProbeMode holds the string denoting the probe_mode field in the database.
+	FieldProbeMode = "probe_mode"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
 	FieldEndpoint = "endpoint"
 	// FieldAPIKeyEncrypted holds the string denoting the api_key_encrypted field in the database.
@@ -92,6 +94,7 @@ var Columns = []string{
 	FieldName,
 	FieldProvider,
 	FieldAPIMode,
+	FieldProbeMode,
 	FieldEndpoint,
 	FieldAPIKeyEncrypted,
 	FieldPrimaryModel,
@@ -131,6 +134,10 @@ var (
 	DefaultAPIMode string
 	// APIModeValidator is a validator for the "api_mode" field. It is called by the builders before save.
 	APIModeValidator func(string) error
+	// DefaultProbeMode holds the default value on creation for the "probe_mode" field.
+	DefaultProbeMode string
+	// ProbeModeValidator is a validator for the "probe_mode" field. It is called by the builders before save.
+	ProbeModeValidator func(string) error
 	// EndpointValidator is a validator for the "endpoint" field. It is called by the builders before save.
 	EndpointValidator func(string) error
 	// APIKeyEncryptedValidator is a validator for the "api_key_encrypted" field. It is called by the builders before save.
@@ -215,6 +222,11 @@ func ByProvider(opts ...sql.OrderTermOption) OrderOption {
 // ByAPIMode orders the results by the api_mode field.
 func ByAPIMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAPIMode, opts...).ToFunc()
+}
+
+// ByProbeMode orders the results by the probe_mode field.
+func ByProbeMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProbeMode, opts...).ToFunc()
 }
 
 // ByEndpoint orders the results by the endpoint field.

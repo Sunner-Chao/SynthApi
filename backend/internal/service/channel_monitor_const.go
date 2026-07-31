@@ -62,6 +62,11 @@ const (
 	MonitorProviderGemini    = "gemini"
 	MonitorProviderGrok      = "grok"
 
+	// MonitorProbeModeModelRequest sends the provider-specific challenge request.
+	// MonitorProbeModeConnectivityOnly only checks DNS/TCP/TLS/HTTP reachability with HEAD.
+	MonitorProbeModeModelRequest     = "model_request"
+	MonitorProbeModeConnectivityOnly = "connectivity_only"
+
 	// MonitorDefaultGrokModel 是新增 Grok 监控未显式指定模型时使用的轻量测活模型。
 	MonitorDefaultGrokModel = "grok-4.5"
 
@@ -122,6 +127,9 @@ var (
 	)
 	ErrChannelMonitorInvalidAPIMode = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_API_MODE", "api_mode must be chat_completions or responses; responses is only supported for openai",
+	)
+	ErrChannelMonitorInvalidProbeMode = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_PROBE_MODE", "probe_mode must be model_request or connectivity_only",
 	)
 	ErrChannelMonitorInvalidRequestBody = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_REQUEST_BODY", "openai-compatible replace-mode body_override must include non-empty messages for chat_completions or non-empty instructions and input for responses",

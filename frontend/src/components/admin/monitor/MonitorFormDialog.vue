@@ -30,7 +30,25 @@
         </div>
       </div>
 
-      <div v-if="form.provider === PROVIDER_OPENAI" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+      <div>
+        <label class="input-label">{{ t('admin.channelMonitor.form.probeMode') }}</label>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <button
+            v-for="opt in probeModeOptions"
+            :key="opt.value"
+            type="button"
+            :aria-pressed="form.probe_mode === opt.value"
+            class="rounded-lg border-2 px-3 py-2 text-left transition-colors"
+            :class="probeModeButtonClass(opt.value)"
+            @click="form.probe_mode = opt.value"
+          >
+            <span class="block text-sm font-semibold">{{ opt.label }}</span>
+            <span class="mt-0.5 block text-xs opacity-80">{{ opt.hint }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="form.probe_mode === PROBE_MODE_MODEL_REQUEST && form.provider === PROVIDER_OPENAI" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
         <label class="input-label">{{ t('admin.channelMonitor.form.apiMode') }}</label>
         <div class="grid gap-3 sm:grid-cols-2">
           <button
@@ -58,7 +76,7 @@
         </div>
       </div>
 
-      <div>
+      <div v-if="form.probe_mode === PROBE_MODE_MODEL_REQUEST">
         <label class="input-label">
           {{ t('admin.channelMonitor.form.apiKey') }}<span v-if="!editing" class="text-red-500"> *</span>
         </label>
@@ -66,7 +84,7 @@
           <input
             v-model="form.api_key"
             type="password"
-            :required="!editing"
+            :required="!editing && form.probe_mode === PROBE_MODE_MODEL_REQUEST"
             class="input flex-1"
             :placeholder="editing ? t('admin.channelMonitor.form.apiKeyEditPlaceholder') : t('admin.channelMonitor.form.apiKeyPlaceholder')"
           />
@@ -123,7 +141,7 @@
       </div>
 
       <!-- 高级设置区：请求模板 + 自定义 headers/body -->
-      <details class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30">
+      <details v-if="form.probe_mode === PROBE_MODE_MODEL_REQUEST" class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30">
         <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.channelMonitor.advanced.section') }}
         </summary>
@@ -197,6 +215,7 @@ import type {
   ChannelMonitor,
   CreateParams,
   APIMode,
+  ProbeMode,
   Provider,
   UpdateParams,
 } from '@/api/admin/channelMonitor'
@@ -218,6 +237,8 @@ import {
   PROVIDER_GROK,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
+  PROBE_MODE_MODEL_REQUEST,
+  PROBE_MODE_CONNECTIVITY_ONLY,
   DEFAULT_GROK_ENDPOINT,
   DEFAULT_GROK_MODEL,
   DEFAULT_INTERVAL_SECONDS,
@@ -259,6 +280,7 @@ interface MonitorForm {
   name: string
   provider: Provider
   api_mode: APIMode
+  probe_mode: ProbeMode
   endpoint: string
   api_key: string
   primary_model: string
@@ -278,6 +300,7 @@ const form = reactive<MonitorForm>({
   name: '',
   provider: PROVIDER_ANTHROPIC,
   api_mode: API_MODE_CHAT_COMPLETIONS,
+  probe_mode: PROBE_MODE_MODEL_REQUEST,
   endpoint: '',
   api_key: '',
   primary_model: '',
@@ -365,6 +388,19 @@ const apiModeOptions = computed<{ value: APIMode; label: string; hint: string }[
   },
 ])
 
+const probeModeOptions = computed<{ value: ProbeMode; label: string; hint: string }[]>(() => [
+  {
+    value: PROBE_MODE_MODEL_REQUEST,
+    label: t('admin.channelMonitor.form.probeModeModelRequest'),
+    hint: t('admin.channelMonitor.form.probeModeModelRequestHint'),
+  },
+  {
+    value: PROBE_MODE_CONNECTIVITY_ONLY,
+    label: t('admin.channelMonitor.form.probeModeConnectivityOnly'),
+    hint: t('admin.channelMonitor.form.probeModeConnectivityOnlyHint'),
+  },
+])
+
 function normalizeAPIMode(mode: APIMode | undefined | null): APIMode {
   return mode === API_MODE_RESPONSES ? API_MODE_RESPONSES : API_MODE_CHAT_COMPLETIONS
 }
@@ -375,6 +411,14 @@ function apiModeButtonClass(mode: APIMode): string {
     return 'border-primary-500 bg-white text-primary-700 shadow-sm dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-300'
   }
   return 'border-blue-100 bg-white/70 text-gray-600 hover:border-primary-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400'
+}
+
+function probeModeButtonClass(mode: ProbeMode): string {
+  const active = form.probe_mode === mode
+  if (active) {
+    return 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-300'
+  }
+  return 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400'
 }
 
 function templateOptionLabel(tpl: ChannelMonitorTemplate): string {
@@ -447,6 +491,7 @@ function resetForm() {
   form.name = ''
   form.provider = PROVIDER_ANTHROPIC
   form.api_mode = API_MODE_CHAT_COMPLETIONS
+  form.probe_mode = PROBE_MODE_MODEL_REQUEST
   form.endpoint = ''
   form.api_key = ''
   form.primary_model = ''
@@ -467,6 +512,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.name = m.name
   form.provider = m.provider
   form.api_mode = normalizeAPIMode(m.api_mode)
+  form.probe_mode = m.probe_mode || PROBE_MODE_MODEL_REQUEST
   form.endpoint = m.endpoint
   form.api_key = ''
   form.primary_model = m.primary_model
@@ -533,6 +579,7 @@ function buildPayload(): CreateParams {
     name: form.name.trim(),
     provider: form.provider,
     api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+    probe_mode: form.probe_mode,
     endpoint: form.endpoint.trim(),
     api_key: form.api_key.trim(),
     primary_model: form.primary_model.trim(),

@@ -9,12 +9,14 @@ export type Provider = 'openai' | 'anthropic' | 'gemini' | 'grok'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 export type APIMode = 'chat_completions' | 'responses'
+export type ProbeMode = 'model_request' | 'connectivity_only'
 
 export interface ChannelMonitor {
   id: number
   name: string
   provider: Provider
   api_mode: APIMode
+  probe_mode: ProbeMode
   endpoint: string
   api_key_masked: string
   /**
@@ -75,6 +77,7 @@ export interface CreateParams {
   name: string
   provider: Provider
   api_mode?: APIMode
+  probe_mode?: ProbeMode
   endpoint: string
   api_key: string
   primary_model: string
