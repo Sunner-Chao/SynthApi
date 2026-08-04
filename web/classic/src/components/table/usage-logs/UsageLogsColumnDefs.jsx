@@ -36,7 +36,13 @@ import {
   renderTieredModelPriceSimple,
 } from '../../../helpers';
 import { IconHelpCircle } from '@douyinfe/semi-icons';
-import { CircleAlert, Route, Sparkles } from 'lucide-react';
+import {
+  CircleAlert,
+  CircleCheck,
+  RotateCcw,
+  Route,
+  Sparkles,
+} from 'lucide-react';
 
 const colors = [
   'amber',
@@ -680,27 +686,51 @@ export const getLogsColumns = ({
           record.type === 5 ||
           record.type === 6
         ) {
-          if (record.group) {
-            return <>{renderGroup(record.group)}</>;
-          } else {
-            let other = null;
-            try {
-              other = JSON.parse(record.other);
-            } catch (e) {
-              console.error(
-                `Failed to parse record.other: "${record.other}".`,
-                e,
-              );
-            }
-            if (other === null) {
-              return <></>;
-            }
-            if (other.group !== undefined) {
-              return <>{renderGroup(other.group)}</>;
-            } else {
-              return <></>;
-            }
-          }
+          const other = getLogOther(record.other);
+          const group = record.group || other?.group || '';
+          const isAutoRoute =
+            other?.auto_group === true || other?.requested_group === 'auto';
+          if (!group && !isAutoRoute) return <></>;
+
+          return (
+            <Space spacing={4}>
+              {group ? renderGroup(group) : null}
+              {isAutoRoute && (
+                <Tag color='cyan' shape='circle'>
+                  {t('自动分组')}
+                </Tag>
+              )}
+              {isAutoRoute && other?.auto_route_status && (
+                <Tag
+                  color={
+                    other.auto_route_status === 'degraded'
+                      ? 'orange'
+                      : other.auto_route_status === 'recovered'
+                        ? 'green'
+                        : 'cyan'
+                  }
+                  shape='circle'
+                >
+                  {other.auto_route_status === 'degraded' ? (
+                    <CircleAlert size={12} />
+                  ) : other.auto_route_status === 'recovered' ? (
+                    <RotateCcw size={12} />
+                  ) : (
+                    <CircleCheck size={12} />
+                  )}{' '}
+                  {other.auto_route_status === 'degraded'
+                    ? t('Auto 降级')
+                    : other.auto_route_status === 'recovered'
+                      ? t('Auto 已恢复')
+                      : t('Auto 正常')}
+                  {other.auto_route_priority &&
+                  other.auto_route_status === 'degraded'
+                    ? ` · P${other.auto_route_priority}`
+                    : ''}
+                </Tag>
+              )}
+            </Space>
+          );
         } else {
           return <></>;
         }

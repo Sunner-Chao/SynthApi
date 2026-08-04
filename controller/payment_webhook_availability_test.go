@@ -196,6 +196,52 @@ func TestGetTopUpInfoOnlyIncludesConfiguredEpayMethods(t *testing.T) {
 	require.Contains(t, getTopUpInfoPaymentProviders(t), model.PaymentProviderEpay)
 }
 
+func TestGetTopUpInfoRecommendsWechatInsteadOfAlipay(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalPayAddress := operation_setting.PayAddress
+	originalEpayID := operation_setting.EpayId
+	originalEpayKey := operation_setting.EpayKey
+	originalPayMethods := operation_setting.PayMethods
+	originalMPayEnabled := setting.MPayEnabled
+	originalAlipayConfig := setting.GetAlipayDirectConfig()
+	t.Cleanup(func() {
+		operation_setting.PayAddress = originalPayAddress
+		operation_setting.EpayId = originalEpayID
+		operation_setting.EpayKey = originalEpayKey
+		operation_setting.PayMethods = originalPayMethods
+		setting.MPayEnabled = originalMPayEnabled
+		setting.StoreAlipayDirectConfig(originalAlipayConfig)
+	})
+
+	operation_setting.PayAddress = "https://pay.example.com"
+	operation_setting.EpayId = "epay_id"
+	operation_setting.EpayKey = "epay_key"
+	operation_setting.PayMethods = []map[string]string{
+		{"name": "支付宝", "type": model.PaymentMethodAlipay, "recommended": "true"},
+		{"name": "微信支付", "type": model.PaymentMethodWechat},
+	}
+	setting.MPayEnabled = false
+	setting.StoreAlipayDirectConfig(setting.AlipayDirectConfig{})
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/topup/info", nil)
+	GetTopUpInfo(context)
+
+	var response struct {
+		Data struct {
+			PayMethods []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	methodsByType := make(map[string]map[string]string, len(response.Data.PayMethods))
+	for _, method := range response.Data.PayMethods {
+		methodsByType[method["type"]] = method
+	}
+	require.Empty(t, methodsByType[model.PaymentMethodAlipay]["recommended"])
+	require.Equal(t, "true", methodsByType[model.PaymentMethodWechat]["recommended"])
+}
+
 func getTopUpInfoPaymentProviders(t *testing.T) []string {
 	t.Helper()
 	recorder := httptest.NewRecorder()

@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   UserCog,
   Info,
+  RotateCcw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
@@ -66,6 +67,8 @@ import {
   getTieredBillingSummary,
   hasAnyCacheTokens,
   isViolationFeeLog,
+  isAutoGroupLog,
+  getAutoRouteStatus,
   getFirstResponseTimeColor,
   getResponseTimeColor,
 } from '../../lib/format'
@@ -1307,9 +1310,48 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 <DetailRow
                   label={t('Group')}
                   value={
-                    sensitiveVisible
-                      ? props.log.group || other?.group || ''
-                      : '••••'
+                    <span className='flex flex-wrap items-center gap-1.5'>
+                      <span>
+                        {sensitiveVisible
+                          ? props.log.group || other?.group || ''
+                          : '••••'}
+                      </span>
+                      {isAutoGroupLog(other) && (
+                        <StatusBadge
+                          label={t('Auto')}
+                          variant='info'
+                          size='sm'
+                          copyable={false}
+                          showDot={false}
+                        />
+                      )}
+                      {getAutoRouteStatus(other) && (
+                        <StatusBadge
+                          label={
+                            getAutoRouteStatus(other) === 'degraded'
+                              ? t('Auto degraded')
+                              : getAutoRouteStatus(other) === 'recovered'
+                                ? t('Auto priority restored')
+                                : t('Auto healthy')
+                          }
+                          icon={
+                            getAutoRouteStatus(other) === 'degraded'
+                              ? AlertTriangle
+                              : getAutoRouteStatus(other) === 'recovered'
+                                ? RotateCcw
+                                : Check
+                          }
+                          variant={
+                            getAutoRouteStatus(other) === 'degraded'
+                              ? 'warning'
+                              : 'success'
+                          }
+                          size='sm'
+                          copyable={false}
+                          showDot={false}
+                        />
+                      )}
+                    </span>
                   }
                   mono
                 />

@@ -176,7 +176,6 @@ export function SubscriptionPlansCard({
       provider: PAYMENT_PROVIDERS.ALIPAY_DIRECT,
       name: t('Alipay (Official)'),
       min_topup: topupInfo.alipay_direct_min_topup,
-      recommended: true,
     }
   }, [t, topupInfo])
   const epayMethods = useMemo(

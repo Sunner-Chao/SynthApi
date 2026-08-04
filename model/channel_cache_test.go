@@ -33,6 +33,42 @@ func TestChannelRuntimePerfP90PenalizesTailLatency(t *testing.T) {
 	}
 }
 
+func TestChannelSelectionUsesUnusedEqualPriorityBeforeLowerPriority(t *testing.T) {
+	first := testCachedChannel(701, 10, 100)
+	second := testCachedChannel(702, 10, 100)
+	lower := testCachedChannel(703, 5, 100)
+	cleanup := setupChannelCacheTestState(t, map[int]*Channel{
+		first.Id:  first,
+		second.Id: second,
+		lower.Id:  lower,
+	}, []int{first.Id, second.Id, lower.Id})
+	defer cleanup()
+
+	selected, err := GetRandomSatisfiedChannelExcluding("group-a", "gpt-test", 0, nil)
+	if err != nil {
+		t.Fatalf("initial selection failed: %v", err)
+	}
+	if selected == nil || (selected.Id != first.Id && selected.Id != second.Id) {
+		t.Fatalf("expected an equal-priority channel, got %#v", selected)
+	}
+
+	secondAttempt, err := GetRandomSatisfiedChannelExcluding("group-a", "gpt-test", 1, map[int]struct{}{selected.Id: {}})
+	if err != nil {
+		t.Fatalf("equal-priority retry failed: %v", err)
+	}
+	if secondAttempt == nil || secondAttempt.Id == selected.Id || secondAttempt.Id == lower.Id {
+		t.Fatalf("expected the other equal-priority channel, got %#v", secondAttempt)
+	}
+
+	thirdAttempt, err := GetRandomSatisfiedChannelExcluding("group-a", "gpt-test", 2, map[int]struct{}{first.Id: {}, second.Id: {}})
+	if err != nil {
+		t.Fatalf("lower-priority retry failed: %v", err)
+	}
+	if thirdAttempt == nil || thirdAttempt.Id != lower.Id {
+		t.Fatalf("expected lower-priority fallback, got %#v", thirdAttempt)
+	}
+}
+
 func setupChannelCacheTestState(t *testing.T, channels map[int]*Channel, channelIDs []int) func() {
 	t.Helper()
 

@@ -154,6 +154,8 @@ func InitOptionMap() {
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
 	common.OptionMap["SmartGroupRules"] = setting.SmartGroupRules2JSONString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
+	common.OptionMap["AutoCrossGroupRetryEnabled"] = strconv.FormatBool(setting.IsAutoCrossGroupRetryEnabled())
+	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
@@ -286,6 +288,11 @@ func UpdateOption(key string, value string) error {
 }
 
 func updateOptionLocked(key string, value string) error {
+	if key == "MaxTokenAutoGroups" {
+		if err := setting.ValidateMaxTokenAutoGroups(value); err != nil {
+			return err
+		}
+	}
 	// Save to database first
 	option := Option{
 		Key: key,
@@ -316,6 +323,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	optionsApplyMu.Lock()
 	defer optionsApplyMu.Unlock()
+	if value, ok := values["MaxTokenAutoGroups"]; ok {
+		if err := setting.ValidateMaxTokenAutoGroups(value); err != nil {
+			return err
+		}
+	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
@@ -504,6 +516,8 @@ func updateOptionMap(key string, value string) (err error) {
 			system_setting.WorkerAllowHttpImageRequestEnabled = boolValue
 		case "DefaultUseAutoGroup":
 			setting.DefaultUseAutoGroup = boolValue
+		case "AutoCrossGroupRetryEnabled":
+			setting.SetAutoCrossGroupRetryEnabled(boolValue)
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
 		}
@@ -534,6 +548,8 @@ func updateOptionMap(key string, value string) (err error) {
 		err = setting.UpdateChatsByJsonString(value)
 	case "AutoGroups":
 		err = setting.UpdateAutoGroupsByJsonString(value)
+	case "MaxTokenAutoGroups":
+		err = setting.UpdateMaxTokenAutoGroups(value)
 	case "CustomCallbackAddress":
 		operation_setting.CustomCallbackAddress = value
 	case "EpayId":

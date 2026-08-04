@@ -26,13 +26,19 @@ import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTi
 const LogsActions = ({
   stat,
   loadingStat,
-  showStat,
   compactMode,
   setCompactMode,
   t,
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
-  const needSkeleton = !showStat || showSkeleton;
+  // Keep the stat strip visible even when the optional stat request is slow or
+  // unavailable; users should still see RPM/TPM placeholders and the latest
+  // values instead of an indefinite skeleton.
+  const needSkeleton = showSkeleton;
+  const formatStatValue = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toLocaleString() : '0';
+  };
 
   const placeholder = (
     <Space>
@@ -55,7 +61,7 @@ const LogsActions = ({
             }}
             className='!rounded-lg'
           >
-            {t('消耗额度')}: {renderQuota(stat.quota)}
+            {t('消耗额度')}: {renderQuota(stat?.quota || 0)}
           </Tag>
           <Tag
             color='pink'
@@ -66,7 +72,7 @@ const LogsActions = ({
             }}
             className='!rounded-lg'
           >
-            RPM: {stat.rpm}
+            RPM: {formatStatValue(stat?.rpm)}
           </Tag>
           <Tag
             color='white'
@@ -78,7 +84,7 @@ const LogsActions = ({
             }}
             className='!rounded-lg'
           >
-            TPM: {stat.tpm}
+            TPM: {formatStatValue(stat?.tpm)}
           </Tag>
         </Space>
       </Skeleton>

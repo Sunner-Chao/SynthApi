@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -49,6 +50,17 @@ func HasCheckedInToday(userId int) (bool, error) {
 	return count > 0, err
 }
 
+func checkinAccountAgeError(createdAt, now, minimumAgeSeconds int64) error {
+	if minimumAgeSeconds <= 0 {
+		return nil
+	}
+	if createdAt <= 0 || now-createdAt < minimumAgeSeconds {
+		waitHours := (minimumAgeSeconds + 3599) / 3600
+		return fmt.Errorf("账号注册满 %d 小时后才可签到", waitHours)
+	}
+	return nil
+}
+
 // UserCheckin 执行用户签到
 // MySQL 和 PostgreSQL 使用事务保证原子性
 // SQLite 不支持嵌套事务，使用顺序操作 + 手动回滚
@@ -56,6 +68,15 @@ func UserCheckin(userId int) (*Checkin, error) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
 		return nil, errors.New("签到功能未启用")
+	}
+	if common.CheckinMinAccountAgeSeconds > 0 {
+		var createdAt int64
+		if err := DB.Model(&User{}).Where("id = ?", userId).Pluck("created_at", &createdAt).Error; err != nil {
+			return nil, err
+		}
+		if err := checkinAccountAgeError(createdAt, time.Now().Unix(), common.CheckinMinAccountAgeSeconds); err != nil {
+			return nil, err
+		}
 	}
 
 	// 检查今天是否已签到

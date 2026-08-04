@@ -303,6 +303,20 @@ func UpdateImportedAccountMonitor(c *gin.Context) {
 			return
 		}
 	}
+	// Keep the local reset audit fields when an older client submits a monitor
+	// snapshot that does not know about reset_count yet.
+	if existing, ok := settings["imported_account_monitor"].(map[string]any); ok {
+		if _, exists := req.Monitor["reset_count"]; !exists {
+			if value, exists := existing["reset_count"]; exists {
+				req.Monitor["reset_count"] = value
+			}
+		}
+		if _, exists := req.Monitor["last_reset_at"]; !exists {
+			if value, exists := existing["last_reset_at"]; exists {
+				req.Monitor["last_reset_at"] = value
+			}
+		}
+	}
 	settings["imported_account_monitor"] = req.Monitor
 	encoded, err := common.Marshal(settings)
 	if err != nil {
@@ -742,6 +756,7 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 	addChannelRequest.Channel.Group = model.NormalizeChannelGroups(addChannelRequest.Channel.Group)
+	service.ApplyImportedAccountDefaults(addChannelRequest.Channel)
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)

@@ -106,6 +106,18 @@ REDIS_CONN_STRING=redis://user:password@localhost:6379
 | `SEARCH_RATE_LIMIT_DURATION` | 搜索限流周期（秒） | 60 | `SEARCH_RATE_LIMIT_DURATION=30` |
 | `MODEL_REQUEST_RATE_LIMIT` | 模型请求限流 | 空 | `MODEL_REQUEST_RATE_LIMIT=60/min` |
 
+### 注册与邀请反滥用
+
+| 变量 | 说明 | 默认值 | 示例 |
+|------|------|--------|------|
+| `REGISTER_RATE_LIMIT_ENABLE` | 启用公开注册专用限流 | true | `REGISTER_RATE_LIMIT_ENABLE=true` |
+| `REGISTER_RATE_LIMIT` | 单 IP 注册次数 | 5 | `REGISTER_RATE_LIMIT=3` |
+| `REGISTER_RATE_LIMIT_DURATION` | 单 IP 限流周期（秒） | 3600 | `REGISTER_RATE_LIMIT_DURATION=7200` |
+| `REGISTER_SUBNET_LIMIT_ENABLE` | 启用 IPv4 /24 网络注册上限 | true | `REGISTER_SUBNET_LIMIT_ENABLE=true` |
+| `REGISTER_SUBNET_LIMIT` | 单 IPv4 /24 网络账号上限 | 3 | `REGISTER_SUBNET_LIMIT=2` |
+| `AFFILIATE_REWARD_AFTER_PAYMENT` | 邀请人奖励改为充值成功后结算 | true | `AFFILIATE_REWARD_AFTER_PAYMENT=true` |
+| `AFFILIATE_REWARD_MIN_PAYMENT` | 触发邀请奖励的最低支付金额 | 1 | `AFFILIATE_REWARD_MIN_PAYMENT=5` |
+
 ### 超时配置
 
 | 变量 | 说明 | 默认值 | 示例 |

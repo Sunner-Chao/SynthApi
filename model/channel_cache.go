@@ -147,13 +147,14 @@ func GetRandomSatisfiedChannelExcludingWithLoad(group string, model string, retr
 		return nil, nil
 	}
 
-	channels = filterExcludedChannelIDs(channels, excludeIDs)
+	allChannels := channels
+	channels = filterExcludedChannelIDs(allChannels, excludeIDs)
 	if len(channels) == 0 {
 		return nil, nil
 	}
 
 	uniquePriorities := make(map[int]bool)
-	for _, channelId := range channels {
+	for _, channelId := range allChannels {
 		if channel, ok := channelsIDM[channelId]; ok {
 			uniquePriorities[int(channel.GetPriority())] = true
 		} else {
@@ -166,10 +167,25 @@ func GetRandomSatisfiedChannelExcludingWithLoad(group string, model string, retr
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(sortedUniquePriorities)))
 
-	if retry >= len(uniquePriorities) {
-		retry = len(uniquePriorities) - 1
+	if retry >= len(sortedUniquePriorities) {
+		retry = len(sortedUniquePriorities) - 1
 	}
 	targetPriorityIndex := retry
+	if retry > 0 && len(excludeIDs) > 0 {
+		// Prefer an unused channel at an already-attempted higher priority before
+		// falling to the next priority. This makes equal-priority channels useful
+		// failover candidates instead of repeatedly selecting the same channel.
+		for priorityIndex := 0; priorityIndex <= retry; priorityIndex++ {
+			priorityChannels, priorityErr := getChannelsByPriority(channels, int64(sortedUniquePriorities[priorityIndex]))
+			if priorityErr != nil {
+				return nil, priorityErr
+			}
+			if len(priorityChannels) > 0 {
+				targetPriorityIndex = priorityIndex
+				break
+			}
+		}
+	}
 	targetPriority := int64(sortedUniquePriorities[targetPriorityIndex])
 
 	targetChannels, err := getChannelsByPriority(channels, targetPriority)

@@ -550,16 +550,93 @@ func settleTestQuota(info *relaycommon.RelayInfo, priceData types.PriceData, usa
 	}
 
 	quota := 0
-	if !priceData.UsePrice {
-		quota = usage.PromptTokens + int(math.Round(float64(usage.CompletionTokens)*priceData.CompletionRatio))
-		quota = int(math.Round(float64(quota) * priceData.ModelRatio))
-		if priceData.ModelRatio != 0 && quota <= 0 {
-			quota = 1
-		}
+	if usage == nil {
 		return quota, nil
 	}
 
-	return int(priceData.ModelPrice * common.QuotaPerUnit), nil
+	groupRatio := priceData.GroupRatioInfo.GroupRatio
+	if priceData.UsePrice {
+		quotaValue := priceData.ModelPrice * common.QuotaPerUnit * groupRatio
+		for _, otherRatio := range priceData.OtherRatios {
+			quotaValue *= otherRatio
+		}
+		return int(math.Round(quotaValue)), nil
+	}
+
+	// Keep this calculation in lockstep with service.calculateTextQuotaSummary:
+	// prompt_tokens from OpenAI-compatible APIs includes separately-priced
+	// cache/image/audio tokens, while Claude semantic usage reports text input
+	// separately. Legacy Claude cache fields in an OpenAI-shaped response use
+	// the same semantic treatment as Claude and must not be subtracted twice.
+	baseTokens := float64(usage.PromptTokens)
+	cachedTokens := float64(usage.PromptTokensDetails.CachedTokens)
+	cachedCreationTokens := float64(usage.PromptTokensDetails.CachedCreationTokens)
+	cacheCreation5m := float64(usage.ClaudeCacheCreation5mTokens)
+	cacheCreation1h := float64(usage.ClaudeCacheCreation1hTokens)
+	isClaudeSemantic := usage.UsageSemantic == "anthropic" ||
+		(info != nil && info.GetFinalRequestRelayFormat() == types.RelayFormatClaude)
+	isLegacyClaudeDerived := info != nil &&
+		info.GetFinalRequestRelayFormat() != types.RelayFormatClaude &&
+		usage.UsageSemantic == "" && usage.UsageSource == "" &&
+		(cacheCreation5m > 0 || cacheCreation1h > 0)
+
+	if !isClaudeSemantic && !isLegacyClaudeDerived {
+		baseTokens -= cachedTokens + cachedCreationTokens
+	}
+	if baseTokens < 0 {
+		baseTokens = 0
+	}
+
+	imageTokens := float64(usage.PromptTokensDetails.ImageTokens)
+	if imageTokens > 0 {
+		baseTokens -= imageTokens
+	}
+
+	// Gemini audio input has a separate per-million price in the normal text
+	// billing path. Remove it from the text base only when that price exists;
+	// otherwise it remains ordinary input tokens, matching production billing.
+	audioTokens := float64(usage.PromptTokensDetails.AudioTokens)
+	audioPrice := float64(0)
+	if audioTokens > 0 && info != nil {
+		audioPrice = operation_setting.GetGeminiInputAudioPricePerMillionTokens(info.OriginModelName)
+		if audioPrice > 0 {
+			baseTokens -= audioTokens
+		}
+	}
+	if baseTokens < 0 {
+		baseTokens = 0
+	}
+
+	textPromptCost := baseTokens + cachedTokens*priceData.CacheRatio
+	if isClaudeSemantic || isLegacyClaudeDerived {
+		remainingCreation := cachedCreationTokens - cacheCreation5m - cacheCreation1h
+		if remainingCreation < 0 {
+			remainingCreation = 0
+		}
+		textPromptCost += remainingCreation*priceData.CacheCreationRatio +
+			cacheCreation5m*priceData.CacheCreation5mRatio +
+			cacheCreation1h*priceData.CacheCreation1hRatio
+	} else {
+		textPromptCost += cachedCreationTokens * priceData.CacheCreationRatio
+	}
+	textPromptCost += imageTokens * priceData.ImageRatio
+
+	quotaValue := (textPromptCost + float64(usage.CompletionTokens)*priceData.CompletionRatio) *
+		priceData.ModelRatio * groupRatio
+	if audioPrice > 0 {
+		quotaValue += audioPrice / 1_000_000 * audioTokens * groupRatio * common.QuotaPerUnit
+	}
+	for _, otherRatio := range priceData.OtherRatios {
+		quotaValue *= otherRatio
+	}
+	quota = int(math.Round(quotaValue))
+	if usage.PromptTokens+usage.CompletionTokens == 0 {
+		return 0, nil
+	}
+	if priceData.ModelRatio != 0 && quota <= 0 {
+		quota = 1
+	}
+	return quota, nil
 }
 
 func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData types.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {

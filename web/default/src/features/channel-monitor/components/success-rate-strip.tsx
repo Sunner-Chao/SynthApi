@@ -16,7 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { getRequestResponseColor } from '@/lib/request-duration-colors'
 
 export type SuccessRateSource = 'usage' | 'availability'
 
@@ -25,6 +27,15 @@ export type SuccessRateSeriesPoint = {
   success_rate: number
   request_count?: number
   success_count?: number
+}
+
+export type RecentRequestStatus = {
+  ts: number
+  success: boolean
+  latency_ms?: number
+  output_tokens?: number
+  generation_ms?: number
+  throughput_available?: boolean
 }
 
 function clampRate(rate: number): number {
@@ -79,6 +90,28 @@ export function successRateIntent(
   return 'danger'
 }
 
+function recentRequestColorClass(request: RecentRequestStatus): string {
+  if (!request.success) return 'bg-rose-500 dark:bg-rose-400'
+  const outputTokens = request.output_tokens ?? 0
+  const generationMs = request.generation_ms ?? 0
+  const tokensPerSecond =
+    request.throughput_available && outputTokens > 0 && generationMs > 0
+      ? (outputTokens * 1000) / generationMs
+      : null
+  const responseColor = getRequestResponseColor(
+    (request.latency_ms ?? 0) / 1000,
+    outputTokens,
+    tokensPerSecond
+  )
+  if (responseColor === 'danger') {
+    return 'bg-rose-500 dark:bg-rose-400'
+  }
+  if (responseColor === 'warning') {
+    return 'bg-amber-400 dark:bg-amber-300'
+  }
+  return 'bg-emerald-500 dark:bg-emerald-400'
+}
+
 function compactSeries(
   series: SuccessRateSeriesPoint[] | undefined,
   bucketCount: number
@@ -112,7 +145,8 @@ export function SuccessRateStrip(props: {
   const hasUsageSeries =
     source === 'usage' &&
     (props.series ?? []).some((point) => (point.request_count ?? 1) > 0)
-  const hasUsage = source === 'usage' && (hasUsageSeries || Number.isFinite(props.rate))
+  const hasUsage =
+    source === 'usage' && (hasUsageSeries || Number.isFinite(props.rate))
   const rate = clampRate(
     hasUsage ? props.rate : (props.availabilityRate ?? props.rate)
   )
@@ -194,6 +228,83 @@ export function SuccessRateStrip(props: {
           {hasUsage ? formatSuccessRate(rate) : (props.emptyLabel ?? '—')}
         </span>
       )}
+    </div>
+  )
+}
+
+// The backend keeps 60 requests for recovery and API consumers. The compact
+// card/table view shows the newest 30 so every equal-width slot fits without
+// forcing the monitor layout to scroll horizontally.
+const DISPLAY_RECENT_REQUEST_COUNT = 30
+
+export function RecentRequestStrip(props: {
+  requests?: RecentRequestStatus[]
+  emptyLabel?: string
+  className?: string
+}) {
+  const { t } = useTranslation()
+  const requests = (props.requests ?? []).slice(-DISPLAY_RECENT_REQUEST_COUNT)
+  const slots = [
+    ...Array.from(
+      { length: Math.max(0, DISPLAY_RECENT_REQUEST_COUNT - requests.length) },
+      () => null
+    ),
+    ...requests,
+  ]
+  const successCount = requests.filter((request) => request.success).length
+  const rate = requests.length > 0 ? (successCount / requests.length) * 100 : 0
+
+  return (
+    <div className={cn('min-w-0 overflow-x-auto', props.className)}>
+      <div
+        className='grid h-9 min-w-[360px] grid-cols-[repeat(30,minmax(6px,1fr))] items-stretch gap-[3px]'
+        role='img'
+        aria-label={
+          requests.length > 0
+            ? t('{{success}}/{{total}} recent requests successful', {
+                success: successCount,
+                total: requests.length,
+              })
+            : (props.emptyLabel ?? 'No recent requests')
+        }
+      >
+        {slots.map((request, index) => {
+          const time = request?.ts
+            ? new Date(request.ts * 1000).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              })
+            : ''
+          const latency =
+            request?.latency_ms && request.latency_ms > 0
+              ? ` · ${request.latency_ms}ms`
+              : ''
+          const label = request
+            ? `${t(request.success ? 'Success' : 'Failed')} · ${time}${latency}`
+            : (props.emptyLabel ?? t('No request'))
+          return (
+            <span
+              key={`${request?.ts ?? 'empty'}-${index}`}
+              title={label}
+              aria-label={label}
+              className={cn(
+                'min-w-0 flex-1 rounded-[3px] transition-transform hover:scale-y-110',
+                request == null
+                  ? 'bg-slate-200/80 dark:bg-white/10'
+                  : recentRequestColorClass(request)
+              )}
+            />
+          )
+        })}
+      </div>
+      <div className='mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium tracking-[0.14em] text-slate-400 uppercase dark:text-slate-500'>
+        <span>{t('Past')}</span>
+        <span className='font-mono tracking-normal normal-case'>
+          {requests.length > 0 ? `${rate.toFixed(2)}%` : '--'}
+        </span>
+        <span>{t('Now')}</span>
+      </div>
     </div>
   )
 }

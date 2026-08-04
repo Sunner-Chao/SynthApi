@@ -49,9 +49,14 @@ function CardSkeleton() {
 export interface MonitorCardGridProps {
   items: ChannelMonitorItem[]
   loading: boolean
+  refreshRemainingSeconds?: number
 }
 
-export function MonitorCardGrid({ items, loading }: MonitorCardGridProps) {
+export function MonitorCardGrid({
+  items,
+  loading,
+  refreshRemainingSeconds,
+}: MonitorCardGridProps) {
   const { t } = useTranslation()
 
   if (loading && items.length === 0) {
@@ -78,7 +83,11 @@ export function MonitorCardGrid({ items, loading }: MonitorCardGridProps) {
   return (
     <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'>
       {items.map((item) => (
-        <MonitorChannelCard key={item.id} item={item} />
+        <MonitorChannelCard
+          key={item.id}
+          item={item}
+          refreshRemainingSeconds={refreshRemainingSeconds}
+        />
       ))}
     </div>
   )

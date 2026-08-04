@@ -71,7 +71,7 @@ func (p *RetryParam) ResetRetryNextTry() {
 func NextSmartFailoverGroup(c *gin.Context, baseGroup string, modelName string) (string, bool) {
 	baseGroup = strings.TrimSpace(baseGroup)
 	modelName = strings.TrimSpace(modelName)
-	if c == nil || common.RetryTimes <= 0 ||
+	if c == nil || common.RetryTimes <= 0 || !setting.IsAutoCrossGroupRetryEnabled() ||
 		!common.GetContextKeyBool(c, constant.ContextKeyTokenCrossGroupRetry) ||
 		baseGroup == "" || modelName == "" || baseGroup == "auto" {
 		return "", false
@@ -221,22 +221,53 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	smartGroups, isSmartGroup := setting.GetSmartGroupSources(param.TokenGroup)
 
 	if param.TokenGroup == "auto" || isSmartGroup {
-		if param.TokenGroup == "auto" && len(setting.GetAutoGroups()) == 0 {
-			return nil, selectGroup, errors.New("auto groups is not enabled")
-		}
 		autoGroups := smartGroups
 		if param.TokenGroup == "auto" {
-			autoGroups = GetUserAutoGroup(userGroup)
+			autoGroups = GetRequestAutoGroups(param.Ctx, userGroup)
+			// The configured order is part of the request's routing contract. Keep
+			// its snapshot in the context so an admin change takes effect even if
+			// this request is already inside the client/server retry loop.
+			configuredOrder := strings.Join(autoGroups, "\x00")
+			if previousOrder, exists := common.GetContextKey(param.Ctx, constant.ContextKeyAutoGroupOrder); exists {
+				if previous, ok := previousOrder.(string); ok && previous != configuredOrder {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, 0)
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupRetryIndex, 0)
+					param.SetRetry(0)
+					param.ResetRetryNextTry()
+				}
+			}
+			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupOrder, configuredOrder)
+			// Auto order is an explicit priority contract. Keep the configured
+			// order stable so a recovered higher-priority group is tried first.
+			// A failed Auto group is skipped on the client's next retry. If every
+			// group is cooling down, keep the full list as a last-resort route.
+			failedGroups := GetAutoRouteFailedGroups(param.Ctx, param.ModelName)
+			if len(failedGroups) > 0 {
+				availableGroups := make([]string, 0, len(autoGroups))
+				for _, group := range autoGroups {
+					if _, failed := failedGroups[group]; !failed {
+						availableGroups = append(availableGroups, group)
+					}
+				}
+				if len(availableGroups) > 0 {
+					autoGroups = availableGroups
+				}
+			}
+		} else {
+			autoGroups = sortGroupsByRoutePerformance(autoGroups, param.ModelName)
 		}
-		autoGroups = sortGroupsByRoutePerformance(autoGroups, param.ModelName)
 		if len(autoGroups) == 0 {
+			if param.TokenGroup == "auto" {
+				return nil, selectGroup, errors.New("auto groups is not enabled")
+			}
 			return nil, selectGroup, errors.New("smart group has no source groups")
 		}
 
 		// startGroupIndex: the group index to start searching from
 		// startGroupIndex: 开始搜索的分组索引
 		startGroupIndex := 0
-		crossGroupRetry := common.RetryTimes > 0 && common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
+		crossGroupRetry := setting.IsAutoCrossGroupRetryEnabled() && common.RetryTimes > 0 &&
+			common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
 
 		if lastGroupIndex, exists := common.GetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex); exists {
 			if idx, ok := lastGroupIndex.(int); ok {
@@ -285,6 +316,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 				continue
 			}
 			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, autoGroup)
+			if param.TokenGroup == "auto" {
+				MarkAutoRouteSelection(param.Ctx, param.ModelName, autoGroup)
+			}
 			selectGroup = autoGroup
 			logger.LogDebug(param.Ctx, "Auto selected group: %s", autoGroup)
 

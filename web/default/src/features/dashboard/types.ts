@@ -122,6 +122,14 @@ export interface ChannelMonitorItem {
     request_count?: number
     success_count?: number
   }[]
+  recent_requests?: {
+    ts: number
+    success: boolean
+    latency_ms?: number
+    output_tokens?: number
+    generation_ms?: number
+    throughput_available?: boolean
+  }[]
 }
 
 export interface ChannelMonitorSummary {

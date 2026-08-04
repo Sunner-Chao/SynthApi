@@ -252,6 +252,12 @@ export interface LogOtherData {
   cache_creation_ratio_1h?: number
   is_model_mapped?: boolean
   upstream_model_name?: string
+  /** The request token explicitly selected the Auto route. */
+  auto_group?: boolean
+  requested_group?: string
+  /** Visible Auto routing state for this request. */
+  auto_route_status?: 'normal' | 'degraded' | 'recovered' | string
+  auto_route_priority?: number
   audio_ratio?: number
   audio_completion_ratio?: number
   frt?: number

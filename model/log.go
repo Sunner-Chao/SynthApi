@@ -241,6 +241,11 @@ func buildPaymentAuditAdminInfo(audit PaymentAuditInfo) map[string]interface{} {
 }
 
 func RecordPaymentLog(userId int, content string, audit PaymentAuditInfo) {
+	if audit.Event == "topup_completed" && audit.TradeNo != "" {
+		if err := GrantInviteRewardAfterPayment(audit.TradeNo); err != nil {
+			common.SysLog(fmt.Sprintf("failed to settle affiliate reward for trade %s: %v", audit.TradeNo, err))
+		}
+	}
 	username, _ := GetUsernameById(userId, false)
 	callerIp := strings.TrimSpace(audit.CallerIp)
 	adminInfo := buildPaymentAuditAdminInfo(audit)

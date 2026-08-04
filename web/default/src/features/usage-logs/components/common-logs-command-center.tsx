@@ -89,6 +89,7 @@ interface CommonLogsCommandCenterProps {
   total: number
   isFetching: boolean
   children: ReactNode
+  viewSwitch?: ReactNode
 }
 
 interface TrendPoint {
@@ -610,6 +611,7 @@ export function CommonLogsCommandCenter(props: CommonLogsCommandCenterProps) {
           aria-hidden='true'
         />
         <div className='command-hud'>
+          {props.viewSwitch}
           <span className={`command-live-state ${loading ? 'is-syncing' : ''}`}>
             <span />
             {loading ? t('Syncing') : t('Online')}

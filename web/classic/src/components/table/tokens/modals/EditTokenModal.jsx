@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useContext, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   API,
   showError,
@@ -55,18 +55,21 @@ import {
   IconKey,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
-import { StatusContext } from '../../../../context/Status';
 
 const { Text, Title } = Typography;
 
 const EditTokenModal = (props) => {
   const { t } = useTranslation();
-  const [statusState, statusDispatch] = useContext(StatusContext);
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [autoGroupPolicy, setAutoGroupPolicy] = useState({
+    groups: [],
+    maxCount: 5,
+    retryEnabled: true,
+  });
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
@@ -80,6 +83,7 @@ const EditTokenModal = (props) => {
     model_limits: [],
     allow_ips: '',
     group: '',
+    auto_groups: [],
     cross_group_retry: false,
     tokenCount: 1,
   });
@@ -138,22 +142,38 @@ const EditTokenModal = (props) => {
     const { success, message, data } = res.data;
     if (success) {
       let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
+        label:
+          group === 'auto'
+            ? t(
+                '当前分组为 auto，会自动选择最优分组，当一个组不可用时自动降级到下一个组（熔断机制）',
+              )
+            : info.desc,
         value: group,
         ratio: info.ratio,
+        recommended: group === 'auto',
+        recommendedLabel: group === 'auto' ? t('推荐') : undefined,
       }));
-      if (statusState?.status?.default_use_auto_group) {
-        if (localGroupOptions.some((group) => group.value === 'auto')) {
-          localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
-        }
-      }
+      localGroupOptions.sort((left, right) => {
+        if (left.value === 'auto') return -1;
+        if (right.value === 'auto') return 1;
+        return 0;
+      });
       setGroups(localGroupOptions);
-      // if (statusState?.status?.default_use_auto_group && formApiRef.current) {
-      //   formApiRef.current.setValue('group', 'auto');
-      // }
     } else {
       showError(t(message));
     }
+  };
+
+  const loadAutoGroupPolicy = async () => {
+    const res = await API.get('/api/token/auto-groups');
+    const { success, data } = res.data;
+    if (!success || !data) return;
+    const maxCount = Number(data.max_count);
+    setAutoGroupPolicy({
+      groups: Array.isArray(data.groups) ? data.groups : [],
+      maxCount: Number.isInteger(maxCount) && maxCount > 0 ? maxCount : 5,
+      retryEnabled: data.cross_group_retry_enabled !== false,
+    });
   };
 
   const loadToken = async () => {
@@ -189,6 +209,7 @@ const EditTokenModal = (props) => {
     }
     loadModels();
     loadGroups();
+    loadAutoGroupPolicy();
   }, [props.editingToken.id]);
 
   useEffect(() => {
@@ -215,6 +236,35 @@ const EditTokenModal = (props) => {
     return result;
   };
 
+  const applyAutoGroupPolicy = (inputs) => {
+    if (inputs.group !== 'auto') {
+      inputs.auto_groups = [];
+      inputs.cross_group_retry = false;
+      return true;
+    }
+
+    const selectedGroups = Array.isArray(inputs.auto_groups)
+      ? inputs.auto_groups
+      : [];
+    if (selectedGroups.length > autoGroupPolicy.maxCount) {
+      showError(
+        t('每个令牌最多可选择 {{max}} 个 Auto 分组', {
+          max: autoGroupPolicy.maxCount,
+        }),
+      );
+      return false;
+    }
+    if (selectedGroups.length === 0 && autoGroupPolicy.groups.length === 0) {
+      showError(t('管理员未配置全局 Auto 顺序，请至少选择一个 Auto 分组'));
+      return false;
+    }
+
+    inputs.auto_groups = selectedGroups;
+    inputs.cross_group_retry =
+      autoGroupPolicy.retryEnabled && !!inputs.cross_group_retry;
+    return true;
+  };
+
   const submit = async (values) => {
     setLoading(true);
     if (isEdit) {
@@ -238,6 +288,10 @@ const EditTokenModal = (props) => {
       }
       localInputs.model_limits = localInputs.model_limits.join(',');
       localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+      if (!applyAutoGroupPolicy(localInputs)) {
+        setLoading(false);
+        return;
+      }
       let res = await API.put(`/api/token/`, {
         ...localInputs,
         id: parseInt(props.editingToken.id),
@@ -282,6 +336,10 @@ const EditTokenModal = (props) => {
         }
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+        if (!applyAutoGroupPolicy(localInputs)) {
+          setLoading(false);
+          break;
+        }
         let res = await API.post(`/api/token/`, localInputs);
         const { success, message } = res.data;
         if (success) {
@@ -416,13 +474,34 @@ const EditTokenModal = (props) => {
                       display: values.group === 'auto' ? 'block' : 'none',
                     }}
                   >
+                    <Form.Select
+                      field='auto_groups'
+                      label={t('Auto 分组顺序')}
+                      placeholder={t('选择需要重试的分组')}
+                      optionList={groups.filter(
+                        (group) => group.value !== 'auto',
+                      )}
+                      renderOptionItem={renderGroupOption}
+                      multiple
+                      maxTagCount={4}
+                      max={autoGroupPolicy.maxCount}
+                      extraText={t(
+                        '失败分组冷却 90s；冷却结束后自动从优先级 1 重新开始',
+                      )}
+                      style={{ width: '100%' }}
+                    />
                     <Form.Switch
                       field='cross_group_retry'
                       label={t('跨分组重试')}
                       size='default'
-                      extraText={t(
-                        '开启后，当前分组渠道失败时会按顺序尝试下一个分组的渠道',
-                      )}
+                      disabled={!autoGroupPolicy.retryEnabled}
+                      extraText={
+                        autoGroupPolicy.retryEnabled
+                          ? t(
+                              '开启后，当前分组渠道失败时会按顺序尝试下一个分组的渠道',
+                            )
+                          : t('管理员已关闭跨分组重试')
+                      }
                     />
                   </Col>
                   <Col xs={24} sm={24} md={24} lg={10} xl={10}>
@@ -552,7 +631,10 @@ const EditTokenModal = (props) => {
                         ? `▾ ${t('收起原生额度输入')}`
                         : `▸ ${t('使用原生额度输入')}`}
                     </div>
-                    <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                    <div
+                      style={{ display: showQuotaInput ? 'block' : 'none' }}
+                      className='mt-2'
+                    >
                       <Form.InputNumber
                         field='remain_quota'
                         label={t('额度')}

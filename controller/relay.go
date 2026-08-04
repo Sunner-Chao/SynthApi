@@ -209,11 +209,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
-	primaryGroup := relayInfo.UsingGroup
+	primaryGroup := relayInfo.TokenGroup
 	if primaryGroup == "" {
-		primaryGroup = relayInfo.TokenGroup
+		primaryGroup = relayInfo.UsingGroup
 	}
-	// Channel discovery may inspect alternatives, but the request gets exactly one upstream attempt.
+	// The downstream client owns retries. Keep this relay to one upstream
+	// attempt so a failed request is never submitted twice by the gateway.
 	attemptBudget := newRelayAttemptBudget(0)
 	retryParam := &service.RetryParam{
 		Ctx:        c,
@@ -234,20 +235,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if channelErr.GetErrorCode() == types.ErrorCodeConcurrencyLimit {
 				c.Header("Retry-After", "1")
 			}
-			if prepareSmartGroupFailover(c, relayInfo, retryParam, primaryGroup, newAPIError) {
-				continue
-			}
 			break
 		}
 		stageTrace.setSelected(channel.Id, relayInfo.UsingGroup)
 		channelSettings := channel.GetSetting()
 		channelLimit := channelSettings.EffectiveMaxConcurrency(common.ModelRequestDefaultChannelMaxConcurrency)
 		channelUserLimit := channelSettings.EffectiveMaxConcurrencyPerUser(common.ModelRequestDefaultChannelMaxConcurrencyPerUser)
-		capacityWaitMs := common.ModelRequestChannelCapacityQueueTimeoutMs
+		// Do not hold the request in a channel-capacity queue. The client owns
+		// retries and can immediately try the next Auto route.
+		capacityWaitMs := 0
 		affinitySelected := service.IsChannelAffinitySelected(c)
-		if affinitySelected {
-			capacityWaitMs = common.ModelRequestAffinityCapacityQueueTimeoutMs
-		}
 		endActiveUse, capacity, capacityQueue := service.TryBeginChannelActiveUseWaiting(
 			c.Request.Context(), channel.Id, relayInfo.UserId, channelLimit, channelUserLimit,
 			time.Duration(capacityWaitMs)*time.Millisecond,
@@ -268,8 +265,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				c.Header("Retry-After", "1")
 				break
 			}
-			retryParam.ResetRetryNextTry()
-			continue
+			break
 		}
 
 		stageStart = time.Now()
@@ -291,6 +287,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			} else {
 				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
+			endActiveUse()
+			break
+		}
+		if _, seekErr := bodyStorage.Seek(0, io.SeekStart); seekErr != nil {
+			newAPIError = types.NewErrorWithStatusCode(
+				seekErr,
+				types.ErrorCodeReadRequestBodyFailed,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
 			endActiveUse()
 			break
 		}
@@ -331,7 +337,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		processChannelError(c, relayInfo, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-		logger.LogInfo(c, "upstream error returned to client immediately; retry and channel failover skipped")
+		if primaryGroup == "auto" {
+			service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, relayInfo.UsingGroup)
+			service.ClearChannelAffinityCacheForContext(c)
+			logger.LogInfo(c, fmt.Sprintf("Auto upstream failure recorded; server retry disabled, next client retry will rotate away from group=%s channel=%d", relayInfo.UsingGroup, channel.Id))
+		} else {
+			logger.LogInfo(c, "upstream error returned to client immediately; server retry disabled")
+		}
 		break
 	}
 
@@ -595,6 +607,7 @@ func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, chann
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
+		service.AppendAutoGroupLogInfo(c, relayInfo, other)
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
 			startTime = time.Now()
@@ -840,8 +853,9 @@ func RelayTask(c *gin.Context) {
 				taskErr = service.TaskErrorWrapperLocal(channelCapacityError(channel.Id, capacity), "concurrency_limit", http.StatusTooManyRequests)
 				break
 			}
-			retryParam.ResetRetryNextTry()
-			continue
+			c.Header("Retry-After", "1")
+			taskErr = service.TaskErrorWrapperLocal(channelCapacityError(channel.Id, capacity), "concurrency_limit", http.StatusTooManyRequests)
+			break
 		}
 
 		addUsedChannel(c, channel.Id)
@@ -875,7 +889,13 @@ func RelayTask(c *gin.Context) {
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 		}
-		logger.LogInfo(c, "upstream task error returned to client immediately; retry and channel failover skipped")
+		if relayInfo.TokenGroup == "auto" {
+			service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, relayInfo.UsingGroup)
+			service.ClearChannelAffinityCacheForContext(c)
+			logger.LogInfo(c, fmt.Sprintf("Auto task failure recorded; server retry disabled, next client retry will rotate away from group=%s channel=%d", relayInfo.UsingGroup, channel.Id))
+		} else {
+			logger.LogInfo(c, "upstream task error returned to client immediately; server retry disabled")
+		}
 		break
 	}
 

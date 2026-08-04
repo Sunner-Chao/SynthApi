@@ -73,7 +73,21 @@ export type CodexUsageResponse = {
   success: boolean
   message?: string
   upstream_status?: number
+  reset_count?: number
+  last_reset_at?: number
+  provider_reset_supported?: boolean
   data?: Record<string, unknown>
+}
+
+export type ImportedAccountResetResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    channel_id?: number
+    reset_count?: number
+    last_reset_at?: number
+    provider_reset_supported?: boolean
+  }
 }
 
 export type CodexCredentialRefreshResponse = {
@@ -169,6 +183,27 @@ export async function updateImportedAccountMonitor(
   const res = await api.post(
     `/api/channel/${id}/imported_account_monitor`,
     { monitor },
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function getImportedAccountResetState(
+  id: number
+): Promise<ImportedAccountResetResponse> {
+  const res = await api.get(
+    `/api/channel/${id}/imported_account_reset`,
+    channelActionConfig({ disableDuplicate: true })
+  )
+  return res.data
+}
+
+export async function resetImportedAccountState(
+  id: number
+): Promise<ImportedAccountResetResponse> {
+  const res = await api.post(
+    `/api/channel/${id}/imported_account_reset`,
+    {},
     channelActionConfig()
   )
   return res.data

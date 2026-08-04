@@ -205,6 +205,8 @@ const groupSchema = z.object({
     }
   }),
   DefaultUseAutoGroup: z.boolean(),
+  AutoCrossGroupRetryEnabled: z.boolean(),
+  MaxTokenAutoGroups: z.number().int().min(1),
   GroupSpecialUsableGroup: z.string().superRefine((value, ctx) => {
     const result = validateJsonString(value)
     if (!result.valid) {
@@ -280,6 +282,8 @@ export function RatioSettingsCard({
     AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
     SmartGroupRules: normalizeJsonString(groupDefaults.SmartGroupRules),
     DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
+    AutoCrossGroupRetryEnabled: groupDefaults.AutoCrossGroupRetryEnabled,
+    MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
     GroupSpecialUsableGroup: normalizeJsonString(
       groupDefaults.GroupSpecialUsableGroup
     ),
@@ -365,6 +369,8 @@ export function RatioSettingsCard({
       AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
       SmartGroupRules: normalizeJsonString(groupDefaults.SmartGroupRules),
       DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
+      AutoCrossGroupRetryEnabled: groupDefaults.AutoCrossGroupRetryEnabled,
+      MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
       GroupSpecialUsableGroup: normalizeJsonString(
         groupDefaults.GroupSpecialUsableGroup
       ),
@@ -434,6 +440,8 @@ export function RatioSettingsCard({
         AutoGroups: normalizeJsonString(values.AutoGroups),
         SmartGroupRules: normalizeJsonString(values.SmartGroupRules),
         DefaultUseAutoGroup: values.DefaultUseAutoGroup,
+        AutoCrossGroupRetryEnabled: values.AutoCrossGroupRetryEnabled,
+        MaxTokenAutoGroups: values.MaxTokenAutoGroups,
         GroupSpecialUsableGroup: normalizeJsonString(
           values.GroupSpecialUsableGroup
         ),

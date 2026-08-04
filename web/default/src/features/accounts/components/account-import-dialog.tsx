@@ -44,6 +44,7 @@ import {
   ListChecks,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Server,
   Tag,
   Trash2,
@@ -92,6 +93,7 @@ import {
   getCodexUsage,
   getGroups,
   getImportedAccountChannels,
+  resetImportedAccountState,
   startCodexOAuth,
   testChannel,
   updateImportedAccountMonitor,
@@ -168,6 +170,8 @@ type ImportedChannelCheck = {
   channelStatus: CheckStatus
   channelMessage?: string
   responseTime?: number
+  resetCount?: number
+  lastResetAt?: number
 }
 
 const CODEX_CHANNEL_TYPE = 57
@@ -380,6 +384,8 @@ function createMonitorSnapshot(
     balance: patch.balance ?? item.balance,
     balance_currency: patch.balanceCurrency ?? item.balanceCurrency,
     balance_updated_time: patch.balanceUpdatedTime ?? item.balanceUpdatedTime,
+    reset_count: patch.resetCount ?? item.resetCount ?? 0,
+    last_reset_at: patch.lastResetAt ?? item.lastResetAt ?? 0,
   }
 }
 
@@ -409,6 +415,8 @@ function channelToImportedItem(
     monitor.balance_updated_time ?? channel.balance_updated_time
   )
   const lastCheckedAt = Number(monitor.checked_at)
+  const resetCount = Number(monitor.reset_count)
+  const lastResetAt = Number(monitor.last_reset_at)
 
   return {
     key: getImportedChannelKey(index, channel.id),
@@ -450,6 +458,9 @@ function channelToImportedItem(
           ? t('Response time: {{time}}s', { time: responseTime.toFixed(2) })
           : undefined,
     responseTime: Number.isFinite(responseTime) ? responseTime : undefined,
+    resetCount: Number.isFinite(resetCount) && resetCount >= 0 ? resetCount : 0,
+    lastResetAt:
+      Number.isFinite(lastResetAt) && lastResetAt > 0 ? lastResetAt : undefined,
   }
 }
 
@@ -505,6 +516,9 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
   const [autoMonitor, setAutoMonitor] = useState(false)
   const [applyingGroup, setApplyingGroup] = useState(false)
   const [deletingImported, setDeletingImported] = useState(false)
+  const [resettingImportedId, setResettingImportedId] = useState<number | null>(
+    null
+  )
   const [deleteTargets, setDeleteTargets] = useState<ImportedChannelCheck[]>([])
   const [selectedImportedKeys, setSelectedImportedKeys] = useState<Set<string>>(
     () => new Set()
@@ -870,6 +884,8 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                 quotaStatus: 'success',
                 quotaMessage:
                   formatCodexUsageSummary(response.data) || t('Usage fetched'),
+                resetCount: response.reset_count ?? item.resetCount ?? 0,
+                lastResetAt: response.last_reset_at || item.lastResetAt,
               })
               updateCheckItem(item.key, finalPatch)
             } else {
@@ -980,6 +996,47 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
       }
     },
     [checkItems, checking, persistMonitorSnapshot, t, updateCheckItem]
+  )
+
+  const handleResetImported = useCallback(
+    async (item: ImportedChannelCheck) => {
+      if (!item.channelId || resettingImportedId !== null || checking) return
+
+      setResettingImportedId(item.channelId)
+      try {
+        const response = await resetImportedAccountState(item.channelId)
+        if (!response.success) {
+          throw new Error(
+            response.message || t('Failed to reset monitor state')
+          )
+        }
+
+        const nextItem: ImportedChannelCheck = {
+          ...item,
+          resetCount: response.data?.reset_count ?? (item.resetCount ?? 0) + 1,
+          lastResetAt:
+            response.data?.last_reset_at || Math.floor(Date.now() / 1000),
+          quotaStatus: 'pending',
+          quotaMessage: undefined,
+          channelStatus: 'pending',
+          channelMessage: undefined,
+          responseTime: undefined,
+          lastCheckedAt: undefined,
+        }
+        updateCheckItem(item.key, nextItem)
+        await runPostImportChecks([nextItem])
+        toast.success(t('Imported account monitor reset'))
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('Failed to reset monitor state')
+        )
+      } finally {
+        setResettingImportedId(null)
+      }
+    },
+    [checking, resettingImportedId, runPostImportChecks, t, updateCheckItem]
   )
 
   useEffect(() => {
@@ -1759,6 +1816,7 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
             autoMonitor={autoMonitor}
             applyingGroup={applyingGroup}
             deleting={deletingImported}
+            resettingId={resettingImportedId}
             groupOptions={groupOptions}
             selectedKeys={selectedImportedKeys}
             onRefresh={() => loadImportedChannels()}
@@ -1768,6 +1826,7 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
             onToggleAll={handleToggleAllImported}
             onApplyGroup={handleApplyGroup}
             onDeleteItem={(item) => requestDeleteImported([item])}
+            onResetItem={(item) => void handleResetImported(item)}
             onDeleteSelected={() =>
               requestDeleteImported(
                 checkItems.filter((item) => selectedImportedKeys.has(item.key))
@@ -1942,6 +2001,7 @@ function ImportedChannelsPanel({
   autoMonitor,
   applyingGroup,
   deleting,
+  resettingId,
   groupOptions,
   selectedKeys,
   onRefresh,
@@ -1951,6 +2011,7 @@ function ImportedChannelsPanel({
   onToggleAll,
   onApplyGroup,
   onDeleteItem,
+  onResetItem,
   onDeleteSelected,
 }: {
   items: ImportedChannelCheck[]
@@ -1959,6 +2020,7 @@ function ImportedChannelsPanel({
   autoMonitor: boolean
   applyingGroup: boolean
   deleting: boolean
+  resettingId: number | null
   groupOptions: string[]
   selectedKeys: Set<string>
   onRefresh: () => void
@@ -1968,6 +2030,7 @@ function ImportedChannelsPanel({
   onToggleAll: (selected: boolean) => void
   onApplyGroup: (group: string) => Promise<void>
   onDeleteItem: (item: ImportedChannelCheck) => void
+  onResetItem: (item: ImportedChannelCheck) => void
   onDeleteSelected: () => void
 }) {
   const { t } = useTranslation()
@@ -2259,7 +2322,9 @@ function ImportedChannelsPanel({
                       onToggleSelected(item.key, selected)
                     }
                     onDelete={() => onDeleteItem(item)}
+                    onReset={() => onResetItem(item)}
                     deleting={deleting}
+                    resetting={resettingId === item.channelId}
                   />
                 ))}
               </TableBody>
@@ -2275,7 +2340,9 @@ function ImportedChannelsPanel({
                   onToggleSelected(item.key, selected)
                 }
                 onDelete={() => onDeleteItem(item)}
+                onReset={() => onResetItem(item)}
                 deleting={deleting}
+                resetting={resettingId === item.channelId}
               />
             ))}
           </div>
@@ -2290,13 +2357,17 @@ function ImportedChannelRow({
   selected,
   onSelectedChange,
   onDelete,
+  onReset,
   deleting,
+  resetting,
 }: {
   item: ImportedChannelCheck
   selected: boolean
   onSelectedChange: (selected: boolean) => void
   onDelete: () => void
+  onReset: () => void
   deleting: boolean
+  resetting: boolean
 }) {
   const { t } = useTranslation()
 
@@ -2329,6 +2400,21 @@ function ImportedChannelRow({
             type='button'
             variant='ghost'
             size='icon-sm'
+            onClick={onReset}
+            disabled={!item.channelId || deleting || resetting}
+            aria-label={t('Reset imported account monitor')}
+            title={t('Reset imported account monitor')}
+          >
+            {resetting ? (
+              <Loader2 className='size-4 animate-spin' />
+            ) : (
+              <RotateCcw className='size-4' />
+            )}
+          </Button>
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
             onClick={onDelete}
             disabled={!item.channelId || deleting}
             aria-label={t('Delete imported channel')}
@@ -2347,13 +2433,17 @@ function ImportedChannelCard({
   selected,
   onSelectedChange,
   onDelete,
+  onReset,
   deleting,
+  resetting,
 }: {
   item: ImportedChannelCheck
   selected: boolean
   onSelectedChange: (selected: boolean) => void
   onDelete: () => void
+  onReset: () => void
   deleting: boolean
+  resetting: boolean
 }) {
   const { t } = useTranslation()
 
@@ -2375,6 +2465,21 @@ function ImportedChannelCard({
         </div>
         <div className='flex shrink-0 items-center gap-1'>
           <OpenChannelButton item={item} compact />
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            onClick={onReset}
+            disabled={!item.channelId || deleting || resetting}
+            aria-label={t('Reset imported account monitor')}
+            title={t('Reset imported account monitor')}
+          >
+            {resetting ? (
+              <Loader2 className='size-4 animate-spin' />
+            ) : (
+              <RotateCcw className='size-4' />
+            )}
+          </Button>
           <Button
             type='button'
             variant='ghost'
@@ -2505,6 +2610,9 @@ function QuotaCell({ item }: { item: ImportedChannelCheck }) {
       </div>
       <div className='text-muted-foreground text-xs'>
         {t('Used:')} {usedQuota}
+      </div>
+      <div className='text-muted-foreground text-xs'>
+        {t('Local resets:')} {item.resetCount ?? 0}
       </div>
     </div>
   )

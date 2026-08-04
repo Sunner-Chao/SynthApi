@@ -46,6 +46,8 @@ type User struct {
 	AffQuota                   int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
 	AffHistoryQuota            int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
 	InviterId                  int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	InviteRewardEligibleAt     int64          `json:"-" gorm:"type:bigint;column:invite_reward_eligible_at;default:0;index"`
+	InviteRewardClaimed        bool           `json:"-" gorm:"column:invite_reward_claimed;default:false;index"`
 	DeletedAt                  gorm.DeletedAt `gorm:"index"`
 	LinuxDOId                  string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting                    string         `json:"setting" gorm:"type:text;column:setting"`
@@ -108,7 +110,9 @@ func IsRegisterIPUsed(ip string) (bool, error) {
 	}
 
 	var count int64
-	err := DB.Model(&User{}).Where("register_ip = ?", ip).Count(&count).Error
+	// Include soft-deleted accounts: deleting and immediately re-registering
+	// from the same network must not reset the anti-abuse history.
+	err := DB.Unscoped().Model(&User{}).Where("register_ip = ?", ip).Count(&count).Error
 	return count > 0, err
 }
 
@@ -440,6 +444,10 @@ func (user *User) Insert(inviterId int) error {
 		}
 	}
 	user.Quota = common.QuotaForNewUser
+	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() && common.AffiliateRewardAfterPayment {
+		user.InviteRewardEligibleAt = common.GetTimestamp()
+		user.InviteRewardClaimed = false
+	}
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
 
@@ -478,8 +486,7 @@ func (user *User) Insert(inviterId int) error {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
+		if !common.AffiliateRewardAfterPayment && common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
@@ -489,7 +496,9 @@ func (user *User) Insert(inviterId int) error {
 
 // InsertWithTx inserts a new user within an existing transaction.
 // This is used for OAuth registration where user creation and binding need to be atomic.
-// Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
+// Post-creation tasks (sidebar config and registration logs) are handled after
+// the transaction commits. Affiliate rewards are settled by the successful
+// top-up path, not at account creation time.
 func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	var err error
 	if user.Password != "" {
@@ -500,6 +509,10 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	}
 	user.Quota = common.QuotaForNewUser
 	user.AffCode = common.GetRandomString(4)
+	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() && common.AffiliateRewardAfterPayment {
+		user.InviteRewardEligibleAt = common.GetTimestamp()
+		user.InviteRewardClaimed = false
+	}
 
 	// 初始化用户设置
 	if user.Setting == "" {
@@ -539,11 +552,71 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
-		if common.QuotaForInviter > 0 {
+		if !common.AffiliateRewardAfterPayment && common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
 	}
+}
+
+// GrantInviteRewardAfterPayment settles one pending invitation reward after
+// the invitee completes a real top-up. The conditional update on the invitee
+// row is the idempotency key, so repeated payment callbacks cannot duplicate
+// the inviter's quota or count.
+func GrantInviteRewardAfterPayment(tradeNo string) error {
+	if !common.AffiliateRewardAfterPayment || common.QuotaForInviter <= 0 || tradeNo == "" {
+		return nil
+	}
+
+	topUp := GetTopUpByTradeNo(tradeNo)
+	if topUp == nil || topUp.Status != common.TopUpStatusSuccess || topUp.Money < common.AffiliateRewardMinPayment {
+		return nil
+	}
+
+	var inviterID int
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var invitee User
+		if err := tx.Select("id", "inviter_id", "invite_reward_eligible_at", "invite_reward_claimed").Where("id = ?", topUp.UserId).First(&invitee).Error; err != nil {
+			return err
+		}
+		if invitee.InviterId == 0 || invitee.InviteRewardEligibleAt == 0 || invitee.InviteRewardClaimed {
+			return nil
+		}
+
+		var inviter User
+		if err := tx.Select("id").Where("id = ?", invitee.InviterId).First(&inviter).Error; err != nil {
+			// Do not leave an unresolvable relationship retrying forever.
+			return tx.Model(&User{}).Where("id = ?", invitee.Id).Update("invite_reward_claimed", true).Error
+		}
+
+		claim := tx.Model(&User{}).
+			Where("id = ? AND invite_reward_eligible_at > 0 AND invite_reward_claimed = ?", invitee.Id, false).
+			Update("invite_reward_claimed", true)
+		if claim.Error != nil {
+			return claim.Error
+		}
+		if claim.RowsAffected != 1 {
+			return nil
+		}
+
+		if err := tx.Model(&User{}).Where("id = ?", inviter.Id).Updates(map[string]interface{}{
+			"aff_count":   gorm.Expr("aff_count + ?", 1),
+			"aff_quota":   gorm.Expr("aff_quota + ?", common.QuotaForInviter),
+			"aff_history": gorm.Expr("aff_history + ?", common.QuotaForInviter),
+		}).Error; err != nil {
+			return err
+		}
+		inviterID = inviter.Id
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if inviterID != 0 {
+		RecordLog(inviterID, LogTypeSystem, fmt.Sprintf("邀请用户完成充值，赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+		RecordLog(topUp.UserId, LogTypeSystem, "邀请奖励已在充值完成后结算")
+	}
+	return nil
 }
 
 func (user *User) Update(updatePassword bool) error {

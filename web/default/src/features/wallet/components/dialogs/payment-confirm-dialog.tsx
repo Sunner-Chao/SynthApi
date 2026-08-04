@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
+import { cn } from '@/lib/utils'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,7 +32,11 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { DEFAULT_DISCOUNT_RATE, PAYMENT_PROVIDERS } from '../../constants'
+import {
+  DEFAULT_DISCOUNT_RATE,
+  PAYMENT_PROVIDERS,
+  PAYMENT_TYPES,
+} from '../../constants'
 import {
   formatCurrency,
   getPaymentIcon,
@@ -76,7 +81,7 @@ export function PaymentConfirmDialog({
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
   const isDirect = isAlipayDirectPayment(paymentMethod)
-  const isRecommended = isDirect || paymentMethod?.recommended
+  const isRecommended = paymentMethod?.recommended === true
   const isBackup = paymentMethod?.provider === PAYMENT_PROVIDERS.XPAY
   const paymentMethodName = paymentMethod
     ? getPaymentMethodDisplayName(paymentMethod, t)
@@ -152,17 +157,35 @@ export function PaymentConfirmDialog({
               </span>
               <div className='flex min-w-0 flex-1 flex-col items-end gap-0.5'>
                 <div className='flex min-w-0 items-center justify-end gap-2'>
-                  {getPaymentIcon(
-                    paymentMethod?.type,
-                    'h-4 w-4',
-                    paymentMethod?.icon,
-                    paymentMethodName
-                  )}
+                  <span
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset',
+                      paymentMethod?.type === PAYMENT_TYPES.ALIPAY &&
+                        'bg-[#1677ff]/10 text-[#1677ff] ring-[#1677ff]/15 dark:bg-[#1677ff]/15',
+                      paymentMethod?.type === PAYMENT_TYPES.WECHAT &&
+                        'bg-[#07c160]/12 text-[#07a84f] ring-[#07c160]/20 dark:bg-[#07c160]/15 dark:text-[#4ade80]',
+                      paymentMethod?.type !== PAYMENT_TYPES.ALIPAY &&
+                        paymentMethod?.type !== PAYMENT_TYPES.WECHAT &&
+                        'bg-muted text-muted-foreground ring-border'
+                    )}
+                  >
+                    {getPaymentIcon(
+                      paymentMethod?.type,
+                      'h-[17px] w-[17px]',
+                      paymentMethod?.icon,
+                      paymentMethodName
+                    )}
+                  </span>
                   <span className='truncate font-medium'>
                     {paymentMethodName}
                   </span>
                   {isRecommended && (
-                    <Badge variant='secondary'>{t('Recommended')}</Badge>
+                    <Badge
+                      variant='secondary'
+                      className='shrink-0 border border-[#07c160]/20 bg-[#07c160]/12 text-[#078a45] dark:bg-[#07c160]/15 dark:text-[#4ade80]'
+                    >
+                      {t('Recommended')}
+                    </Badge>
                   )}
                 </div>
                 {(isDirect || isBackup) && (

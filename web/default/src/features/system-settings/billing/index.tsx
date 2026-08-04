@@ -58,6 +58,8 @@ const defaultBillingSettings: BillingSettings = {
   AutoGroups: '',
   SmartGroupRules: '{}',
   DefaultUseAutoGroup: false,
+  AutoCrossGroupRetryEnabled: true,
+  MaxTokenAutoGroups: 5,
   'group_ratio_setting.group_special_usable_group': '{}',
   PayAddress: '',
   EpayId: '',

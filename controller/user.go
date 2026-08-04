@@ -165,40 +165,21 @@ func Register(c *gin.Context) {
 		}
 	}
 	registerIP := c.ClientIP()
-	ipUsed, err := model.IsRegisterIPUsed(registerIP)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		common.SysLog(fmt.Sprintf("IsRegisterIPUsed error: %v", err))
-		return
-	}
-	if ipUsed {
-		common.ApiErrorMsg(c, "当前网络环境已注册过账号，请勿重复注册")
-		return
-	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
-		return
-	}
-	if exist {
-		common.ApiErrorI18n(c, i18n.MsgUserExists)
-		return
-	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	inviterId := 0
+	if strings.TrimSpace(affCode) != "" {
+		inviterId, _ = model.GetUserIdByAffCode(strings.TrimSpace(affCode))
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
-		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
-		RegisterIP:  registerIP,
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := model.CreatePublicUser(&cleanUser, registerIP, inviterId); err != nil {
 		common.ApiError(c, err)
 		return
 	}

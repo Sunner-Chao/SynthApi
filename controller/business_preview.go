@@ -122,24 +122,19 @@ func getPublicBusinessPaymentMethods() []publicBusinessPaymentMethod {
 
 	if service.IsAlipayDirectTopUpEnabled() {
 		add(publicBusinessPaymentMethod{
-			Type:        model.PaymentMethodAlipay,
-			Name:        "支付宝",
-			MinTopUp:    service.GetAlipayDirectMinTopUp(),
-			Recommended: true,
+			Type:     model.PaymentMethodAlipay,
+			Name:     "支付宝",
+			MinTopUp: service.GetAlipayDirectMinTopUp(),
 		})
 	}
 
 	if service.IsMPayTopUpEnabled() {
+		paymentMethod := service.GetMPayPaymentMethod()
 		add(publicBusinessPaymentMethod{
-			Type:        model.PaymentMethodAlipay,
-			Name:        "支付宝",
+			Type:        paymentMethod,
+			Name:        publicPaymentMethodName(paymentMethod, ""),
 			MinTopUp:    service.GetMPayMinTopup(),
-			Recommended: true,
-		})
-		add(publicBusinessPaymentMethod{
-			Type:     model.PaymentMethodWechat,
-			Name:     "微信支付",
-			MinTopUp: service.GetMPayMinTopup(),
+			Recommended: paymentMethod == model.PaymentMethodWechat,
 		})
 	}
 
@@ -157,17 +152,16 @@ func getPublicBusinessPaymentMethods() []publicBusinessPaymentMethod {
 				Type:        typeName,
 				Name:        publicPaymentMethodName(typeName, configured["name"]),
 				MinTopUp:    minTopUp,
-				Recommended: typeName == model.PaymentMethodAlipay,
+				Recommended: typeName == model.PaymentMethodWechat,
 			})
 		}
 	}
 
 	if service.IsXPayTopUpEnabled() {
 		add(publicBusinessPaymentMethod{
-			Type:        model.PaymentMethodAlipay,
-			Name:        "支付宝",
-			MinTopUp:    setting.XPayMinTopUp,
-			Recommended: true,
+			Type:     model.PaymentMethodAlipay,
+			Name:     "支付宝",
+			MinTopUp: setting.XPayMinTopUp,
 		})
 	}
 	if isStripeTopUpEnabled() {

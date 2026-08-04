@@ -519,6 +519,18 @@ For commercial licensing, please contact support@quantumnous.com
   color: #284960;
 }
 
+.usage-command-center.is-day .command-view-switch {
+  border-color: rgba(45, 118, 176, 0.28);
+  background: rgba(245, 251, 255, 0.86);
+  color: #245c88;
+}
+
+.usage-command-center.is-day .command-view-switch:hover {
+  border-color: rgba(35, 126, 196, 0.46);
+  background: #ffffff;
+  color: #123e61;
+}
+
 .usage-command-center.is-day .command-donut-wrap::before {
   border-color: rgba(23, 119, 166, 0.2);
   background: rgba(224, 238, 245, 0.36);

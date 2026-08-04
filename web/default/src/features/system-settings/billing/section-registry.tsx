@@ -47,6 +47,8 @@ const getGroupDefaults = (settings: BillingSettings) => ({
   AutoGroups: settings.AutoGroups,
   SmartGroupRules: settings.SmartGroupRules,
   DefaultUseAutoGroup: settings.DefaultUseAutoGroup,
+  AutoCrossGroupRetryEnabled: settings.AutoCrossGroupRetryEnabled,
+  MaxTokenAutoGroups: settings.MaxTokenAutoGroups,
   GroupSpecialUsableGroup:
     settings['group_ratio_setting.group_special_usable_group'],
 })

@@ -176,7 +176,6 @@ export function RechargeFormCard({
       provider: PAYMENT_PROVIDERS.ALIPAY_DIRECT,
       name: t('Alipay (Official)'),
       min_topup: topupInfo.alipay_direct_min_topup || 0,
-      recommended: true,
     })
   }
 
@@ -190,7 +189,6 @@ export function RechargeFormCard({
         provider: PAYMENT_PROVIDERS.MPAY,
         name: t('Alipay'),
         min_topup: topupInfo.mpay_min_topup || 0,
-        recommended: true,
       })
     }
     if (!hasProviderType(PAYMENT_PROVIDERS.MPAY, PAYMENT_TYPES.WECHAT)) {
@@ -199,6 +197,7 @@ export function RechargeFormCard({
         provider: PAYMENT_PROVIDERS.MPAY,
         name: t('WeChat Pay'),
         min_topup: topupInfo.mpay_min_topup || 0,
+        recommended: true,
       })
     }
   }
@@ -402,16 +401,27 @@ export function RechargeFormCard({
                       const methodKey = getPaymentMethodKey(method)
                       const methodName = getPaymentMethodDisplayName(method, t)
                       const isDirect = isAlipayDirectPayment(method)
+                      const isRecommended = method.recommended === true
                       const isBackup =
                         method.provider === PAYMENT_PROVIDERS.XPAY
+                      const iconWellClass =
+                        method.type === PAYMENT_TYPES.ALIPAY
+                          ? 'bg-[#1677ff]/10 text-[#1677ff] ring-[#1677ff]/15 dark:bg-[#1677ff]/15'
+                          : method.type === PAYMENT_TYPES.WECHAT
+                            ? 'bg-[#07c160]/12 text-[#07a84f] ring-[#07c160]/20 dark:bg-[#07c160]/15 dark:text-[#4ade80]'
+                            : 'bg-muted text-muted-foreground ring-border'
 
                       const button = (
                         <Button
                           key={methodKey}
-                          variant={isDirect ? 'default' : 'outline'}
+                          variant='outline'
                           onClick={() => onPaymentMethodSelect(method)}
                           disabled={disabled || !!paymentLoading}
-                          className='h-auto min-h-14 min-w-0 justify-start px-3 py-2'
+                          className={cn(
+                            'group h-auto min-h-14 min-w-0 justify-start gap-3 px-3 py-2',
+                            isRecommended &&
+                              'border-[#07c160]/50 bg-[#07c160]/[0.07] hover:border-[#07c160]/65 hover:bg-[#07c160]/[0.11] dark:bg-[#07c160]/10'
+                          )}
                         >
                           {paymentLoading === methodKey ? (
                             <Loader2
@@ -419,18 +429,28 @@ export function RechargeFormCard({
                               className='animate-spin'
                             />
                           ) : (
-                            getPaymentIcon(
-                              method.type,
-                              'h-4 w-4',
-                              method.icon,
-                              methodName
-                            )
+                            <span
+                              className={cn(
+                                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm ring-1 transition-transform duration-200 ring-inset group-hover:scale-105',
+                                iconWellClass
+                              )}
+                            >
+                              {getPaymentIcon(
+                                method.type,
+                                'h-[18px] w-[18px]',
+                                method.icon,
+                                methodName
+                              )}
+                            </span>
                           )}
                           <span className='flex min-w-0 flex-1 flex-col items-start gap-0.5'>
                             <span className='flex w-full min-w-0 items-center gap-1.5'>
                               <span className='truncate'>{methodName}</span>
-                              {(method.recommended || isDirect) && (
-                                <Badge variant='secondary'>
+                              {isRecommended && (
+                                <Badge
+                                  variant='secondary'
+                                  className='shrink-0 border border-[#07c160]/20 bg-[#07c160]/12 text-[#078a45] dark:bg-[#07c160]/15 dark:text-[#4ade80]'
+                                >
                                   {t('Recommended')}
                                 </Badge>
                               )}

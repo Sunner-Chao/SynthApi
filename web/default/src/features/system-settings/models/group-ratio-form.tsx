@@ -36,6 +36,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import {
   Sheet,
   SheetContent,
@@ -67,6 +68,8 @@ type GroupFormValues = {
   AutoGroups: string
   SmartGroupRules: string
   DefaultUseAutoGroup: boolean
+  AutoCrossGroupRetryEnabled: boolean
+  MaxTokenAutoGroups: number
   GroupSpecialUsableGroup: string
 }
 
@@ -98,6 +101,55 @@ export const GroupRatioForm = memo(function GroupRatioForm({
   const toggleEditMode = useCallback(() => {
     setEditMode((prev) => (prev === 'visual' ? 'json' : 'visual'))
   }, [])
+
+  const autoRetryPolicyFields = (
+    <div className='grid gap-4 md:grid-cols-2'>
+      <FormField
+        control={form.control}
+        name='AutoCrossGroupRetryEnabled'
+        render={({ field }) => (
+          <SettingsSwitchItem>
+            <SettingsSwitchContent>
+              <FormLabel>{t('Auto cross-group retry')}</FormLabel>
+              <FormDescription>
+                {t(
+                  'Global switch for cross-group retry. Token settings are preserved while disabled.'
+                )}
+              </FormDescription>
+            </SettingsSwitchContent>
+            <FormControl>
+              <Switch checked={field.value} onCheckedChange={field.onChange} />
+            </FormControl>
+          </SettingsSwitchItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name='MaxTokenAutoGroups'
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Maximum custom groups per token')}</FormLabel>
+            <FormControl>
+              <Input
+                type='number'
+                min={1}
+                step={1}
+                value={field.value}
+                onChange={(event) => field.onChange(Number(event.target.value))}
+              />
+            </FormControl>
+            <FormDescription>
+              {t(
+                'Limits token-specific Auto orders. Global inheritance is not limited.'
+              )}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </div>
+  )
 
   return (
     <div className='space-y-6'>
@@ -155,6 +207,8 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               }
             />
 
+            {autoRetryPolicyFields}
+
             <FormField
               control={form.control}
               name='DefaultUseAutoGroup'
@@ -204,7 +258,9 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               name='TopupGroupRatio'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Subscription / top-up group ratios')}</FormLabel>
+                  <FormLabel>
+                    {t('Subscription / top-up group ratios')}
+                  </FormLabel>
                   <FormControl>
                     <Textarea rows={6} {...field} />
                   </FormControl>
@@ -338,6 +394,8 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 </SettingsSwitchItem>
               )}
             />
+
+            {autoRetryPolicyFields}
           </SettingsForm>
         )}
       </Form>

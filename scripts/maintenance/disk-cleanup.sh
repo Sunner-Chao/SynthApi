@@ -13,6 +13,9 @@ readonly LOCK_DIR="/run/synthapi-maintenance"
 readonly LOCK_FILE="${LOCK_DIR}/cleanup.lock"
 readonly DEFAULT_THRESHOLD_BYTES=$((5 * 1024 * 1024 * 1024))
 readonly DEFAULT_TARGET_BYTES=$((7 * 1024 * 1024 * 1024))
+# Keep the inspection bounded without skipping normal release history. A full
+# release is roughly 100 MiB, so the limit remains far below an unbounded scan.
+readonly MAX_BINARY_CANDIDATES=512
 
 THRESHOLD_BYTES="${THRESHOLD_BYTES:-${DEFAULT_THRESHOLD_BYTES}}"
 TARGET_BYTES="${TARGET_BYTES:-${DEFAULT_TARGET_BYTES}}"
@@ -260,7 +263,7 @@ prune_service_binaries() {
 
   while IFS= read -r -d '' file; do
     (( candidate_count += 1 ))
-    if (( candidate_count > 64 )); then
+    if (( candidate_count > MAX_BINARY_CANDIDATES )); then
       log "warning: too many binary candidates; skipping binary pruning"
       return 0
     fi

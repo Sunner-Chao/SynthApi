@@ -119,6 +119,10 @@ func GetCodexChannelUsage(c *gin.Context) {
 		"upstream_status": statusCode,
 		"data":            payload,
 	}
+	resetState := service.GetImportedAccountResetState(ch)
+	resp["reset_count"] = resetState.Count
+	resp["last_reset_at"] = resetState.LastResetAt
+	resp["provider_reset_supported"] = false
 	if !ok {
 		resp["message"] = fmt.Sprintf("upstream status: %d", statusCode)
 	}

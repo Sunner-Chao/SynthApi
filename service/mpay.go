@@ -50,6 +50,12 @@ func GetMPayMinTopup() float64 {
 	return minTopup
 }
 
+// GetMPayPaymentMethod returns the single payment type exposed by the
+// SynthPay-compatible V1 gateway configuration.
+func GetMPayPaymentMethod() string {
+	return normalizeMPayMethod(setting.MPayPaymentType)
+}
+
 func GetMPayMoney(amount float64, group string) float64 {
 	dAmount := decimal.NewFromFloat(operation_setting.DisplayAmountToUSD(amount))
 

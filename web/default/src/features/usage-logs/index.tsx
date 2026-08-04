@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { MonitorCog, Table2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
@@ -38,6 +40,8 @@ import {
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 const TASK_LOG_SECTIONS = ['drawing', 'task'] as const
+const COMMON_LOG_VIEW_STORAGE_KEY = 'synthapi:usage-logs:common-view'
+type CommonLogView = 'classic' | 'command'
 
 const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   common: {
@@ -55,6 +59,17 @@ function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const params = route.useParams()
+  const [commonView, setCommonView] = useState<CommonLogView>(() => {
+    if (typeof window === 'undefined') return 'classic'
+    try {
+      return window.localStorage.getItem(COMMON_LOG_VIEW_STORAGE_KEY) ===
+        'command'
+        ? 'command'
+        : 'classic'
+    } catch {
+      return 'classic'
+    }
+  })
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
       ? params.section
@@ -108,12 +123,66 @@ function UsageLogsContent() {
   const showTaskSwitcher =
     activeCategory !== 'common' && visibleSections.length > 1
 
+  const toggleCommonView = useCallback(() => {
+    setCommonView((current) => {
+      const next = current === 'classic' ? 'command' : 'classic'
+      try {
+        window.localStorage.setItem(COMMON_LOG_VIEW_STORAGE_KEY, next)
+      } catch {
+        // The view still switches when browser storage is unavailable.
+      }
+      return next
+    })
+  }, [])
+
+  const viewSwitch = (
+    <Button
+      type='button'
+      variant='outline'
+      size='sm'
+      onClick={toggleCommonView}
+      className={
+        commonView === 'command'
+          ? 'command-view-switch h-8 gap-1.5 px-2.5 text-xs'
+          : 'gap-1.5'
+      }
+    >
+      {commonView === 'classic' ? (
+        <MonitorCog className='size-4' />
+      ) : (
+        <Table2 className='size-4' />
+      )}
+      {commonView === 'classic'
+        ? t('Enter command center UI')
+        : t('Enter classic UI')}
+    </Button>
+  )
+
   return (
     <>
       {activeCategory === 'common' ? (
-        <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
-          <UsageLogsTable logCategory={activeCategory} />
-        </div>
+        commonView === 'classic' ? (
+          <SectionPageLayout>
+            <SectionPageLayout.Title>
+              <span className='pl-10'>{t('Usage Logs')}</span>
+            </SectionPageLayout.Title>
+            <SectionPageLayout.Actions>{viewSwitch}</SectionPageLayout.Actions>
+            <SectionPageLayout.Content>
+              <UsageLogsTable
+                logCategory={activeCategory}
+                commonView={commonView}
+              />
+            </SectionPageLayout.Content>
+          </SectionPageLayout>
+        ) : (
+          <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+            <UsageLogsTable
+              logCategory={activeCategory}
+              commonView={commonView}
+              viewSwitch={viewSwitch}
+            />
+          </div>
+        )
       ) : (
         <SectionPageLayout>
           <SectionPageLayout.Title>

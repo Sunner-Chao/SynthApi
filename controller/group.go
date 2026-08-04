@@ -92,11 +92,15 @@ func GetUserGroups(c *gin.Context) {
 			"desc":  desc,
 		}
 	}
-	if _, ok := userUsableGroups["auto"]; ok {
-		usableGroups["auto"] = map[string]interface{}{
-			"ratio": "自动",
-			"desc":  setting.GetUsableGroupDescription("auto"),
-		}
+	// Auto is a public virtual token group. Its concrete routing chain is still
+	// filtered against each user's selectable groups before channel selection.
+	description := setting.GetUsableGroupDescription("auto")
+	if description == "auto" {
+		description = "自动重试"
+	}
+	usableGroups["auto"] = map[string]interface{}{
+		"ratio": "自动",
+		"desc":  description,
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -132,7 +136,7 @@ func GetUserGroupChannelStatus(c *gin.Context) {
 	refresh := strings.EqualFold(c.Query("refresh"), "true") || c.Query("refresh") == "1"
 	requestedGroup := strings.TrimSpace(c.Query("group"))
 	if requestedGroup != "" {
-		if _, ok := userUsableGroups[requestedGroup]; !ok {
+		if _, ok := userUsableGroups[requestedGroup]; !ok && requestedGroup != "auto" {
 			common.ApiError(c, errors.New("group is not available"))
 			return
 		}
@@ -209,52 +213,50 @@ func GetUserGroupChannelStatus(c *gin.Context) {
 		}
 	}
 
-	if _, ok := userUsableGroups["auto"]; ok {
-		autoSummary := &groupChannelStatusSummary{}
-		seen := map[int]bool{}
-		for _, groupName := range service.GetUserAutoGroup(userGroup) {
-			for _, channel := range channels {
-				if seen[channel.Id] {
-					continue
+	autoSummary := &groupChannelStatusSummary{}
+	seen := map[int]bool{}
+	for _, groupName := range service.GetUserAutoGroup(userGroup) {
+		for _, channel := range channels {
+			if seen[channel.Id] {
+				continue
+			}
+			if !common.StringsContains(channel.GetGroups(), groupName) {
+				continue
+			}
+			seen[channel.Id] = true
+			autoSummary.Total++
+			testTime := channel.TestTime
+			responseTime := channel.ResponseTime
+			if probe, ok := probeResults[channel.Id]; ok {
+				autoSummary.Tested++
+				if probe.Reachable {
+					autoSummary.Reachable++
 				}
-				if !common.StringsContains(channel.GetGroups(), groupName) {
-					continue
-				}
-				seen[channel.Id] = true
-				autoSummary.Total++
-				testTime := channel.TestTime
-				responseTime := channel.ResponseTime
-				if probe, ok := probeResults[channel.Id]; ok {
-					autoSummary.Tested++
-					if probe.Reachable {
-						autoSummary.Reachable++
-					}
-					testTime = probe.TestTime
-					responseTime = probe.ResponseTime
-				}
-				if testTime > 0 {
-					autoSummary.HasCurrentChannel = true
-					if testTime > autoSummary.LastTestTime {
-						autoSummary.LastTestTime = testTime
-					}
-				}
-				if responseTime > 0 && (autoSummary.BestResponseTime == 0 || responseTime < autoSummary.BestResponseTime) {
-					autoSummary.BestResponseTime = responseTime
-				}
-				switch channel.Status {
-				case common.ChannelStatusEnabled:
-					autoSummary.Enabled++
-				case common.ChannelStatusAutoDisabled:
-					autoSummary.AutoDisabled++
-				case common.ChannelStatusManuallyDisabled:
-					autoSummary.ManuallyDisabled++
-				default:
-					autoSummary.Unknown++
+				testTime = probe.TestTime
+				responseTime = probe.ResponseTime
+			}
+			if testTime > 0 {
+				autoSummary.HasCurrentChannel = true
+				if testTime > autoSummary.LastTestTime {
+					autoSummary.LastTestTime = testTime
 				}
 			}
+			if responseTime > 0 && (autoSummary.BestResponseTime == 0 || responseTime < autoSummary.BestResponseTime) {
+				autoSummary.BestResponseTime = responseTime
+			}
+			switch channel.Status {
+			case common.ChannelStatusEnabled:
+				autoSummary.Enabled++
+			case common.ChannelStatusAutoDisabled:
+				autoSummary.AutoDisabled++
+			case common.ChannelStatusManuallyDisabled:
+				autoSummary.ManuallyDisabled++
+			default:
+				autoSummary.Unknown++
+			}
 		}
-		groupStatus["auto"] = autoSummary
 	}
+	groupStatus["auto"] = autoSummary
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":    true,

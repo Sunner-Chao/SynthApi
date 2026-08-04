@@ -314,6 +314,11 @@ const RechargeCard = ({
                             const minTopupVal =
                               Number(payMethod.min_topup) || 0;
                             const isStripe = payMethod.type === 'stripe';
+                            const isAlipay = payMethod.type === 'alipay';
+                            const isWechat = payMethod.type === 'wxpay';
+                            const isRecommended =
+                              payMethod.recommended === 'true' ||
+                              payMethod.recommended === true;
                             const isWaffo =
                               typeof payMethod.type === 'string' &&
                               payMethod.type.startsWith('waffo:');
@@ -329,6 +334,20 @@ const RechargeCard = ({
                               (!enableWaffoPancakeTopUp && isWaffoPancake) ||
                               minTopupVal > Number(topUpCount || 0);
 
+                            const iconWellStyle = {
+                              width: 26,
+                              height: 26,
+                              borderRadius: 8,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flex: '0 0 auto',
+                              background: isAlipay
+                                ? 'rgba(22, 119, 255, 0.10)'
+                                : isWechat
+                                  ? 'rgba(7, 193, 96, 0.12)'
+                                  : 'rgba(99, 91, 255, 0.10)',
+                            };
                             const buttonEl = (
                               <Button
                                 key={payMethod.type}
@@ -340,12 +359,27 @@ const RechargeCard = ({
                                   paymentLoading && payWay === payMethod.type
                                 }
                                 icon={
-                                  payMethod.type === 'alipay' ? (
-                                    <SiAlipay size={18} color='#1677FF' />
-                                  ) : payMethod.type === 'wxpay' ? (
-                                    <SiWechat size={18} color='#07C160' />
+                                  isAlipay ? (
+                                    <span
+                                      style={iconWellStyle}
+                                      aria-hidden='true'
+                                    >
+                                      <SiAlipay size={17} color='#1677FF' />
+                                    </span>
+                                  ) : isWechat ? (
+                                    <span
+                                      style={iconWellStyle}
+                                      aria-hidden='true'
+                                    >
+                                      <SiWechat size={17} color='#07C160' />
+                                    </span>
                                   ) : payMethod.type === 'stripe' ? (
-                                    <SiStripe size={18} color='#635BFF' />
+                                    <span
+                                      style={iconWellStyle}
+                                      aria-hidden='true'
+                                    >
+                                      <SiStripe size={17} color='#635BFF' />
+                                    </span>
                                   ) : payMethod.icon ? (
                                     <img
                                       src={payMethod.icon}
@@ -382,7 +416,19 @@ const RechargeCard = ({
                                 }
                                 className='!rounded-lg !px-4 !py-2'
                               >
-                                {payMethod.name}
+                                <span className='inline-flex items-center gap-2'>
+                                  <span>{payMethod.name}</span>
+                                  {isRecommended && (
+                                    <Tag
+                                      size='small'
+                                      color='green'
+                                      shape='round'
+                                      className='!m-0 !px-1.5 !leading-5'
+                                    >
+                                      {t('推荐')}
+                                    </Tag>
+                                  )}
+                                </span>
                               </Button>
                             );
 

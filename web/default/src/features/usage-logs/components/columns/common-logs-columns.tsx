@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
-import { CircleAlert, Eye, Sparkles, KeyRound } from 'lucide-react'
+import {
+  CircleAlert,
+  CircleCheck,
+  Eye,
+  KeyRound,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
@@ -50,6 +57,8 @@ import {
   getSubscriptionBillingDisplay,
   hasAnyCacheTokens,
   isViolationFeeLog,
+  isAutoGroupLog,
+  getAutoRouteStatus,
   parseLogOther,
 } from '../../lib/format'
 import {
@@ -559,6 +568,29 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         : `${t('Token')} #${tokenId}`
       let group = log.group
       if (!group) group = other?.group || ''
+      const isAutoRoute = isAutoGroupLog(other)
+      const autoRouteStatus = getAutoRouteStatus(other)
+      const autoRoutePriority = other?.auto_route_priority
+      const autoRouteStatusLabel =
+        autoRouteStatus === 'degraded'
+          ? t('Auto degraded')
+          : autoRouteStatus === 'recovered'
+            ? t('Auto priority restored')
+            : autoRouteStatus === 'normal'
+              ? t('Auto healthy')
+              : null
+      const AutoRouteStatusIcon =
+        autoRouteStatus === 'degraded'
+          ? CircleAlert
+          : autoRouteStatus === 'recovered'
+            ? RotateCcw
+            : CircleCheck
+      const autoRouteStatusVariant =
+        autoRouteStatus === 'degraded'
+          ? 'warning'
+          : autoRouteStatus === 'recovered'
+            ? 'success'
+            : 'info'
 
       const metaParts: string[] = []
       const groupRatioText = getGroupRatioText(other)
@@ -597,10 +629,44 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               )}
             </Tooltip>
           </TooltipProvider>
-          {metaParts.length > 0 && (
-            <span className='command-log-secondary text-muted-foreground/60 truncate [font-family:var(--font-body)] !text-xs'>
-              {metaParts.join(' · ')}
-            </span>
+          {(metaParts.length > 0 || isAutoRoute) && (
+            <div className='command-log-secondary flex min-w-0 flex-wrap items-center gap-1 [font-family:var(--font-body)] !text-xs'>
+              {metaParts.length > 0 && (
+                <span className='text-muted-foreground/60 truncate'>
+                  {metaParts.join(' · ')}
+                </span>
+              )}
+              {isAutoRoute && (
+                <StatusBadge
+                  label={t('Auto')}
+                  variant='info'
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='h-4 rounded px-1 text-[10px] leading-none'
+                />
+              )}
+              {autoRouteStatusLabel && (
+                <StatusBadge
+                  label={
+                    autoRoutePriority && autoRouteStatus === 'degraded'
+                      ? `${autoRouteStatusLabel} · P${autoRoutePriority}`
+                      : autoRouteStatusLabel
+                  }
+                  icon={AutoRouteStatusIcon}
+                  variant={autoRouteStatusVariant}
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='h-4 rounded px-1 text-[10px] leading-none'
+                  title={
+                    autoRoutePriority
+                      ? `${autoRouteStatusLabel} · P${autoRoutePriority}`
+                      : autoRouteStatusLabel
+                  }
+                />
+              )}
+            </div>
           )}
         </div>
       )
