@@ -34,6 +34,7 @@ WORKTREE_PARENT=""
 WORKTREE_DIR=""
 CANDIDATE_BRANCH=""
 SNAPSHOT_COMMIT=""
+MERGE_BASE=""
 
 verify_customization_guards() {
   local root=$1
@@ -164,6 +165,109 @@ handle_unexpected_error() {
   exit "$exit_code"
 }
 
+resolve_gateway_cache_conflict() {
+  local relative_path="backend/internal/repository/gateway_cache.go"
+
+  # Start from the official file, then replay the local customization diff.
+  # This keeps official sticky-session behavior while retaining custom cache APIs.
+  git -C "$WORKTREE_DIR" checkout-index --force --stage=3 -- "$relative_path"
+  git -C "$WORKTREE_DIR" add -- "$relative_path"
+  if ! git -C "$REPO_DIR" diff "$MERGE_BASE" "$BASE_COMMIT" -- "$relative_path" |
+    git -C "$WORKTREE_DIR" apply --3way --index -; then
+    :
+  fi
+
+  if [[ -n "$(git -C "$WORKTREE_DIR" ls-files --unmerged -- "$relative_path")" ]]; then
+    if ! python3 - "$WORKTREE_DIR/$relative_path" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+result = []
+index = 0
+while index < len(lines):
+    if not lines[index].startswith("<<<<<<<"):
+        result.append(lines[index])
+        index += 1
+        continue
+
+    ours = []
+    theirs = []
+    index += 1
+    while index < len(lines) and not lines[index].startswith("======="):
+        ours.append(lines[index])
+        index += 1
+    if index >= len(lines):
+        raise SystemExit("Unterminated gateway cache conflict")
+    index += 1
+    while index < len(lines) and not lines[index].startswith(">>>>>>>"):
+        theirs.append(lines[index])
+        index += 1
+    if index >= len(lines):
+        raise SystemExit("Unterminated gateway cache conflict")
+    index += 1
+
+    # Only import-only conflicts are safe to union automatically.
+    merged = []
+    for item in ours + theirs:
+        if item.strip() and not item.lstrip().startswith('"'):
+            raise SystemExit("Gateway cache conflict is not import-only")
+        if item not in merged:
+            merged.append(item)
+    result.extend(merged)
+
+path.write_text("".join(result), encoding="utf-8")
+PY
+    then
+      return 1
+    fi
+    git -C "$WORKTREE_DIR" add -- "$relative_path"
+  fi
+
+  [[ -z "$(git -C "$WORKTREE_DIR" ls-files --unmerged -- "$relative_path")" ]]
+}
+
+resolve_known_merge_conflicts() {
+  local conflict_path=""
+  local unresolved=()
+  mapfile -t conflict_paths < <(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U)
+
+  for conflict_path in "${conflict_paths[@]}"; do
+    case "$conflict_path" in
+      README.md)
+        # README is a deployment customization; official runtime code is unaffected.
+        git -C "$WORKTREE_DIR" checkout-index --force --stage=2 -- "$conflict_path"
+        git -C "$WORKTREE_DIR" add -- "$conflict_path"
+        ;;
+      backend/internal/repository/gateway_cache.go)
+        if ! resolve_gateway_cache_conflict; then
+          unresolved+=("$conflict_path")
+        fi
+        ;;
+      *)
+        unresolved+=("$conflict_path")
+        ;;
+    esac
+  done
+
+  if (( ${#unresolved[@]} > 0 )); then
+    printf '%s\n' "Unresolved official merge conflicts: $(IFS=,; echo "${unresolved[*]}")"
+    return 1
+  fi
+  if [[ -n "$(git -C "$WORKTREE_DIR" ls-files --unmerged)" ]]; then
+    printf '%s\n' "Official merge still contains unresolved index entries"
+    return 1
+  fi
+
+  git -C "$WORKTREE_DIR" \
+    -c user.name="SynthAPI Source Updater" \
+    -c user.email="source-update@synthapi.local" \
+    -c commit.gpgsign=false \
+    -c core.hooksPath=/dev/null \
+    commit --no-edit -m "chore(update): merge official source with customizations" >/dev/null
+}
+
 trap cleanup EXIT
 trap 'handle_unexpected_error $? $LINENO' ERR
 
@@ -266,6 +370,10 @@ CANDIDATE_BRANCH="synthapi-update/v${TARGET_VERSION}-${OPERATION_SUFFIX}"
 WORKTREE_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/synthapi-source-update.XXXXXX")
 WORKTREE_DIR="$WORKTREE_PARENT/worktree"
 BASE_COMMIT=$(git -C "$REPO_DIR" rev-parse main)
+MERGE_BASE=$(git -C "$REPO_DIR" merge-base "$BASE_COMMIT" "$UPSTREAM_REF")
+if [[ -z "$MERGE_BASE" ]]; then
+  finish_failed "failed" "Official source has no common history with production" "not_started"
+fi
 
 CURRENT_PHASE="merging_customizations"
 write_status "running" "$CURRENT_PHASE" "Merging official source with protected customizations" "pending" "$STARTED_AT"
@@ -273,8 +381,10 @@ if ! git -C "$REPO_DIR" worktree add -b "$CANDIDATE_BRANCH" "$WORKTREE_DIR" "$BA
   finish_failed "failed" "Failed to create an isolated update worktree" "not_started"
 fi
 if ! git -C "$WORKTREE_DIR" merge --no-ff --no-edit "$UPSTREAM_REF"; then
-  conflicts=$(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U | paste -sd, -)
-  finish_failed "failed" "Official merge requires manual conflict resolution: ${conflicts:-unknown files}" "not_started"
+  if ! resolve_known_merge_conflicts; then
+    conflicts=$(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U | paste -sd, -)
+    finish_failed "failed" "Official merge requires manual conflict resolution: ${conflicts:-unknown files}" "not_started"
+  fi
 fi
 CANDIDATE_COMMIT=$(git -C "$WORKTREE_DIR" rev-parse HEAD)
 if ! git -C "$WORKTREE_DIR" merge-base --is-ancestor "$UPSTREAM_COMMIT" "$CANDIDATE_COMMIT"; then
