@@ -4,6 +4,7 @@
       <div class="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-6">
         <div class="flex min-w-0 items-center gap-3">
           <button
+            v-if="!isGuideHome"
             class="guide-icon-button lg:hidden"
             aria-label="打开文档目录"
             title="打开文档目录"
@@ -11,13 +12,17 @@
           >
             <Icon name="menu" size="md" />
           </button>
-          <router-link to="/guide/quick-start" class="flex min-w-0 items-center gap-2.5">
+          <router-link to="/guide" class="flex min-w-0 items-center gap-2.5">
             <span class="guide-mark"><Icon name="book" size="sm" /></span>
             <span class="min-w-0 truncate text-sm font-semibold tracking-wide sm:text-base">SynthAPI 产品手册</span>
           </router-link>
         </div>
         <div class="flex items-center gap-2">
           <span class="hidden text-xs text-slate-400 sm:inline">当前版本 0.1.173</span>
+          <a class="guide-top-link" href="/downloads/SynthAPI-产品使用手册-v0.1.173.pdf" download title="下载 PDF 产品手册">
+            <Icon name="download" size="sm" />
+            <span class="hidden md:inline">下载手册</span>
+          </a>
           <router-link to="/home" class="guide-top-link">
             <Icon name="home" size="sm" />
             <span class="hidden sm:inline">返回站点</span>
@@ -26,8 +31,8 @@
       </div>
     </header>
 
-    <div v-if="mobileNavOpen" class="guide-overlay lg:hidden" @click="mobileNavOpen = false"></div>
-    <div class="mx-auto flex max-w-[1440px]">
+    <div v-if="!isGuideHome && mobileNavOpen" class="guide-overlay lg:hidden" @click="mobileNavOpen = false"></div>
+    <div v-if="!isGuideHome" class="mx-auto flex max-w-[1440px]">
       <aside
         class="guide-sidebar"
         :class="{ 'guide-sidebar-open': mobileNavOpen }"
@@ -89,6 +94,14 @@
           <GuideDiagram :kind="currentPage.diagram" :title="currentPage.diagramTitle" />
         </section>
 
+        <section v-if="currentScreenshots.length > 0" aria-label="页面操作截图">
+          <GuideScreenshot
+            v-for="screenshot in currentScreenshots"
+            :key="screenshot.src"
+            v-bind="screenshot"
+          />
+        </section>
+
         <div class="guide-workspace">
           <article class="guide-article" v-html="renderedContent"></article>
           <aside v-if="toc.length > 0" class="guide-toc" aria-label="本页目录">
@@ -108,6 +121,81 @@
         </nav>
       </main>
     </div>
+
+    <main v-else class="guide-home">
+      <section class="guide-home-hero">
+        <div class="guide-home-copy">
+          <p class="guide-eyebrow">SYNTHAPI DOCUMENTATION</p>
+          <h1>先选身份，再按步骤完成</h1>
+          <p>从第一次调用到管理员运维，把复杂配置拆成能照着操作的短步骤。所有说明均基于 SynthAPI 当前版本。</p>
+          <div class="guide-home-actions">
+            <router-link class="guide-primary-action" to="/guide/quick-start"><Icon name="play" size="sm" />普通用户开始使用</router-link>
+            <router-link class="guide-secondary-action" to="/guide/admin-guide"><Icon name="server" size="sm" />管理员配置指南</router-link>
+          </div>
+        </div>
+        <div class="guide-home-route" aria-label="三步入门路线">
+          <div><strong>01</strong><span>创建账号与 Key</span></div>
+          <Icon name="arrowRight" size="sm" />
+          <div><strong>02</strong><span>发出第一条请求</span></div>
+          <Icon name="arrowRight" size="sm" />
+          <div><strong>03</strong><span>查看用量与状态</span></div>
+        </div>
+      </section>
+
+      <section class="guide-home-search-band" aria-label="搜索文档">
+        <label class="guide-home-search">
+          <Icon name="search" size="sm" />
+          <input v-model="searchQuery" type="search" placeholder="搜索：API Key、503、渠道监控、版本更新……" aria-label="搜索产品手册" />
+        </label>
+        <div v-if="searchQuery" class="guide-search-results">
+          <router-link v-for="page in landingSearchResults" :key="page.id" :to="`/guide/${page.id}`">
+            <Icon :name="page.icon" size="sm" /><span><strong>{{ page.title }}</strong><small>{{ page.group }} · {{ page.reading }}</small></span><Icon name="chevronRight" size="xs" />
+          </router-link>
+          <p v-if="landingSearchResults.length === 0">没有匹配结果，请换一个更短的关键词。</p>
+        </div>
+      </section>
+
+      <section class="guide-home-section">
+        <div class="guide-home-heading"><div><p>按模块查找</p><h2>你现在要解决什么？</h2></div><span>每个入口都直接进入对应章节</span></div>
+        <div class="guide-module-grid">
+          <router-link v-for="entry in moduleEntries" :key="entry.to" :to="entry.to" class="guide-module-entry">
+            <span :class="`guide-module-icon guide-module-icon-${entry.tone}`"><Icon :name="entry.icon" size="md" /></span>
+            <div><h3>{{ entry.title }}</h3><p>{{ entry.description }}</p></div>
+            <Icon name="chevronRight" size="sm" class="guide-module-arrow" />
+          </router-link>
+        </div>
+      </section>
+
+      <section class="guide-role-band">
+        <div class="guide-home-heading"><div><p>按身份阅读</p><h2>只看与你有关的内容</h2></div><span>不需要从头读到尾</span></div>
+        <div class="guide-role-grid">
+          <article v-for="role in rolePaths" :key="role.title" class="guide-role-path">
+            <span class="guide-role-icon"><Icon :name="role.icon" size="md" /></span>
+            <div><h3>{{ role.title }}</h3><p>{{ role.description }}</p></div>
+            <ol>
+              <li v-for="(step, index) in role.steps" :key="step.to"><b>{{ String(index + 1).padStart(2, '0') }}</b><router-link :to="step.to">{{ step.label }}<Icon name="arrowRight" size="xs" /></router-link></li>
+            </ol>
+          </article>
+        </div>
+      </section>
+
+      <section class="guide-reading-route">
+        <div class="guide-home-heading"><div><p>推荐路线</p><h2>第一次使用，按 01 → 02 → 03 阅读</h2></div><span>约 20 分钟建立完整认识</span></div>
+        <div class="guide-reading-list">
+          <router-link v-for="item in readingRoute" :key="item.number" :to="item.to">
+            <strong>{{ item.number }}</strong><div><small>{{ item.for }}</small><h3>{{ item.title }}</h3><p>{{ item.description }}</p></div><Icon name="arrowRight" size="sm" />
+          </router-link>
+        </div>
+      </section>
+
+      <section class="guide-download-band">
+        <div><p>离线阅读</p><h2>下载完整产品使用手册</h2><span>PDF 适合阅读和打印；PPTX 保留可编辑页面，内容与当前在线指南一致。</span></div>
+        <div class="guide-download-actions">
+          <a href="/downloads/SynthAPI-产品使用手册-v0.1.173.pdf" download><Icon name="download" size="sm" />下载 PDF</a>
+          <a href="/downloads/SynthAPI-产品使用手册-v0.1.173.pptx" download><Icon name="document" size="sm" />下载 PPTX</a>
+        </div>
+      </section>
+    </main>
   </div>
 </template>
 
@@ -118,6 +206,7 @@ import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import Icon from '@/components/icons/Icon.vue'
 import GuideDiagram from '@/components/Guide/GuideDiagram.vue'
+import GuideScreenshot, { type GuideScreenshotMarker } from '@/components/Guide/GuideScreenshot.vue'
 
 type IconName = 'play' | 'book' | 'user' | 'key' | 'server' | 'dollar' | 'chart' | 'refresh' | 'shield' | 'questionCircle'
 type DiagramKind = 'pipeline' | 'admin' | 'api' | 'billing' | 'monitor' | 'update' | 'troubleshoot' | 'security' | 'concepts'
@@ -540,10 +629,94 @@ const route = useRoute()
 const router = useRouter()
 const searchQuery = ref('')
 const mobileNavOpen = ref(false)
+const isGuideHome = computed(() => !route.params.section)
+
+type GuideScreenshotData = {
+  src: string
+  alt: string
+  title: string
+  caption: string
+  markers: GuideScreenshotMarker[]
+}
+
+const screenshotsByPage: Partial<Record<string, GuideScreenshotData[]>> = {
+  'quick-start': [
+    {
+      src: '/guide/screenshots/synthapi-login.png',
+      alt: 'SynthAPI 登录页面真实截图，标出邮箱、密码和登录按钮',
+      title: '登录页：按 1、2、3 完成登录',
+      caption: '先输入已验证邮箱和密码，再提交登录。',
+      markers: [
+        { number: 1, x: 37, y: 50, label: '输入邮箱', description: '填写注册时验证过的邮箱地址。' },
+        { number: 2, x: 64, y: 59, label: '输入密码', description: '确认大小写和密码管理器填充内容。' },
+        { number: 3, x: 65, y: 67, label: '提交登录', description: '登录后再进入 API Keys 创建密钥。' }
+      ]
+    }
+  ],
+  'user-guide': [
+    {
+      src: '/guide/screenshots/synthapi-home.png',
+      alt: 'SynthAPI 站点首页真实截图，标出开始按钮、文档和登录入口',
+      title: '站点首页：三个常用入口',
+      caption: '新用户从“立即开始”进入，已有账号可直接登录，手册入口始终位于顶部。',
+      markers: [
+        { number: 1, x: 16, y: 34, label: '立即开始', description: '进入注册或登录流程。' },
+        { number: 2, x: 81, y: 4, label: '产品手册', description: '遇到配置问题时打开在线指南。' },
+        { number: 3, x: 88, y: 4, label: '登录', description: '已有账号直接进入控制台。' }
+      ]
+    }
+  ],
+  updates: [
+    {
+      src: '/guide/screenshots/synthapi-guide-quick-start-before.png',
+      alt: 'SynthAPI 在线产品手册真实截图，标出章节目录、正文和本页目录',
+      title: '在线手册：从入口快速定位操作',
+      caption: '左侧选章节，中间看操作步骤，右侧在当前页面内跳转。',
+      markers: [
+        { number: 1, x: 11, y: 30, label: '选择章节', description: '按业务主题进入对应说明。' },
+        { number: 2, x: 46, y: 61, label: '阅读正文', description: '按标题顺序完成当前操作。' },
+        { number: 3, x: 84, y: 59, label: '页内跳转', description: '长页面可直接定位小节。' }
+      ]
+    }
+  ]
+}
+
+const moduleEntries = [
+  { title: '快速开始', description: '注册、创建 Key、跑通第一条请求', icon: 'play' as const, tone: 'teal', to: '/guide/quick-start' },
+  { title: '用户指南', description: '余额、模型、用量和媒体请求', icon: 'user' as const, tone: 'blue', to: '/guide/user-guide' },
+  { title: '管理员手册', description: '账号、渠道、分组和计费配置', icon: 'server' as const, tone: 'amber', to: '/guide/admin-guide' },
+  { title: 'API 参考', description: '兼容 OpenAI 的请求和错误码', icon: 'key' as const, tone: 'rose', to: '/guide/api-reference' },
+  { title: '运维帮助', description: '监控、更新、503 与 524 排查', icon: 'chart' as const, tone: 'violet', to: '/guide/monitoring' }
+]
+
+const rolePaths = [
+  { title: '普通用户', description: '我需要创建 Key、调用模型并核对费用。', icon: 'user' as const, steps: [
+    { label: '跑通第一条请求', to: '/guide/quick-start' }, { label: '管理余额和用量', to: '/guide/user-guide' }, { label: '看懂计费记录', to: '/guide/billing' }
+  ] },
+  { title: '管理员', description: '我需要配置上游、分组、监控和更新。', icon: 'server' as const, steps: [
+    { label: '配置账号与渠道', to: '/guide/admin-guide' }, { label: '设置渠道监控', to: '/guide/monitoring' }, { label: '执行官方更新', to: '/guide/updates' }
+  ] },
+  { title: '开发者 / 运维', description: '我需要接入接口并快速定位失败原因。', icon: 'terminal' as const, steps: [
+    { label: '阅读 API 参考', to: '/guide/api-reference' }, { label: '理解核心对象', to: '/guide/concepts' }, { label: '排查 503 / 524', to: '/guide/troubleshooting' }
+  ] }
+]
+
+const readingRoute = [
+  { number: '01', for: '第一次调用', title: '跑通第一条请求', description: '确认账号、Key、分组和渠道完整可用。', to: '/guide/quick-start' },
+  { number: '02', for: '开始管理', title: '搞懂 4 个核心对象', description: '分清用户、分组、渠道和上游账号的职责。', to: '/guide/concepts' },
+  { number: '03', for: '出现异常', title: '排查 503 / 524', description: '按状态码和日志顺序缩小故障范围。', to: '/guide/troubleshooting' }
+]
 
 const currentPage = computed(() => {
   const requested = String(route.params.section || 'quick-start')
   return pages.find((page) => page.id === requested) || pages[0]
+})
+
+const currentScreenshots = computed(() => screenshotsByPage[currentPage.value.id] || [])
+const landingSearchResults = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return []
+  return pages.filter((page) => `${page.title} ${page.summary} ${page.content}`.toLowerCase().includes(query)).slice(0, 6)
 })
 
 const groups = computed(() => {
@@ -587,7 +760,7 @@ const renderedContent = computed(() => {
 function selectPage(id: string) {
   mobileNavOpen.value = false
   searchQuery.value = ''
-  if (id !== currentPage.value.id) router.push(`/guide/${id}`)
+  if (String(route.params.section || '') !== id) router.push(`/guide/${id}`)
 }
 
 watch(() => route.params.section, () => window.scrollTo({ top: 0, behavior: 'smooth' }))
@@ -669,6 +842,100 @@ watch(() => route.params.section, () => window.scrollTo({ top: 0, behavior: 'smo
 .guide-pager-button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; font-weight: 700; }
 .guide-pager-button small { display: block; margin-bottom: .15rem; color: #94a3b8; font-size: .68rem; font-weight: 500; }
 .guide-overlay { position: fixed; inset: 0; z-index: 49; background: rgba(15, 23, 42, .45); }
+.guide-home { background: white; }
+.dark .guide-home { background: #020617; }
+.guide-home-hero { display: grid; min-height: 31rem; grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr); align-items: center; gap: 5rem; max-width: 1240px; margin: 0 auto; padding: 5.5rem 3rem 4.5rem; }
+.guide-home-copy h1 { max-width: 680px; margin-top: .8rem; color: #0f172a; font-size: 3.15rem; font-weight: 780; letter-spacing: 0; line-height: 1.12; }
+.dark .guide-home-copy h1 { color: #f8fafc; }
+.guide-home-copy > p:not(.guide-eyebrow) { max-width: 640px; margin-top: 1.25rem; color: #64748b; font-size: 1.05rem; line-height: 1.8; }
+.dark .guide-home-copy > p:not(.guide-eyebrow) { color: #94a3b8; }
+.guide-home-actions { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: 2rem; }
+.guide-primary-action, .guide-secondary-action { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; gap: .55rem; border: 1px solid transparent; border-radius: .5rem; padding: .7rem 1rem; font-size: .84rem; font-weight: 700; transition: background .2s, border .2s, color .2s, transform .2s; }
+.guide-primary-action { background: #0f766e; color: white; box-shadow: 0 10px 24px rgba(15, 118, 110, .2); }
+.guide-primary-action:hover { background: #115e59; transform: translateY(-1px); }
+.guide-secondary-action { border-color: #cbd5e1; background: white; color: #334155; }
+.guide-secondary-action:hover { border-color: #0f766e; color: #0f766e; }
+.dark .guide-secondary-action { border-color: #334155; background: #0f172a; color: #e2e8f0; }
+.guide-home-route { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: .8rem; border-left: 1px solid #cbd5e1; padding: 2rem 0 2rem 3.5rem; }
+.dark .guide-home-route { border-color: #334155; }
+.guide-home-route > div { min-width: 0; }
+.guide-home-route strong { display: block; color: #e11d48; font-size: 2rem; line-height: 1; }
+.guide-home-route span { display: block; margin-top: .75rem; color: #334155; font-size: .78rem; font-weight: 700; line-height: 1.45; }
+.dark .guide-home-route span { color: #e2e8f0; }
+.guide-home-route > svg { color: #94a3b8; }
+.guide-home-search-band { position: relative; border-top: 1px solid #dbeafe; border-bottom: 1px solid #dbeafe; background: #eff6ff; padding: 2.25rem 1.5rem; }
+.dark .guide-home-search-band { border-color: #1e3a5f; background: #0b1830; }
+.guide-home-search { display: flex; max-width: 760px; margin: 0 auto; align-items: center; gap: .7rem; border: 1px solid #bfdbfe; border-radius: .5rem; background: white; padding: .8rem 1rem; color: #64748b; box-shadow: 0 10px 30px rgba(30, 64, 175, .08); }
+.dark .guide-home-search { border-color: #1d4ed8; background: #0f172a; color: #94a3b8; }
+.guide-home-search input { min-width: 0; flex: 1; background: transparent; color: #0f172a; font-size: .88rem; outline: none; }
+.dark .guide-home-search input { color: #f8fafc; }
+.guide-search-results { position: absolute; left: 50%; z-index: 20; width: min(760px, calc(100% - 3rem)); transform: translateX(-50%); border: 1px solid #cbd5e1; border-radius: .5rem; background: white; padding: .45rem; box-shadow: 0 18px 45px rgba(15, 23, 42, .16); }
+.dark .guide-search-results { border-color: #334155; background: #0f172a; }
+.guide-search-results a { display: flex; align-items: center; gap: .7rem; border-radius: .4rem; padding: .65rem .75rem; color: #475569; }
+.guide-search-results a:hover { background: #f1f5f9; color: #0f766e; }
+.dark .guide-search-results a:hover { background: #1e293b; color: #5eead4; }
+.guide-search-results a span { min-width: 0; flex: 1; }
+.guide-search-results strong, .guide-search-results small { display: block; }
+.guide-search-results strong { font-size: .78rem; }
+.guide-search-results small { margin-top: .15rem; color: #94a3b8; font-size: .66rem; }
+.guide-search-results > p { padding: .75rem; color: #64748b; font-size: .78rem; text-align: center; }
+.guide-home-section, .guide-reading-route { max-width: 1240px; margin: 0 auto; padding: 5rem 3rem; }
+.guide-home-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 2rem; }
+.guide-home-heading > div > p, .guide-download-band > div > p { color: #0f766e; font-size: .7rem; font-weight: 800; letter-spacing: .12em; }
+.guide-home-heading h2, .guide-download-band h2 { margin-top: .45rem; color: #0f172a; font-size: 1.75rem; font-weight: 760; line-height: 1.25; }
+.dark .guide-home-heading h2, .dark .guide-download-band h2 { color: #f8fafc; }
+.guide-home-heading > span { color: #94a3b8; font-size: .76rem; }
+.guide-module-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .8rem; }
+.guide-module-entry { display: flex; min-width: 0; min-height: 11.5rem; flex-direction: column; border: 1px solid #e2e8f0; border-radius: .5rem; background: white; padding: 1.15rem; transition: border .2s, box-shadow .2s, transform .2s; }
+.dark .guide-module-entry { border-color: #334155; background: #0f172a; }
+.guide-module-entry:hover { border-color: #94a3b8; box-shadow: 0 12px 28px rgba(15, 23, 42, .09); transform: translateY(-2px); }
+.guide-module-icon, .guide-role-icon { display: flex; width: 2.45rem; height: 2.45rem; align-items: center; justify-content: center; border-radius: .5rem; }
+.guide-module-icon-teal { background: #ccfbf1; color: #0f766e; }
+.guide-module-icon-blue { background: #dbeafe; color: #1d4ed8; }
+.guide-module-icon-amber { background: #fef3c7; color: #b45309; }
+.guide-module-icon-rose { background: #ffe4e6; color: #be123c; }
+.guide-module-icon-violet { background: #ede9fe; color: #6d28d9; }
+.guide-module-entry h3 { margin-top: 1rem; color: #0f172a; font-size: .96rem; font-weight: 750; }
+.dark .guide-module-entry h3 { color: #f8fafc; }
+.guide-module-entry p { margin-top: .45rem; color: #64748b; font-size: .73rem; line-height: 1.55; }
+.dark .guide-module-entry p { color: #94a3b8; }
+.guide-module-arrow { margin-top: auto; color: #94a3b8; }
+.guide-role-band { border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: #f8fafc; padding: 5rem max(3rem, calc((100% - 1144px) / 2)); }
+.dark .guide-role-band { border-color: #1e293b; background: #0b1120; }
+.guide-role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.guide-role-path { display: grid; grid-template-columns: auto 1fr; gap: 1rem; border: 1px solid #e2e8f0; border-radius: .5rem; background: white; padding: 1.4rem; }
+.dark .guide-role-path { border-color: #334155; background: #0f172a; }
+.guide-role-icon { background: #0f172a; color: white; }
+.dark .guide-role-icon { background: #f8fafc; color: #0f172a; }
+.guide-role-path h3 { color: #0f172a; font-size: 1rem; font-weight: 750; }
+.dark .guide-role-path h3 { color: #f8fafc; }
+.guide-role-path > div > p { margin-top: .35rem; color: #64748b; font-size: .74rem; line-height: 1.55; }
+.dark .guide-role-path > div > p { color: #94a3b8; }
+.guide-role-path ol { grid-column: 1 / -1; margin-top: .5rem; border-top: 1px solid #e2e8f0; padding-top: .65rem; }
+.dark .guide-role-path ol { border-color: #334155; }
+.guide-role-path li { display: grid; grid-template-columns: 2rem 1fr; align-items: center; padding: .45rem 0; }
+.guide-role-path li b { color: #e11d48; font-size: .68rem; }
+.guide-role-path li a { display: flex; align-items: center; justify-content: space-between; color: #334155; font-size: .76rem; font-weight: 650; }
+.dark .guide-role-path li a { color: #e2e8f0; }
+.guide-role-path li a:hover { color: #0f766e; }
+.guide-reading-list { border-top: 1px solid #cbd5e1; }
+.dark .guide-reading-list { border-color: #334155; }
+.guide-reading-list > a { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; align-items: center; gap: 1.5rem; border-bottom: 1px solid #e2e8f0; padding: 1.5rem .5rem; color: #0f172a; }
+.dark .guide-reading-list > a { border-color: #1e293b; color: #f8fafc; }
+.guide-reading-list > a:hover { background: #f8fafc; }
+.dark .guide-reading-list > a:hover { background: #0f172a; }
+.guide-reading-list > a > strong { color: #e11d48; font-size: 2rem; }
+.guide-reading-list small { color: #0f766e; font-size: .68rem; font-weight: 700; }
+.guide-reading-list h3 { margin-top: .2rem; font-size: 1rem; font-weight: 750; }
+.guide-reading-list p { margin-top: .3rem; color: #64748b; font-size: .75rem; }
+.dark .guide-reading-list p { color: #94a3b8; }
+.guide-download-band { display: flex; align-items: center; justify-content: space-between; gap: 3rem; background: #0f172a; padding: 3.5rem max(3rem, calc((100% - 1144px) / 2)); color: white; }
+.guide-download-band h2 { color: white; }
+.guide-download-band > div > span { display: block; margin-top: .6rem; color: #cbd5e1; font-size: .78rem; line-height: 1.6; }
+.guide-download-actions { display: flex; flex-shrink: 0; gap: .75rem; }
+.guide-download-actions a { display: inline-flex; min-height: 2.65rem; align-items: center; justify-content: center; gap: .5rem; border: 1px solid #475569; border-radius: .5rem; padding: .65rem .9rem; color: white; font-size: .78rem; font-weight: 700; }
+.guide-download-actions a:first-child { border-color: #5eead4; background: #0f766e; }
+.guide-download-actions a:hover { border-color: white; background: #1e293b; }
 
 @media (max-width: 1023px) {
   .guide-sidebar { position: fixed; left: 0; top: 0; z-index: 50; height: 100vh; transform: translateX(-100%); background: white; box-shadow: 15px 0 40px rgba(15, 23, 42, .16); transition: transform .25s ease; }
@@ -677,6 +944,11 @@ watch(() => route.params.section, () => window.scrollTo({ top: 0, behavior: 'smo
   .guide-intro { grid-template-columns: 1fr; gap: 2rem; }
   .guide-workspace { grid-template-columns: 1fr; }
   .guide-toc { display: none; }
+  .guide-home-hero { grid-template-columns: 1fr; gap: 2.5rem; padding: 4.5rem 2rem; }
+  .guide-home-route { border-left: 0; border-top: 1px solid #cbd5e1; padding: 2rem 0 0; }
+  .guide-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .guide-role-grid { grid-template-columns: 1fr; }
+  .guide-role-band { padding-right: 2rem; padding-left: 2rem; }
 }
 @media (max-width: 640px) {
   .guide-intro { padding: 2.4rem 0 2.2rem; }
@@ -686,5 +958,24 @@ watch(() => route.params.section, () => window.scrollTo({ top: 0, behavior: 'smo
   .guide-workspace { padding-top: 2.1rem; }
   .guide-pager-button { padding: .7rem; }
   .guide-pager-button span { font-size: .73rem; }
+  .guide-home-hero { min-height: auto; padding: 3.5rem 1.25rem 3rem; }
+  .guide-home-copy h1 { font-size: 2.2rem; }
+  .guide-home-copy > p:not(.guide-eyebrow) { font-size: .92rem; }
+  .guide-home-actions { align-items: stretch; flex-direction: column; }
+  .guide-home-route { grid-template-columns: 1fr; gap: .7rem; }
+  .guide-home-route > svg { transform: rotate(90deg); justify-self: center; }
+  .guide-home-route > div { display: grid; grid-template-columns: 3rem 1fr; align-items: center; }
+  .guide-home-route span { margin-top: 0; }
+  .guide-home-search-band { padding: 1.5rem 1.25rem; }
+  .guide-home-section, .guide-reading-route { padding: 3.5rem 1.25rem; }
+  .guide-home-heading { align-items: start; flex-direction: column; gap: .6rem; }
+  .guide-home-heading h2, .guide-download-band h2 { font-size: 1.45rem; }
+  .guide-module-grid { grid-template-columns: 1fr; }
+  .guide-module-entry { min-height: 9.5rem; }
+  .guide-role-band { padding: 3.5rem 1.25rem; }
+  .guide-reading-list > a { grid-template-columns: 3.5rem minmax(0, 1fr); gap: .75rem; }
+  .guide-reading-list > a > svg { display: none; }
+  .guide-download-band { align-items: stretch; flex-direction: column; gap: 1.5rem; padding: 3rem 1.25rem; }
+  .guide-download-actions { flex-direction: column; }
 }
 </style>
