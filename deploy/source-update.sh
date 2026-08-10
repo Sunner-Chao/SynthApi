@@ -270,20 +270,27 @@ resolve_known_merge_conflicts() {
 
 replay_official_first_customizations() {
   local relative_path=""
-  local patch_file=""
+  local base_file=""
+  local local_file=""
+  local official_file=""
   local official_first_paths=(
     "frontend/src/views/auth/EmailVerifyView.vue"
     "frontend/src/views/auth/RegisterView.vue"
   )
 
   for relative_path in "${official_first_paths[@]}"; do
-    patch_file="$WORKTREE_PARENT/$(basename "$relative_path").custom.patch"
-    git -C "$REPO_DIR" diff --binary "$MERGE_BASE" "$BASE_COMMIT" -- "$relative_path" > "$patch_file"
-    git -C "$WORKTREE_DIR" restore --source "$UPSTREAM_REF" --staged --worktree -- "$relative_path"
-    if [[ -s "$patch_file" ]] && ! git -C "$WORKTREE_DIR" apply --3way --index "$patch_file"; then
-      printf '%s\n' "Could not replay protected customization on official file: $relative_path"
+    base_file="$WORKTREE_PARENT/$(basename "$relative_path").base"
+    local_file="$WORKTREE_PARENT/$(basename "$relative_path").local"
+    official_file="$WORKTREE_PARENT/$(basename "$relative_path").official"
+    git -C "$REPO_DIR" show "$MERGE_BASE:$relative_path" > "$base_file"
+    git -C "$REPO_DIR" show "$BASE_COMMIT:$relative_path" > "$local_file"
+    git -C "$REPO_DIR" show "$UPSTREAM_REF:$relative_path" > "$official_file"
+    if ! git merge-file --theirs "$local_file" "$base_file" "$official_file"; then
+      printf '%s\n' "Could not three-way merge protected customization: $relative_path"
       return 1
     fi
+    install -m 644 "$local_file" "$WORKTREE_DIR/$relative_path"
+    git -C "$WORKTREE_DIR" add -- "$relative_path"
   done
 
   if ! git -C "$WORKTREE_DIR" diff --cached --quiet; then
