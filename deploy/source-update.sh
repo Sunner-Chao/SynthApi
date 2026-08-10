@@ -274,6 +274,8 @@ replay_official_first_customizations() {
   local local_file=""
   local official_file=""
   local official_first_paths=(
+    "backend/internal/repository/gateway_cache.go"
+    "backend/internal/handler/grok_media.go"
     "frontend/src/views/auth/EmailVerifyView.vue"
     "frontend/src/views/auth/RegisterView.vue"
   )

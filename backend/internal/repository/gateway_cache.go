@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -16,7 +14,6 @@ import (
 
 const stickySessionPrefix = "sticky_session:"
 const liveCallPrefix = "live:call:"
-const cmccSeedanceTaskMetadataPrefix = "cmcc_seedance_task:"
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -34,14 +31,7 @@ func buildSessionKey(groupID int64, sessionHash string) string {
 
 func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
 	key := buildSessionKey(groupID, sessionHash)
-	accountID, err := c.rdb.Get(ctx, key).Int64()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return 0, service.ErrStickySessionNotFound
-		}
-		return 0, err
-	}
-	return accountID, nil
+	return c.rdb.Get(ctx, key).Int64()
 }
 
 func (c *gatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
@@ -66,50 +56,9 @@ func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64
 	return c.rdb.Del(ctx, key).Err()
 }
 
-func buildCMCCSeedanceTaskMetadataKey(groupID int64, taskHash string) string {
-	return fmt.Sprintf("%s%d:%s", cmccSeedanceTaskMetadataPrefix, groupID, taskHash)
-}
-
-func (c *gatewayCache) SaveCMCCSeedanceTaskMetadata(
-	ctx context.Context,
-	groupID int64,
-	taskHash string,
-	metadata *service.CMCCSeedanceBillingMetadata,
-	ttl time.Duration,
-) error {
-	if metadata == nil || taskHash == "" || ttl <= 0 {
-		return fmt.Errorf("invalid cmcc seedance task metadata")
-	}
-	encoded, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("encode cmcc seedance task metadata: %w", err)
-	}
-	return c.rdb.Set(ctx, buildCMCCSeedanceTaskMetadataKey(groupID, taskHash), encoded, ttl).Err()
-}
-
-func (c *gatewayCache) GetCMCCSeedanceTaskMetadata(
-	ctx context.Context,
-	groupID int64,
-	taskHash string,
-) (*service.CMCCSeedanceBillingMetadata, error) {
-	if taskHash == "" {
-		return nil, fmt.Errorf("invalid cmcc seedance task metadata key")
-	}
-	encoded, err := c.rdb.Get(ctx, buildCMCCSeedanceTaskMetadataKey(groupID, taskHash)).Bytes()
-	if err != nil {
-		return nil, err
-	}
-	var metadata service.CMCCSeedanceBillingMetadata
-	if err := json.Unmarshal(encoded, &metadata); err != nil {
-		return nil, fmt.Errorf("decode cmcc seedance task metadata: %w", err)
-	}
-	return &metadata, nil
-}
-
 // Compile-time assertion: gatewayCache must implement CyberSessionBlockStore.
 var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)
-var _ service.CMCCSeedanceTaskMetadataStore = (*gatewayCache)(nil)
 
 const cyberSessionBlockPrefix = "cyber_session_block:"
 

@@ -14,6 +14,20 @@ if ! grep -Fq 'replay_official_first_customizations' "$UPDATER"; then
   echo "source updater does not replay branding on official authentication views" >&2
   exit 1
 fi
+for official_first_path in \
+  'backend/internal/repository/gateway_cache.go' \
+  'backend/internal/handler/grok_media.go' \
+  'frontend/src/views/auth/EmailVerifyView.vue' \
+  'frontend/src/views/auth/RegisterView.vue'; do
+  if ! grep -Fq "\"$official_first_path\"" "$UPDATER"; then
+    echo "source updater is missing official-first merge policy for $official_first_path" >&2
+    exit 1
+  fi
+done
+if [[ ! -f "$ROOT_DIR/backend/internal/repository/gateway_cache_cmcc.go" ]]; then
+  echo "CMCC Seedance cache customization is not isolated from the official gateway cache" >&2
+  exit 1
+fi
 REPO="$TEMP_DIR/repo"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name "Source update test"
