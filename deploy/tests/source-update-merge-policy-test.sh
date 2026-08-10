@@ -14,6 +14,10 @@ if ! grep -Fq 'replay_official_first_customizations' "$UPDATER"; then
   echo "source updater does not replay branding on official authentication views" >&2
   exit 1
 fi
+if ! grep -Fq 'restore_full_local_customizations' "$UPDATER"; then
+  echo "source updater does not preserve the complete Grok media implementation" >&2
+  exit 1
+fi
 
 REPO="$TEMP_DIR/repo"
 git init -q -b main "$REPO"
