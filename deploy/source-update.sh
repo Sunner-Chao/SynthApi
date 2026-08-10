@@ -380,7 +380,10 @@ write_status "running" "$CURRENT_PHASE" "Merging official source with protected 
 if ! git -C "$REPO_DIR" worktree add -b "$CANDIDATE_BRANCH" "$WORKTREE_DIR" "$BASE_COMMIT"; then
   finish_failed "failed" "Failed to create an isolated update worktree" "not_started"
 fi
-if ! git -C "$WORKTREE_DIR" merge --no-ff --no-edit "$UPSTREAM_REF"; then
+# Production customizations win only inside overlapping conflict hunks. Official
+# changes outside those hunks are still merged, then guards and a full image
+# build verify the candidate before it can replace the running deployment.
+if ! git -C "$WORKTREE_DIR" merge --no-ff --no-edit -X ours "$UPSTREAM_REF"; then
   if ! resolve_known_merge_conflicts; then
     conflicts=$(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U | paste -sd, -)
     finish_failed "failed" "Official merge requires manual conflict resolution: ${conflicts:-unknown files}" "not_started"
