@@ -263,7 +263,14 @@ const hasRegisterData = ref<boolean>(false)
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
-const siteName = ref<string>('SynthAPI')
+const tencentCaptchaEnabled = ref<boolean>(false)
+const tencentCaptchaAppId = ref<string>('')
+const tencentCaptchaRegion = ref<string>('cn')
+const aliyunCaptchaEnabled = ref<boolean>(false)
+const aliyunCaptchaSceneId = ref<string>('')
+const aliyunCaptchaPrefix = ref<string>('')
+const aliyunCaptchaRegion = ref<string>('cn')
+const siteName = ref<string>('Sub2API')
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 // 域名限量注册开关：开启时非白名单域名可注册 1 个账户（由后端判定），前端不做白名单预检。
 const emailDomainQuotaEnabled = ref<boolean>(false)
@@ -358,7 +365,14 @@ onMounted(async () => {
     const settings = await getPublicSettings()
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'SynthAPI'
+    tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
+    tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    tencentCaptchaRegion.value = settings.tencent_captcha_region || 'cn'
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
+    siteName.value = settings.site_name || 'Sub2API'
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
