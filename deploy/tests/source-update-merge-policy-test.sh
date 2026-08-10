@@ -10,6 +10,10 @@ if ! grep -Fq 'merge --no-ff --no-edit -X ours "$UPSTREAM_REF"' "$UPDATER"; then
   echo "source updater does not favor production customizations in merge conflicts" >&2
   exit 1
 fi
+if ! grep -Fq 'replay_official_first_customizations' "$UPDATER"; then
+  echo "source updater does not replay branding on official authentication views" >&2
+  exit 1
+fi
 
 REPO="$TEMP_DIR/repo"
 git init -q -b main "$REPO"

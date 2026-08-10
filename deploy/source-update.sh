@@ -268,6 +268,34 @@ resolve_known_merge_conflicts() {
     commit --no-edit -m "chore(update): merge official source with customizations" >/dev/null
 }
 
+replay_official_first_customizations() {
+  local relative_path=""
+  local patch_file=""
+  local official_first_paths=(
+    "frontend/src/views/auth/EmailVerifyView.vue"
+    "frontend/src/views/auth/RegisterView.vue"
+  )
+
+  for relative_path in "${official_first_paths[@]}"; do
+    patch_file="$WORKTREE_PARENT/$(basename "$relative_path").custom.patch"
+    git -C "$REPO_DIR" diff --binary "$MERGE_BASE" "$BASE_COMMIT" -- "$relative_path" > "$patch_file"
+    git -C "$WORKTREE_DIR" restore --source "$UPSTREAM_REF" --staged --worktree -- "$relative_path"
+    if [[ -s "$patch_file" ]] && ! git -C "$WORKTREE_DIR" apply --3way --index "$patch_file"; then
+      printf '%s\n' "Could not replay protected customization on official file: $relative_path"
+      return 1
+    fi
+  done
+
+  if ! git -C "$WORKTREE_DIR" diff --cached --quiet; then
+    git -C "$WORKTREE_DIR" \
+      -c user.name="SynthAPI Source Updater" \
+      -c user.email="source-update@synthapi.local" \
+      -c commit.gpgsign=false \
+      -c core.hooksPath=/dev/null \
+      commit -m "chore(update): replay protected authentication customizations" >/dev/null
+  fi
+}
+
 trap cleanup EXIT
 trap 'handle_unexpected_error $? $LINENO' ERR
 
@@ -388,6 +416,9 @@ if ! git -C "$WORKTREE_DIR" merge --no-ff --no-edit -X ours "$UPSTREAM_REF"; the
     conflicts=$(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U | paste -sd, -)
     finish_failed "failed" "Official merge requires manual conflict resolution: ${conflicts:-unknown files}" "not_started"
   fi
+fi
+if ! replay_official_first_customizations; then
+  finish_failed "failed" "Could not combine official authentication updates with protected branding" "not_started"
 fi
 CANDIDATE_COMMIT=$(git -C "$WORKTREE_DIR" rev-parse HEAD)
 if ! git -C "$WORKTREE_DIR" merge-base --is-ancestor "$UPSTREAM_COMMIT" "$CANDIDATE_COMMIT"; then
