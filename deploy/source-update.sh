@@ -165,69 +165,6 @@ handle_unexpected_error() {
   exit "$exit_code"
 }
 
-resolve_gateway_cache_conflict() {
-  local relative_path="backend/internal/repository/gateway_cache.go"
-
-  # Start from the official file, then replay the local customization diff.
-  # This keeps official sticky-session behavior while retaining custom cache APIs.
-  git -C "$WORKTREE_DIR" checkout-index --force --stage=3 -- "$relative_path"
-  git -C "$WORKTREE_DIR" add -- "$relative_path"
-  if ! git -C "$REPO_DIR" diff "$MERGE_BASE" "$BASE_COMMIT" -- "$relative_path" |
-    git -C "$WORKTREE_DIR" apply --3way --index -; then
-    :
-  fi
-
-  if [[ -n "$(git -C "$WORKTREE_DIR" ls-files --unmerged -- "$relative_path")" ]]; then
-    if ! python3 - "$WORKTREE_DIR/$relative_path" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-result = []
-index = 0
-while index < len(lines):
-    if not lines[index].startswith("<<<<<<<"):
-        result.append(lines[index])
-        index += 1
-        continue
-
-    ours = []
-    theirs = []
-    index += 1
-    while index < len(lines) and not lines[index].startswith("======="):
-        ours.append(lines[index])
-        index += 1
-    if index >= len(lines):
-        raise SystemExit("Unterminated gateway cache conflict")
-    index += 1
-    while index < len(lines) and not lines[index].startswith(">>>>>>>"):
-        theirs.append(lines[index])
-        index += 1
-    if index >= len(lines):
-        raise SystemExit("Unterminated gateway cache conflict")
-    index += 1
-
-    # Only import-only conflicts are safe to union automatically.
-    merged = []
-    for item in ours + theirs:
-        if item.strip() and not item.lstrip().startswith('"'):
-            raise SystemExit("Gateway cache conflict is not import-only")
-        if item not in merged:
-            merged.append(item)
-    result.extend(merged)
-
-path.write_text("".join(result), encoding="utf-8")
-PY
-    then
-      return 1
-    fi
-    git -C "$WORKTREE_DIR" add -- "$relative_path"
-  fi
-
-  [[ -z "$(git -C "$WORKTREE_DIR" ls-files --unmerged -- "$relative_path")" ]]
-}
-
 resolve_known_merge_conflicts() {
   local conflict_path=""
   local unresolved=()
@@ -240,10 +177,13 @@ resolve_known_merge_conflicts() {
         git -C "$WORKTREE_DIR" checkout-index --force --stage=2 -- "$conflict_path"
         git -C "$WORKTREE_DIR" add -- "$conflict_path"
         ;;
-      backend/internal/repository/gateway_cache.go)
-        if ! resolve_gateway_cache_conflict; then
-          unresolved+=("$conflict_path")
-        fi
+      backend/internal/repository/gateway_cache.go | \
+      backend/internal/handler/grok_media.go | \
+      frontend/src/views/auth/EmailVerifyView.vue | \
+      frontend/src/views/auth/RegisterView.vue)
+        # These paths are deterministically replayed after the merge.
+        git -C "$WORKTREE_DIR" checkout-index --force --stage=2 -- "$conflict_path"
+        git -C "$WORKTREE_DIR" add -- "$conflict_path"
         ;;
       *)
         unresolved+=("$conflict_path")
@@ -273,12 +213,19 @@ replay_official_first_customizations() {
   local base_file=""
   local local_file=""
   local official_file=""
-  local official_first_paths=(
+  local official_only_paths=(
     "backend/internal/repository/gateway_cache.go"
+  )
+  local official_first_paths=(
     "backend/internal/handler/grok_media.go"
     "frontend/src/views/auth/EmailVerifyView.vue"
     "frontend/src/views/auth/RegisterView.vue"
   )
+
+  for relative_path in "${official_only_paths[@]}"; do
+    git -C "$REPO_DIR" show "$UPSTREAM_REF:$relative_path" > "$WORKTREE_DIR/$relative_path"
+    git -C "$WORKTREE_DIR" add -- "$relative_path"
+  done
 
   for relative_path in "${official_first_paths[@]}"; do
     base_file="$WORKTREE_PARENT/$(basename "$relative_path").base"
@@ -301,7 +248,7 @@ replay_official_first_customizations() {
       -c user.email="source-update@synthapi.local" \
       -c commit.gpgsign=false \
       -c core.hooksPath=/dev/null \
-      commit -m "chore(update): replay protected authentication customizations" >/dev/null
+      commit -m "chore(update): replay official-first protected customizations" >/dev/null
   fi
 }
 
@@ -427,7 +374,7 @@ if ! git -C "$WORKTREE_DIR" merge --no-ff --no-edit -X ours "$UPSTREAM_REF"; the
   fi
 fi
 if ! replay_official_first_customizations; then
-  finish_failed "failed" "Could not combine official authentication updates with protected branding" "not_started"
+  finish_failed "failed" "Could not combine official updates with protected customizations" "not_started"
 fi
 CANDIDATE_COMMIT=$(git -C "$WORKTREE_DIR" rev-parse HEAD)
 if ! git -C "$WORKTREE_DIR" merge-base --is-ancestor "$UPSTREAM_COMMIT" "$CANDIDATE_COMMIT"; then
