@@ -303,27 +303,6 @@ replay_official_first_customizations() {
   fi
 }
 
-restore_full_local_customizations() {
-  local relative_path=""
-  local full_local_paths=(
-    "backend/internal/handler/grok_media.go"
-    "backend/internal/service/grok_media.go"
-  )
-
-  for relative_path in "${full_local_paths[@]}"; do
-    git -C "$WORKTREE_DIR" restore --source "$BASE_COMMIT" --staged --worktree -- "$relative_path"
-  done
-
-  if ! git -C "$WORKTREE_DIR" diff --cached --quiet; then
-    git -C "$WORKTREE_DIR" \
-      -c user.name="SynthAPI Source Updater" \
-      -c user.email="source-update@synthapi.local" \
-      -c commit.gpgsign=false \
-      -c core.hooksPath=/dev/null \
-      commit -m "chore(update): restore protected Grok media implementation" >/dev/null
-  fi
-}
-
 trap cleanup EXIT
 trap 'handle_unexpected_error $? $LINENO' ERR
 
@@ -448,7 +427,6 @@ fi
 if ! replay_official_first_customizations; then
   finish_failed "failed" "Could not combine official authentication updates with protected branding" "not_started"
 fi
-restore_full_local_customizations
 CANDIDATE_COMMIT=$(git -C "$WORKTREE_DIR" rev-parse HEAD)
 if ! git -C "$WORKTREE_DIR" merge-base --is-ancestor "$UPSTREAM_COMMIT" "$CANDIDATE_COMMIT"; then
   finish_failed "failed" "Candidate does not contain the requested official tag" "not_started"
