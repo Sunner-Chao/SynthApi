@@ -5,8 +5,11 @@ backend/internal/payment/provider/alipay.go|usesRedirectMode
 backend/internal/service/payment_config_providers.go|"environment": {}
 backend/internal/service/setting_parse.go|"SynthAPI"
 backend/internal/service/grok_media_custom_helpers.go|grokMediaJSONImageURL
-backend/internal/service/grok_media.go|grokMediaJSONImageURL
+backend/internal/handler/grok_media_cmcc.go|handleCMCCSeedanceUsage
+backend/internal/repository/gateway_cache_cmcc.go|SaveCMCCSeedanceTaskMetadata
 deploy/Caddyfile|synthapi.ecobim.club
 frontend/src/views/admin/RedeemView.vue|purchase_subscription_url
 frontend/src/views/user/RedeemView.vue|purchase_subscription_url
+frontend/src/router/index.ts|path: '/guide/:section?'
+frontend/src/views/public/ProductGuideView.vue|GuideDiagram
 git_shell_linux/push-github.sh|git push
