@@ -45,23 +45,23 @@ defineProps<{ kind: 'pipeline' | 'admin' | 'api' | 'billing' | 'monitor' | 'upda
 </script>
 
 <style scoped>
-.diagram-frame { border: 1px solid #ccfbf1; border-radius: .5rem; background: #f8fffe; padding: 1rem; box-shadow: 0 18px 40px rgba(15, 118, 110, .08); }
-.dark .diagram-frame { border-color: rgba(45, 212, 191, .25); background: #0f172a; }
-.diagram-head { display: flex; align-items: center; gap: .55rem; color: #334155; font-size: .76rem; font-weight: 700; }
-.dark .diagram-head { color: #e2e8f0; }
-.diagram-kicker { border-radius: .3rem; background: #0f766e; padding: .18rem .4rem; color: white; font-size: .62rem; }
-.diagram { min-height: 150px; padding: 1.4rem .3rem .8rem; }
-.diagram-node { display: flex; min-width: 4.5rem; flex-direction: column; align-items: center; gap: .38rem; border: 1px solid #99f6e4; border-radius: .5rem; background: white; padding: .75rem .45rem; color: #0f766e; font-size: .68rem; font-weight: 700; }
-.dark .diagram-node { border-color: rgba(45, 212, 191, .35); background: #0f172a; color: #99f6e4; }
+.diagram-frame { border: 1px solid #29456f; border-radius: .65rem; background: linear-gradient(145deg, rgba(12, 29, 56, .96), rgba(9, 21, 43, .98)); padding: 1.35rem; box-shadow: 0 22px 45px rgba(0, 4, 18, .28); }
+.diagram-head { display: flex; align-items: center; gap: .65rem; color: #edf4ff; font-size: .82rem; font-weight: 750; }
+.diagram-kicker { border-radius: .35rem; background: linear-gradient(135deg, #0ea5b7, #0f766e); padding: .23rem .45rem; color: white; font-size: .62rem; }
+.diagram { min-height: 220px; padding: 1.4rem .3rem .8rem; }
+.diagram-node { display: flex; min-width: 4.5rem; flex-direction: column; align-items: center; gap: .42rem; border: 1px solid rgba(32, 211, 230, .5); border-radius: .6rem; background: linear-gradient(155deg, rgba(9, 101, 124, .34), rgba(9, 34, 59, .8)); padding: .85rem .5rem; color: #72ecf5; font-size: .7rem; font-weight: 750; box-shadow: inset 0 0 22px rgba(21, 187, 214, .12); }
 .diagram-pipeline { display: flex; align-items: center; justify-content: space-between; gap: .25rem; }
 .diagram-arrow { flex-shrink: 0; color: #2dd4bf; }
-.diagram-concepts { display: grid; grid-template-columns: 1fr .7fr 1fr .7fr 1fr; align-items: center; gap: .3rem; }
+.diagram-concepts { display: grid; grid-template-columns: 1fr .72fr 1fr .72fr 1fr; align-items: center; gap: .35rem; }
+.diagram-concepts .diagram-node { min-height: 9.5rem; justify-content: center; }
+.diagram-concepts .node-group { border-color: rgba(153, 96, 255, .65); color: #bb8cff; background: linear-gradient(155deg, rgba(89, 47, 160, .45), rgba(22, 25, 68, .88)); box-shadow: inset 0 0 24px rgba(123, 73, 226, .17); }
+.diagram-concepts .node-upstream { border-color: rgba(65, 151, 255, .72); color: #63b2ff; background: linear-gradient(155deg, rgba(31, 88, 160, .48), rgba(13, 31, 65, .9)); box-shadow: inset 0 0 24px rgba(52, 124, 235, .18); }
 .diagram-branch { display: flex; flex-direction: column; align-items: center; gap: .3rem; color: #64748b; font-size: .62rem; }
 .diagram-branch span { position: relative; }
 .diagram-branch span::before { content: ''; position: absolute; top: 50%; right: calc(100% + .22rem); width: .7rem; border-top: 1px dashed #5eead4; }
 .diagram-stack { padding-top: .9rem; }
 .stack-step { display: flex; align-items: center; gap: .65rem; border: 1px solid #e2e8f0; border-radius: .45rem; background: white; padding: .42rem .6rem; color: #64748b; font-size: .68rem; }
-.dark .stack-step { border-color: #334155; background: #0f172a; color: #94a3b8; }
+.stack-step { border-color: #284365; background: #0b1b35; color: #9eb2d2; }
 .stack-step b { color: #14b8a6; font-size: .62rem; }
 .stack-active { border-color: #5eead4; background: #ccfbf1; color: #115e59; }
 .dark .stack-active { background: rgba(13, 148, 136, .2); color: #99f6e4; }
@@ -71,29 +71,29 @@ defineProps<{ kind: 'pipeline' | 'admin' | 'api' | 'billing' | 'monitor' | 'upda
 .billing-ring::before { content: ''; position: absolute; width: 4.2rem; height: 4.2rem; border: 2px solid #5eead4; border-radius: 50%; }
 .billing-ring { position: relative; height: 4.2rem; justify-content: center; }
 .billing-ring small, .monitor-check small, .security-layer small { display: block; color: #64748b; font-size: .54rem; font-weight: 500; line-height: 1.25; }
-.dark .billing-ring small, .dark .monitor-check small, .dark .security-layer small { color: #94a3b8; }
+.billing-ring small, .monitor-check small, .security-layer small { color: #94a3b8; }
 .billing-arrow { color: #2dd4bf; font-size: 1.1rem; }
 .monitor-check { padding: .65rem .35rem; border: 1px solid #99f6e4; border-radius: .5rem; background: rgba(255, 255, 255, .75); }
-.dark .monitor-check { background: rgba(15, 23, 42, .75); }
+.monitor-check { background: rgba(10, 28, 51, .8); }
 .monitor-connector { flex: 1; border-top: 1px dashed #5eead4; }
 .update-gate { display: flex; align-items: center; gap: .5rem; border-bottom: 1px solid #99f6e4; padding: .45rem 0; color: #0f766e; font-size: .7rem; font-weight: 700; }
 .update-gate::after { content: '通过'; margin-left: auto; border-radius: .3rem; background: #ccfbf1; padding: .15rem .35rem; color: #0f766e; font-size: .55rem; }
-.dark .update-gate::after { background: rgba(13, 148, 136, .2); color: #99f6e4; }
+.update-gate::after { background: rgba(13, 148, 136, .2); color: #99f6e4; }
 .update-gate-final { color: #047857; }
 .diagram-troubleshoot { display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; gap: .45rem; }
 .trouble-status { display: flex; min-height: 5rem; flex-direction: column; align-items: center; justify-content: center; gap: .3rem; border: 1px solid #fecaca; border-radius: .5rem; background: #fff1f2; color: #be123c; text-align: center; }
 .trouble-status b { font-size: 1.1rem; }
 .trouble-status span { font-size: .62rem; }
 .trouble-status-neutral { border-color: #99f6e4; background: #f0fdfa; color: #0f766e; }
-.dark .trouble-status { border-color: rgba(251, 113, 133, .35); background: rgba(159, 18, 57, .15); }
-.dark .trouble-status-neutral { border-color: rgba(45, 212, 191, .3); background: rgba(13, 148, 136, .12); }
+.trouble-status { border-color: rgba(251, 113, 133, .35); background: rgba(159, 18, 57, .15); }
+.trouble-status-neutral { border-color: rgba(45, 212, 191, .3); background: rgba(13, 148, 136, .12); }
 .security-layer { min-height: 5.4rem; justify-content: center; border: 1px solid #99f6e4; border-radius: .5rem; background: rgba(255, 255, 255, .75); }
-.dark .security-layer { background: rgba(15, 23, 42, .75); }
+.security-layer { background: rgba(10, 28, 51, .8); }
 .api-code { display: flex; flex-direction: column; gap: .4rem; border-radius: .5rem; background: #0f172a; padding: .8rem; color: #a7f3d0; font-size: .62rem; }
 .api-dot { display: inline-block; width: .35rem; height: .35rem; margin-right: .15rem; border-radius: 50%; background: #fb7185; }
 .api-dot:nth-child(2) { background: #facc15; }.api-dot:nth-child(3) { background: #4ade80; }
 .api-response { display: flex; align-items: center; justify-content: center; gap: .45rem; margin-top: .7rem; color: #047857; font-size: .7rem; font-weight: 700; }
 .diagram-api { min-height: 150px; }
-figcaption { margin-top: .55rem; color: #94a3b8; font-size: .6rem; line-height: 1.5; }
+figcaption { margin-top: .75rem; color: #8094b7; font-size: .62rem; line-height: 1.5; }
 @media (max-width: 640px) { .diagram-frame { padding: .8rem; } .diagram-node { min-width: 3.8rem; padding: .6rem .25rem; font-size: .59rem; } .diagram-arrow { width: .85rem; } .diagram { min-height: 132px; } }
 </style>

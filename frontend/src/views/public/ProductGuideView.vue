@@ -1,201 +1,61 @@
 <template>
-  <div class="guide-shell min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-    <header class="guide-topbar sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-      <div class="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-6">
-        <div class="flex min-w-0 items-center gap-3">
-          <button
-            v-if="!isGuideHome"
-            class="guide-icon-button lg:hidden"
-            aria-label="打开文档目录"
-            title="打开文档目录"
-            @click="mobileNavOpen = true"
-          >
-            <Icon name="menu" size="md" />
-          </button>
-          <router-link to="/guide" class="flex min-w-0 items-center gap-2.5">
-            <span class="guide-mark"><Icon name="book" size="sm" /></span>
-            <span class="min-w-0 truncate text-sm font-semibold tracking-wide sm:text-base">SynthAPI 产品手册</span>
-          </router-link>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="hidden text-xs text-slate-400 sm:inline">当前版本 0.1.173</span>
-          <a class="guide-top-link" href="/downloads/SynthAPI-产品使用手册-v0.1.173.pdf" download title="下载 PDF 产品手册">
-            <Icon name="download" size="sm" />
-            <span class="hidden md:inline">下载手册</span>
-          </a>
-          <router-link to="/home" class="guide-top-link">
-            <Icon name="home" size="sm" />
-            <span class="hidden sm:inline">返回站点</span>
-          </router-link>
-        </div>
+  <div class="guide-shell" :class="isGuideHome ? 'guide-shell-home' : 'guide-shell-article'">
+    <header v-if="!isGuideHome" class="guide-topbar">
+      <div class="guide-topbar-brand">
+        <button class="guide-icon-button guide-mobile-menu" aria-label="打开文档目录" title="打开文档目录" @click="mobileNavOpen = true"><Icon name="menu" size="md" /></button>
+        <router-link to="/guide" class="guide-brand-link"><span class="guide-mark"><Icon name="book" size="sm" /></span><span><b>SynthAPI</b><em>产品手册</em></span></router-link>
+      </div>
+      <div class="guide-topbar-actions">
+        <span>当前版本&nbsp; 0.1.173 <Icon name="chevronDown" size="xs" /></span>
+        <a href="/downloads/SynthAPI-产品使用手册-v0.1.173.pdf" download><Icon name="download" size="sm" />下载手册</a>
+        <router-link to="/home"><Icon name="home" size="sm" />返回站点</router-link>
       </div>
     </header>
 
-    <div v-if="!isGuideHome && mobileNavOpen" class="guide-overlay lg:hidden" @click="mobileNavOpen = false"></div>
-    <div v-if="!isGuideHome" class="mx-auto flex max-w-[1440px]">
-      <aside
-        class="guide-sidebar"
-        :class="{ 'guide-sidebar-open': mobileNavOpen }"
-        aria-label="产品手册目录"
-      >
-        <div class="flex items-center justify-between lg:hidden">
-          <span class="text-sm font-semibold">目录</span>
-          <button class="guide-icon-button" aria-label="关闭文档目录" title="关闭文档目录" @click="mobileNavOpen = false">
-            <Icon name="x" size="sm" />
-          </button>
-        </div>
+    <div v-if="mobileNavOpen" class="guide-overlay" @click="mobileNavOpen = false"></div>
+    <div class="guide-frame">
+      <aside class="guide-sidebar" :class="{ 'guide-sidebar-open': mobileNavOpen }" aria-label="产品手册目录">
+        <div class="guide-sidebar-brand"><span class="guide-mark"><Icon name="book" size="sm" /></span><span><b>SynthAPI</b><em>产品手册</em></span></div>
+        <div class="guide-sidebar-mobile-head"><span>文档目录</span><button class="guide-icon-button" aria-label="关闭文档目录" title="关闭文档目录" @click="mobileNavOpen = false"><Icon name="x" size="sm" /></button></div>
+        <label class="guide-search"><Icon name="search" size="sm" /><input v-model="searchQuery" type="search" placeholder="搜索文档..." aria-label="搜索文档" /><kbd v-if="!searchQuery">⌘K</kbd></label>
 
-        <label class="guide-search">
-          <Icon name="search" size="sm" class="shrink-0 text-slate-400" />
-          <input v-model="searchQuery" type="search" placeholder="搜索章节或关键词" aria-label="搜索章节或关键词" />
-          <kbd v-if="!searchQuery" class="hidden rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-400 sm:inline dark:border-slate-700">/</kbd>
-        </label>
-
-        <nav class="guide-nav" aria-label="文档章节">
-          <div v-for="group in filteredGroups" :key="group.label" class="mb-6">
-            <p class="guide-nav-label">{{ group.label }}</p>
-            <button
-              v-for="item in group.items"
-              :key="item.id"
-              type="button"
-              class="guide-nav-item"
-              :class="{ 'guide-nav-item-active': item.id === currentPage.id }"
-              @click="selectPage(item.id)"
-            >
-              <Icon :name="item.icon" size="sm" />
-              <span>{{ item.title }}</span>
-              <Icon v-if="item.id === currentPage.id" name="chevronRight" size="xs" class="ml-auto" />
-            </button>
-          </div>
-          <p v-if="filteredGroups.length === 0" class="px-3 py-5 text-xs leading-5 text-slate-400">没有匹配的章节。换个关键词试试。</p>
+        <template v-if="isGuideHome">
+          <nav class="guide-home-sidebar-actions" aria-label="开始使用">
+            <router-link to="/guide/quick-start" class="home-sidebar-action home-sidebar-action-cyan"><Icon name="play" size="lg" /><span><b>普通用户开始使用</b><small>快速上手，完成第一次调用</small></span></router-link>
+            <router-link to="/guide/admin-guide" class="home-sidebar-action home-sidebar-action-violet"><Icon name="cog" size="lg" /><span><b>管理员配置指南</b><small>系统配置与权限管理</small></span></router-link>
+          </nav>
+          <nav class="guide-home-sidebar-nav" aria-label="文档快捷入口">
+            <router-link to="/guide"><Icon name="document" size="sm" />所有文档</router-link>
+            <router-link to="/guide/updates"><Icon name="sync" size="sm" />更新日志<span>v0.1.173</span></router-link>
+            <router-link to="/guide/monitoring"><Icon name="chart" size="sm" />API 状态<i></i><b>正常</b></router-link>
+            <router-link to="/guide/troubleshooting"><Icon name="questionCircle" size="sm" />常见问题</router-link>
+            <a href="mailto:support@synthapi.ecobim.club"><Icon name="chat" size="sm" />联系我们</a>
+          </nav>
+        </template>
+        <nav v-else class="guide-nav" aria-label="文档章节">
+          <div v-for="group in filteredGroups" :key="group.label" class="guide-nav-group"><p class="guide-nav-label">{{ group.label }}</p><button v-for="item in group.items" :key="item.id" type="button" class="guide-nav-item" :class="{ 'guide-nav-item-active': item.id === currentPage.id }" @click="selectPage(item.id)"><Icon :name="item.icon" size="sm" /><span>{{ item.title }}</span><Icon v-if="item.id === currentPage.id" name="chevronRight" size="xs" class="guide-nav-current" /></button></div>
+          <p v-if="filteredGroups.length === 0" class="guide-nav-empty">没有匹配的章节。换个关键词试试。</p>
         </nav>
-
-        <div class="mt-auto border-t border-slate-200 pt-4 text-xs leading-5 text-slate-400 dark:border-slate-800">
-          <p>文档内容随产品版本更新，页面中的价格、配额和上游可用性以站点实际配置为准。</p>
-          <a class="mt-2 inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 dark:text-teal-400" href="https://github.com/Wei-Shaw/sub2api" target="_blank" rel="noopener noreferrer">
-            查看开源项目 <Icon name="externalLink" size="xs" />
-          </a>
-        </div>
+        <div class="guide-help-card"><Icon name="sparkles" size="sm" /><div><b>需要帮助？</b><span>查看常见问题或联系我们的团队</span></div><Icon name="arrowRight" size="sm" /></div>
       </aside>
 
-      <main class="guide-content min-w-0 flex-1 px-4 py-7 sm:px-8 sm:py-10 lg:px-14">
-        <div class="guide-breadcrumb"><span>产品手册</span><Icon name="chevronRight" size="xs" /><span>{{ currentPage.group }}</span><Icon name="chevronRight" size="xs" /><strong>{{ currentPage.title }}</strong></div>
-
-        <section class="guide-intro">
-          <div class="guide-intro-copy">
-            <p class="guide-eyebrow">{{ currentPage.eyebrow }}</p>
-            <h1>{{ currentPage.title }}</h1>
-            <p class="guide-summary">{{ currentPage.summary }}</p>
-            <div class="guide-meta">
-              <span><Icon name="clock" size="xs" /> 阅读约 {{ currentPage.reading }}</span>
-              <span><Icon name="calendar" size="xs" /> 更新于 {{ currentPage.updated }}</span>
-            </div>
-          </div>
-          <GuideDiagram :kind="currentPage.diagram" :title="currentPage.diagramTitle" />
+      <main v-if="isGuideHome" class="guide-home-main">
+        <div class="guide-home-toprow"><button class="guide-icon-button guide-home-menu" aria-label="打开文档目录" title="打开文档目录" @click="mobileNavOpen = true"><Icon name="menu" size="md" /></button><label class="guide-home-search"><Icon name="search" size="sm" /><input v-model="searchQuery" type="search" placeholder="API Key、503、渠道监控..." aria-label="搜索产品手册" /><kbd v-if="!searchQuery">⌘K</kbd></label><div class="guide-home-wordmark"><span class="guide-cube-mark">✦</span><span><b>SynthAPI</b><em>产品手册</em></span></div></div>
+        <section class="guide-home-hero">
+          <div class="guide-home-copy"><p class="guide-eyebrow">SYNTHAPI DOCUMENTATION</p><h1>先选身份，再按步骤完成</h1><span class="guide-title-underline"></span><p>从第一次调用到管理员运维，把复杂配置拆成能照着操作的短步骤。<br />所有说明均基于 SynthAPI 当前版本。</p><div class="guide-home-actions"><router-link class="guide-primary-action" to="/guide/quick-start"><Icon name="play" size="sm" />普通用户开始使用</router-link><router-link class="guide-secondary-action" to="/guide/admin-guide"><Icon name="cog" size="sm" />管理员配置指南</router-link></div></div>
+          <div class="guide-home-hero-visual" aria-hidden="true"><span class="visual-grid"></span><div class="visual-stack visual-stack-back"></div><div class="visual-stack visual-stack-middle"></div><div class="visual-stack visual-stack-front"><i></i><i></i><i></i></div><span class="visual-spark visual-spark-one"></span><span class="visual-spark visual-spark-two"></span></div>
         </section>
+        <section class="guide-home-search-band"><div v-if="searchQuery" class="guide-search-results"><router-link v-for="page in landingSearchResults" :key="page.id" :to="`/guide/${page.id}`"><Icon :name="page.icon" size="sm" /><span><strong>{{ page.title }}</strong><small>{{ page.group }} · {{ page.reading }}</small></span><Icon name="chevronRight" size="xs" /></router-link><p v-if="landingSearchResults.length === 0">没有匹配结果，请换一个更短的关键词。</p></div></section>
+        <section class="guide-home-section"><div class="guide-home-heading"><div><p>模块导航</p><h2>按模块查找</h2></div><span>查看所有模块 <Icon name="arrowRight" size="sm" /></span></div><div class="guide-module-grid"><router-link v-for="entry in moduleEntries.slice(0, 4)" :key="entry.to" :to="entry.to" class="guide-module-entry"><span :class="`guide-module-icon guide-module-icon-${entry.tone}`"><Icon :name="entry.icon" size="lg" /></span><div><h3>{{ entry.title }}</h3><p>{{ entry.description }}</p></div><span class="guide-module-arrow"><Icon name="arrowRight" size="sm" /></span></router-link></div></section>
+        <section class="guide-role-band"><div class="guide-home-heading"><div><p>身份导航</p><h2>按身份阅读</h2></div><span>选择你的身份，查看相关内容</span></div><div class="guide-role-grid"><article v-for="(role, roleIndex) in rolePaths" :key="role.title" class="guide-role-path"><span class="guide-role-avatar" :class="`guide-role-avatar-${roleIndex}`"><i></i><b></b></span><div><h3>{{ role.title }}</h3><p>{{ role.description }}</p></div><ol><li v-for="(step, index) in role.steps" :key="step.to"><b>{{ String(index + 1).padStart(2, '0') }}</b><router-link :to="step.to">{{ step.label }}<Icon name="arrowRight" size="xs" /></router-link></li></ol></article></div></section>
+        <section class="guide-reading-route"><div class="guide-home-heading"><div><p>推荐路线</p><h2>第一次使用，按 01 → 02 → 03 阅读</h2></div><span>约 20 分钟建立完整认识</span></div><div class="guide-reading-list"><router-link v-for="item in readingRoute" :key="item.number" :to="item.to"><strong>{{ item.number }}</strong><div><small>{{ item.for }}</small><h3>{{ item.title }}</h3><p>{{ item.description }}</p></div><Icon name="arrowRight" size="sm" /></router-link></div></section>
+        <section class="guide-download-band"><div><p>离线阅读</p><h2>下载完整产品使用手册</h2><span>PDF 适合阅读和打印；PPTX 保留可编辑页面，内容与当前在线指南一致。</span></div><div class="guide-download-actions"><a href="/downloads/SynthAPI-产品使用手册-v0.1.173.pdf" download><Icon name="download" size="sm" />下载 PDF</a><a href="/downloads/SynthAPI-产品使用手册-v0.1.173.pptx" download><Icon name="document" size="sm" />下载 PPTX</a></div></section>
+      </main>
 
-        <section v-if="currentScreenshots.length > 0" aria-label="页面操作截图">
-          <GuideScreenshot
-            v-for="screenshot in currentScreenshots"
-            :key="screenshot.src"
-            v-bind="screenshot"
-          />
-        </section>
-
-        <div class="guide-workspace">
-          <article class="guide-article" v-html="renderedContent"></article>
-          <aside v-if="toc.length > 0" class="guide-toc" aria-label="本页目录">
-            <p>本页目录</p>
-            <a v-for="item in toc" :key="item.id" :href="`#${item.id}`">{{ item.title }}</a>
-          </aside>
-        </div>
-
-        <nav class="guide-pager" aria-label="文档翻页">
-          <button v-if="previousPage" type="button" class="guide-pager-button" @click="selectPage(previousPage.id)">
-            <Icon name="arrowLeft" size="sm" /><span><small>上一篇</small>{{ previousPage.title }}</span>
-          </button>
-          <span v-else></span>
-          <button v-if="nextPage" type="button" class="guide-pager-button guide-pager-next" @click="selectPage(nextPage.id)">
-            <span><small>下一篇</small>{{ nextPage.title }}</span><Icon name="arrowRight" size="sm" />
-          </button>
-        </nav>
+      <main v-else class="guide-article-main">
+        <div class="guide-article-container"><div class="guide-breadcrumb"><span>产品手册</span><Icon name="chevronRight" size="xs" /><span>{{ currentPage.group }}</span><Icon name="chevronRight" size="xs" /><strong>{{ currentPage.title }}</strong></div><section class="guide-intro"><div class="guide-intro-copy"><p class="guide-eyebrow">{{ currentPage.eyebrow }}</p><h1>{{ currentPage.title }}</h1><span class="guide-title-underline"></span><p class="guide-summary">{{ currentPage.summary }}</p><div class="guide-meta"><span><Icon name="clock" size="xs" />阅读约 {{ currentPage.reading }}</span><span><Icon name="calendar" size="xs" />更新于 {{ currentPage.updated }}</span></div></div><GuideDiagram :kind="currentPage.diagram" :title="currentPage.diagramTitle" /></section><section v-if="currentScreenshots.length > 0" aria-label="页面操作截图"><GuideScreenshot v-for="screenshot in currentScreenshots" :key="screenshot.src" v-bind="screenshot" /></section><div class="guide-workspace"><article class="guide-article" v-html="renderedContent"></article><aside v-if="toc.length > 0" class="guide-toc" aria-label="本页目录"><p>本页目录</p><a v-for="item in toc" :key="item.id" :href="`#${item.id}`">{{ item.title }}</a><div class="guide-toc-help"><span>这篇内容有帮助吗？</span><button aria-label="有帮助"><Icon name="check" size="sm" /></button><button aria-label="没有帮助"><Icon name="x" size="sm" /></button></div></aside></div><nav class="guide-pager" aria-label="文档翻页"><button v-if="previousPage" type="button" class="guide-pager-button" @click="selectPage(previousPage.id)"><Icon name="arrowLeft" size="sm" /><span><small>上一篇</small>{{ previousPage.title }}</span></button><span v-else></span><button v-if="nextPage" type="button" class="guide-pager-button guide-pager-next" @click="selectPage(nextPage.id)"><span><small>下一篇</small>{{ nextPage.title }}</span><Icon name="arrowRight" size="sm" /></button></nav></div>
       </main>
     </div>
-
-    <main v-else class="guide-home">
-      <section class="guide-home-hero">
-        <div class="guide-home-copy">
-          <p class="guide-eyebrow">SYNTHAPI DOCUMENTATION</p>
-          <h1>先选身份，再按步骤完成</h1>
-          <p>从第一次调用到管理员运维，把复杂配置拆成能照着操作的短步骤。所有说明均基于 SynthAPI 当前版本。</p>
-          <div class="guide-home-actions">
-            <router-link class="guide-primary-action" to="/guide/quick-start"><Icon name="play" size="sm" />普通用户开始使用</router-link>
-            <router-link class="guide-secondary-action" to="/guide/admin-guide"><Icon name="server" size="sm" />管理员配置指南</router-link>
-          </div>
-        </div>
-        <div class="guide-home-route" aria-label="三步入门路线">
-          <div><strong>01</strong><span>创建账号与 Key</span></div>
-          <Icon name="arrowRight" size="sm" />
-          <div><strong>02</strong><span>发出第一条请求</span></div>
-          <Icon name="arrowRight" size="sm" />
-          <div><strong>03</strong><span>查看用量与状态</span></div>
-        </div>
-      </section>
-
-      <section class="guide-home-search-band" aria-label="搜索文档">
-        <label class="guide-home-search">
-          <Icon name="search" size="sm" />
-          <input v-model="searchQuery" type="search" placeholder="搜索：API Key、503、渠道监控、版本更新……" aria-label="搜索产品手册" />
-        </label>
-        <div v-if="searchQuery" class="guide-search-results">
-          <router-link v-for="page in landingSearchResults" :key="page.id" :to="`/guide/${page.id}`">
-            <Icon :name="page.icon" size="sm" /><span><strong>{{ page.title }}</strong><small>{{ page.group }} · {{ page.reading }}</small></span><Icon name="chevronRight" size="xs" />
-          </router-link>
-          <p v-if="landingSearchResults.length === 0">没有匹配结果，请换一个更短的关键词。</p>
-        </div>
-      </section>
-
-      <section class="guide-home-section">
-        <div class="guide-home-heading"><div><p>按模块查找</p><h2>你现在要解决什么？</h2></div><span>每个入口都直接进入对应章节</span></div>
-        <div class="guide-module-grid">
-          <router-link v-for="entry in moduleEntries" :key="entry.to" :to="entry.to" class="guide-module-entry">
-            <span :class="`guide-module-icon guide-module-icon-${entry.tone}`"><Icon :name="entry.icon" size="md" /></span>
-            <div><h3>{{ entry.title }}</h3><p>{{ entry.description }}</p></div>
-            <Icon name="chevronRight" size="sm" class="guide-module-arrow" />
-          </router-link>
-        </div>
-      </section>
-
-      <section class="guide-role-band">
-        <div class="guide-home-heading"><div><p>按身份阅读</p><h2>只看与你有关的内容</h2></div><span>不需要从头读到尾</span></div>
-        <div class="guide-role-grid">
-          <article v-for="role in rolePaths" :key="role.title" class="guide-role-path">
-            <span class="guide-role-icon"><Icon :name="role.icon" size="md" /></span>
-            <div><h3>{{ role.title }}</h3><p>{{ role.description }}</p></div>
-            <ol>
-              <li v-for="(step, index) in role.steps" :key="step.to"><b>{{ String(index + 1).padStart(2, '0') }}</b><router-link :to="step.to">{{ step.label }}<Icon name="arrowRight" size="xs" /></router-link></li>
-            </ol>
-          </article>
-        </div>
-      </section>
-
-      <section class="guide-reading-route">
-        <div class="guide-home-heading"><div><p>推荐路线</p><h2>第一次使用，按 01 → 02 → 03 阅读</h2></div><span>约 20 分钟建立完整认识</span></div>
-        <div class="guide-reading-list">
-          <router-link v-for="item in readingRoute" :key="item.number" :to="item.to">
-            <strong>{{ item.number }}</strong><div><small>{{ item.for }}</small><h3>{{ item.title }}</h3><p>{{ item.description }}</p></div><Icon name="arrowRight" size="sm" />
-          </router-link>
-        </div>
-      </section>
-
-      <section class="guide-download-band">
-        <div><p>离线阅读</p><h2>下载完整产品使用手册</h2><span>PDF 适合阅读和打印；PPTX 保留可编辑页面，内容与当前在线指南一致。</span></div>
-        <div class="guide-download-actions">
-          <a href="/downloads/SynthAPI-产品使用手册-v0.1.173.pdf" download><Icon name="download" size="sm" />下载 PDF</a>
-          <a href="/downloads/SynthAPI-产品使用手册-v0.1.173.pptx" download><Icon name="document" size="sm" />下载 PPTX</a>
-        </div>
-      </section>
-    </main>
   </div>
 </template>
 
@@ -647,9 +507,9 @@ const screenshotsByPage: Partial<Record<string, GuideScreenshotData[]>> = {
       title: '登录页：按 1、2、3 完成登录',
       caption: '先输入已验证邮箱和密码，再提交登录。',
       markers: [
-        { number: 1, x: 37, y: 50, label: '输入邮箱', description: '填写注册时验证过的邮箱地址。' },
-        { number: 2, x: 64, y: 59, label: '输入密码', description: '确认大小写和密码管理器填充内容。' },
-        { number: 3, x: 65, y: 67, label: '提交登录', description: '登录后再进入 API Keys 创建密钥。' }
+        { number: 1, x: 35, y: 50, label: '输入邮箱', description: '填写注册时验证过的邮箱地址。' },
+        { number: 2, x: 67, y: 59, label: '输入密码', description: '确认大小写和密码管理器填充内容。' },
+        { number: 3, x: 67, y: 67, label: '提交登录', description: '登录后再进入 API Keys 创建密钥。' }
       ]
     }
   ],
@@ -661,8 +521,8 @@ const screenshotsByPage: Partial<Record<string, GuideScreenshotData[]>> = {
       caption: '新用户从“立即开始”进入，已有账号可直接登录，手册入口始终位于顶部。',
       markers: [
         { number: 1, x: 16, y: 34, label: '立即开始', description: '进入注册或登录流程。' },
-        { number: 2, x: 81, y: 4, label: '产品手册', description: '遇到配置问题时打开在线指南。' },
-        { number: 3, x: 88, y: 4, label: '登录', description: '已有账号直接进入控制台。' }
+        { number: 2, x: 81, y: 7, label: '产品手册', description: '遇到配置问题时打开在线指南。' },
+        { number: 3, x: 88, y: 7, label: '登录', description: '已有账号直接进入控制台。' }
       ]
     }
   ],
@@ -767,215 +627,179 @@ watch(() => route.params.section, () => window.scrollTo({ top: 0, behavior: 'smo
 </script>
 
 <style scoped>
-.guide-shell { --guide-accent: #0f766e; --guide-ink: #0f172a; }
-.guide-topbar { box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03); }
-.guide-mark { display: inline-flex; height: 2rem; width: 2rem; align-items: center; justify-content: center; border-radius: .5rem; color: white; background: #0f766e; box-shadow: 0 8px 18px rgba(13, 148, 136, .22); }
-.guide-top-link, .guide-icon-button { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; border-radius: .5rem; color: #475569; transition: background .2s, color .2s; }
-.guide-top-link { padding: .5rem .7rem; font-size: .8rem; font-weight: 600; }
-.guide-icon-button { height: 2.25rem; width: 2.25rem; }
-.guide-top-link:hover, .guide-icon-button:hover { background: #f1f5f9; color: #0f766e; }
-.dark .guide-top-link, .dark .guide-icon-button { color: #94a3b8; }
-.dark .guide-top-link:hover, .dark .guide-icon-button:hover { background: #1e293b; color: #5eead4; }
-.guide-sidebar { position: sticky; top: 4rem; display: flex; height: calc(100vh - 4rem); width: 17rem; flex-shrink: 0; flex-direction: column; overflow-y: auto; border-right: 1px solid #e2e8f0; padding: 1.5rem 1rem 1.25rem; }
-.dark .guide-sidebar { border-color: #1e293b; }
-.guide-search { display: flex; align-items: center; gap: .5rem; border: 1px solid #e2e8f0; border-radius: .5rem; background: #f8fafc; padding: .55rem .65rem; }
-.dark .guide-search { border-color: #334155; background: #0f172a; }
-.guide-search input { min-width: 0; flex: 1; background: transparent; font-size: .78rem; outline: none; }
-.guide-nav { margin-top: 1.5rem; }
-.guide-nav-label { padding: 0 .75rem; color: #94a3b8; font-size: .68rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-.guide-nav-item { display: flex; width: 100%; align-items: center; gap: .6rem; border-radius: .5rem; padding: .6rem .75rem; color: #64748b; font-size: .82rem; text-align: left; transition: background .2s, color .2s; }
-.guide-nav-item:hover { background: #f1f5f9; color: #0f766e; }
-.guide-nav-item-active { background: #ccfbf1; color: #115e59; font-weight: 700; }
-.dark .guide-nav-item { color: #94a3b8; }
-.dark .guide-nav-item:hover { background: #1e293b; color: #5eead4; }
-.dark .guide-nav-item-active { background: rgba(13, 148, 136, .18); color: #99f6e4; }
-.guide-content { max-width: 1120px; }
-.guide-breadcrumb { display: flex; align-items: center; gap: .35rem; color: #94a3b8; font-size: .72rem; }
-.guide-breadcrumb strong { color: #475569; font-weight: 600; }
-.dark .guide-breadcrumb strong { color: #cbd5e1; }
-.guide-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .75fr); align-items: center; gap: 3rem; border-bottom: 1px solid #e2e8f0; padding: 3.25rem 0 3rem; }
-.dark .guide-intro { border-color: #1e293b; }
-.guide-eyebrow { color: #0f766e; font-size: .7rem; font-weight: 800; letter-spacing: .16em; }
-.guide-intro h1 { margin-top: .65rem; max-width: 700px; font-size: 2.5rem; font-weight: 750; letter-spacing: 0; line-height: 1.15; }
-.guide-summary { margin-top: 1rem; max-width: 650px; color: #64748b; font-size: 1rem; line-height: 1.8; }
-.dark .guide-summary { color: #94a3b8; }
-.guide-meta { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1.4rem; color: #94a3b8; font-size: .74rem; }
-.guide-meta span { display: inline-flex; align-items: center; gap: .35rem; }
-.guide-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 12rem; gap: 3rem; padding: 3rem 0 4rem; }
-.guide-article { min-width: 0; color: #334155; font-size: .94rem; line-height: 1.85; }
-.dark .guide-article { color: #cbd5e1; }
-.guide-article :deep(h1) { display: none; }
-.guide-article :deep(h2) { scroll-margin-top: 6rem; margin: 2.7rem 0 .8rem; border-bottom: 1px solid #e2e8f0; padding-bottom: .45rem; color: #0f172a; font-size: 1.35rem; font-weight: 750; line-height: 1.35; }
-.guide-article :deep(h2:first-of-type) { margin-top: 0; }
-.dark .guide-article :deep(h2) { border-color: #1e293b; color: #f8fafc; }
-.guide-article :deep(p) { margin: .85rem 0; }
-.guide-article :deep(ul), .guide-article :deep(ol) { margin: .75rem 0 1rem 1.25rem; padding-left: .85rem; }
-.guide-article :deep(li) { margin: .35rem 0; padding-left: .2rem; }
-.guide-article :deep(li::marker) { color: #14b8a6; }
-.guide-article :deep(strong) { color: #0f172a; font-weight: 700; }
-.dark .guide-article :deep(strong) { color: #f8fafc; }
-.guide-article :deep(code) { border: 1px solid #ccfbf1; border-radius: .3rem; background: #f0fdfa; padding: .1rem .35rem; color: #115e59; font-size: .83em; }
-.dark .guide-article :deep(code) { border-color: rgba(45, 212, 191, .2); background: rgba(13, 148, 136, .12); color: #99f6e4; }
-.guide-article :deep(pre) { overflow-x: auto; margin: 1.25rem 0; border: 1px solid #1e293b; border-radius: .5rem; background: #0f172a; padding: 1rem 1.1rem; color: #d1fae5; font-size: .78rem; line-height: 1.75; }
-.guide-article :deep(pre code) { border: 0; background: transparent; padding: 0; color: inherit; }
-.guide-article :deep(blockquote) { margin: 1.2rem 0; border-left: 3px solid #14b8a6; background: #f0fdfa; padding: .7rem 1rem; color: #115e59; }
-.dark .guide-article :deep(blockquote) { background: rgba(13, 148, 136, .12); color: #99f6e4; }
-.guide-article :deep(table) { display: block; width: 100%; overflow-x: auto; margin: 1.25rem 0; border-collapse: collapse; font-size: .8rem; }
-.guide-article :deep(th), .guide-article :deep(td) { min-width: 7rem; border: 1px solid #e2e8f0; padding: .55rem .7rem; text-align: left; vertical-align: top; }
-.guide-article :deep(th) { background: #f8fafc; color: #334155; font-weight: 700; }
-.dark .guide-article :deep(th), .dark .guide-article :deep(td) { border-color: #334155; }
-.dark .guide-article :deep(th) { background: #1e293b; color: #f8fafc; }
-.guide-article :deep(a) { color: #0f766e; text-decoration: underline; text-underline-offset: 2px; }
-.dark .guide-article :deep(a) { color: #5eead4; }
-.guide-toc { position: sticky; top: 6rem; align-self: start; border-left: 1px solid #e2e8f0; padding-left: 1rem; }
-.dark .guide-toc { border-color: #334155; }
-.guide-toc p { margin-bottom: .7rem; color: #64748b; font-size: .72rem; font-weight: 700; }
-.guide-toc a { display: block; margin: .45rem 0; color: #94a3b8; font-size: .72rem; line-height: 1.45; }
-.guide-toc a:hover { color: #0f766e; }
-.guide-pager { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; border-top: 1px solid #e2e8f0; padding: 1.4rem 0 3rem; }
-.dark .guide-pager { border-color: #1e293b; }
-.guide-pager-button { display: flex; min-width: 0; align-items: center; gap: .7rem; border: 1px solid #e2e8f0; border-radius: .5rem; padding: .8rem .95rem; color: #334155; text-align: left; transition: border .2s, background .2s; }
-.guide-pager-button:hover { border-color: #5eead4; background: #f0fdfa; }
-.guide-pager-next { justify-content: flex-end; text-align: right; }
-.dark .guide-pager-button { border-color: #334155; color: #e2e8f0; }
-.dark .guide-pager-button:hover { border-color: #0f766e; background: rgba(13, 148, 136, .12); }
-.guide-pager-button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; font-weight: 700; }
-.guide-pager-button small { display: block; margin-bottom: .15rem; color: #94a3b8; font-size: .68rem; font-weight: 500; }
-.guide-overlay { position: fixed; inset: 0; z-index: 49; background: rgba(15, 23, 42, .45); }
-.guide-home { background: white; }
-.dark .guide-home { background: #020617; }
-.guide-home-hero { display: grid; min-height: 31rem; grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr); align-items: center; gap: 5rem; max-width: 1240px; margin: 0 auto; padding: 5.5rem 3rem 4.5rem; }
-.guide-home-copy h1 { max-width: 680px; margin-top: .8rem; color: #0f172a; font-size: 3.15rem; font-weight: 780; letter-spacing: 0; line-height: 1.12; }
-.dark .guide-home-copy h1 { color: #f8fafc; }
-.guide-home-copy > p:not(.guide-eyebrow) { max-width: 640px; margin-top: 1.25rem; color: #64748b; font-size: 1.05rem; line-height: 1.8; }
-.dark .guide-home-copy > p:not(.guide-eyebrow) { color: #94a3b8; }
-.guide-home-actions { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: 2rem; }
-.guide-primary-action, .guide-secondary-action { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; gap: .55rem; border: 1px solid transparent; border-radius: .5rem; padding: .7rem 1rem; font-size: .84rem; font-weight: 700; transition: background .2s, border .2s, color .2s, transform .2s; }
-.guide-primary-action { background: #0f766e; color: white; box-shadow: 0 10px 24px rgba(15, 118, 110, .2); }
-.guide-primary-action:hover { background: #115e59; transform: translateY(-1px); }
-.guide-secondary-action { border-color: #cbd5e1; background: white; color: #334155; }
-.guide-secondary-action:hover { border-color: #0f766e; color: #0f766e; }
-.dark .guide-secondary-action { border-color: #334155; background: #0f172a; color: #e2e8f0; }
-.guide-home-route { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: .8rem; border-left: 1px solid #cbd5e1; padding: 2rem 0 2rem 3.5rem; }
-.dark .guide-home-route { border-color: #334155; }
-.guide-home-route > div { min-width: 0; }
-.guide-home-route strong { display: block; color: #e11d48; font-size: 2rem; line-height: 1; }
-.guide-home-route span { display: block; margin-top: .75rem; color: #334155; font-size: .78rem; font-weight: 700; line-height: 1.45; }
-.dark .guide-home-route span { color: #e2e8f0; }
-.guide-home-route > svg { color: #94a3b8; }
-.guide-home-search-band { position: relative; border-top: 1px solid #dbeafe; border-bottom: 1px solid #dbeafe; background: #eff6ff; padding: 2.25rem 1.5rem; }
-.dark .guide-home-search-band { border-color: #1e3a5f; background: #0b1830; }
-.guide-home-search { display: flex; max-width: 760px; margin: 0 auto; align-items: center; gap: .7rem; border: 1px solid #bfdbfe; border-radius: .5rem; background: white; padding: .8rem 1rem; color: #64748b; box-shadow: 0 10px 30px rgba(30, 64, 175, .08); }
-.dark .guide-home-search { border-color: #1d4ed8; background: #0f172a; color: #94a3b8; }
-.guide-home-search input { min-width: 0; flex: 1; background: transparent; color: #0f172a; font-size: .88rem; outline: none; }
-.dark .guide-home-search input { color: #f8fafc; }
-.guide-search-results { position: absolute; left: 50%; z-index: 20; width: min(760px, calc(100% - 3rem)); transform: translateX(-50%); border: 1px solid #cbd5e1; border-radius: .5rem; background: white; padding: .45rem; box-shadow: 0 18px 45px rgba(15, 23, 42, .16); }
-.dark .guide-search-results { border-color: #334155; background: #0f172a; }
-.guide-search-results a { display: flex; align-items: center; gap: .7rem; border-radius: .4rem; padding: .65rem .75rem; color: #475569; }
-.guide-search-results a:hover { background: #f1f5f9; color: #0f766e; }
-.dark .guide-search-results a:hover { background: #1e293b; color: #5eead4; }
+.guide-shell { --cyan: #19c6e8; --blue: #468cff; --violet: #875cf5; --ink: #061129; --sidebar-width: clamp(260px, 20.3125vw, 416px); min-height: 100vh; font-family: Inter, "Microsoft YaHei", Arial, sans-serif; letter-spacing: 0; }
+.guide-shell * { box-sizing: border-box; }
+.guide-frame { display: flex; min-height: 100vh; }
+.guide-mark { display: inline-flex; width: 44px; height: 44px; flex: 0 0 44px; align-items: center; justify-content: center; border: 1px solid rgba(49, 217, 255, .6); border-radius: 9px; color: white; background: linear-gradient(145deg, #14cbe9, #0874dc); box-shadow: 0 0 26px rgba(23, 194, 239, .55); }
+.guide-icon-button { display: inline-flex; width: 38px; height: 38px; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 7px; }
+.guide-overlay { position: fixed; inset: 0; z-index: 79; background: rgba(0, 8, 24, .68); backdrop-filter: blur(3px); }
+.guide-sidebar { display: flex; width: var(--sidebar-width); flex: 0 0 var(--sidebar-width); flex-direction: column; color: #9cb0d5; background: radial-gradient(circle at 5% 2%, rgba(0, 189, 255, .18), transparent 22%), linear-gradient(145deg, #061a34 0%, #020d20 48%, #06162d 100%); border-right: 1px solid rgba(86, 139, 210, .25); }
+.guide-sidebar-brand { display: flex; align-items: center; gap: 17px; height: 132px; padding: 0 38px; }
+.guide-sidebar-brand > * { transform: translateY(18px); }
+.guide-sidebar-brand .guide-mark { width: 64px; height: 64px; flex-basis: 64px; border-radius: 14px; }
+.guide-sidebar-brand > span:last-child, .guide-brand-link > span:last-child, .guide-home-wordmark > span:last-child { display: flex; flex-direction: column; }
+.guide-sidebar-brand b, .guide-brand-link b, .guide-home-wordmark b { color: white; font-size: 22px; font-style: normal; font-weight: 780; line-height: 1.05; }
+.guide-sidebar-brand em, .guide-brand-link em, .guide-home-wordmark em { margin-top: 6px; color: #8da0c4; font-size: 13px; font-style: normal; line-height: 1; }
+.guide-sidebar-brand b { font-size: 30px; }
+.guide-sidebar-brand em { font-size: 16px; }
+.guide-sidebar-mobile-head { display: none; }
+.guide-search { display: flex; height: 52px; margin: 30px 36px 30px; align-items: center; gap: 12px; border: 1px solid rgba(91, 143, 207, .38); border-radius: 9px; background: rgba(18, 40, 73, .68); padding: 0 16px; color: #9cb0d5; box-shadow: inset 0 0 24px rgba(15, 51, 93, .45); }
+.guide-shell-home .guide-search { height: 76px; margin-top: 31px; margin-bottom: 38px; border-radius: 13px; padding: 0 24px; }
+.guide-search input { min-width: 0; flex: 1; border: 0; background: transparent; color: #e4eeff; font-size: 14px; outline: none; }
+.guide-search input::placeholder { color: #8095ba; }
+.guide-search kbd, .guide-home-search kbd { flex: 0 0 auto; color: #7f91b1; font-size: 12px; }
+.guide-home-sidebar-actions { display: grid; gap: 18px; padding: 0 37px; }
+.home-sidebar-action { display: flex; min-height: 105px; align-items: center; gap: 22px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 13px; padding: 20px 25px; color: white; box-shadow: 0 12px 28px rgba(0, 0, 0, .24); transition: transform .2s, box-shadow .2s; }
+.home-sidebar-action:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(0, 0, 0, .34); }
+.home-sidebar-action-cyan { background: linear-gradient(145deg, #08bbdd, #078fdf); }
+.home-sidebar-action-violet { background: linear-gradient(145deg, #7352ed, #3d31c9); }
+.home-sidebar-action > svg { flex: 0 0 auto; opacity: .85; }
+.home-sidebar-action span { min-width: 0; }
+.home-sidebar-action b, .home-sidebar-action small { display: block; }
+.home-sidebar-action b { font-size: 19px; font-weight: 750; }
+.home-sidebar-action small { margin-top: 7px; color: rgba(236, 244, 255, .72); font-size: 14px; line-height: 1.35; }
+.guide-home-sidebar-nav { display: grid; gap: 3px; margin-top: 34px; padding: 0 48px; }
+.guide-home-sidebar-nav a { display: flex; height: 56px; align-items: center; gap: 16px; color: #8499bd; font-size: 16px; }
+.guide-home-sidebar-nav a:hover { color: #32d4ee; }
+.guide-home-sidebar-nav a span { margin-left: auto; border: 1px solid #233d62; border-radius: 7px; background: #112847; padding: 4px 7px; font-size: 10px; }
+.guide-home-sidebar-nav a i { width: 8px; height: 8px; margin-left: auto; border-radius: 50%; background: #20d9dd; box-shadow: 0 0 10px #20d9dd; }
+.guide-home-sidebar-nav a b { color: #20d9dd; font-size: 11px; font-weight: 650; }
+.guide-help-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin: auto 37px 36px; border: 1px solid rgba(72, 125, 190, .33); border-radius: 13px; background: rgba(19, 43, 78, .62); padding: 20px 18px; color: #37d5ef; }
+.guide-help-card b, .guide-help-card span { display: block; }
+.guide-help-card b { color: #f2f7ff; font-size: 15px; }
+.guide-help-card span { margin-top: 5px; color: #8197bb; font-size: 13px; line-height: 1.45; }
+.guide-topbar { position: sticky; top: 0; z-index: 60; display: flex; height: 78px; align-items: center; justify-content: space-between; border-bottom: 1px solid #152743; background: rgba(3, 14, 34, .97); padding: 0 37px; color: #9eb1d5; backdrop-filter: blur(12px); }
+.guide-topbar-brand { display: flex; align-items: center; gap: 10px; }
+.guide-brand-link { display: flex; align-items: center; gap: 11px; }
+.guide-brand-link .guide-mark { width: 50px; height: 50px; flex-basis: 50px; border-radius: 11px; }
+.guide-brand-link b { font-size: 24px; }
+.guide-brand-link em { margin-top: 2px; font-size: 15px; }
+.guide-topbar-actions { display: flex; height: 100%; align-items: center; }
+.guide-topbar-actions > span, .guide-topbar-actions > a { display: inline-flex; min-height: 28px; align-items: center; gap: 8px; border-left: 1px solid #1b2b47; padding: 0 29px; color: #a5b5d5; font-size: 15px; }
+.guide-topbar-actions > span { border-left: 0; }
+.guide-topbar-actions a:hover { color: #35d8f2; }
+.guide-mobile-menu, .guide-home-menu { display: none; }
+.guide-nav { padding: 4px 25px 28px; }
+.guide-nav-group { margin-bottom: 17px; }
+.guide-nav-label { margin-bottom: 8px; padding: 0 14px; color: #7288ad; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
+.guide-nav-item { display: flex; width: 100%; min-height: 46px; align-items: center; gap: 13px; border: 1px solid transparent; border-radius: 7px; padding: 10px 14px; color: #91a5ca; font-size: 15px; line-height: 1.35; text-align: left; }
+.guide-nav-item:hover { color: #40d7ef; background: rgba(24, 65, 110, .35); }
+.guide-nav-item-active { border-color: #1662a7; color: #3edaf2; background: linear-gradient(90deg, rgba(15, 94, 156, .42), rgba(42, 71, 128, .3)); }
+.guide-nav-item span { min-width: 0; }
+.guide-nav-current { margin-left: auto; flex: 0 0 auto; }
+.guide-nav-empty { padding: 18px; color: #7186aa; font-size: 12px; }
+
+.guide-home-main { position: relative; min-width: 0; flex: 1; overflow: hidden; border-radius: 30px 0 0 30px; color: #061129; background: #f8fbff; }
+.guide-home-toprow { display: grid; grid-template-columns: minmax(480px, 808px) 1fr auto; align-items: center; gap: 32px; height: 128px; padding: 0 74px; }
+.guide-home-search { position: relative; display: flex; height: 58px; align-items: center; gap: 14px; border: 1px solid #edf1f7; border-radius: 11px; background: rgba(255, 255, 255, .95); padding: 0 17px; color: #74849e; box-shadow: 0 12px 30px rgba(41, 79, 129, .12); }
+.guide-home-search::before { content: ''; position: absolute; inset: -9px; z-index: -1; border-radius: 16px; background: rgba(255, 255, 255, .72); }
+.guide-home-search input { min-width: 0; flex: 1; border: 0; background: transparent; color: #101d35; font-size: 14px; outline: none; }
+.guide-home-wordmark { display: flex; grid-column: 3; align-items: center; gap: 13px; }
+.guide-home-wordmark b { color: #08142c; font-size: 22px; }
+.guide-home-wordmark em { color: #6f7e98; font-size: 13px; }
+.guide-cube-mark { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; color: white; font-size: 22px; background: linear-gradient(145deg, #13d2ee, #4c58ec); clip-path: polygon(50% 0, 96% 25%, 96% 75%, 50% 100%, 4% 75%, 4% 25%); }
+.guide-home-hero { position: relative; display: grid; min-height: 295px; grid-template-columns: minmax(0, 1.15fr) minmax(330px, .85fr); align-items: center; gap: 20px; padding: 25px 100px 34px; background: radial-gradient(circle at 85% 15%, rgba(107, 163, 255, .12), transparent 31%), linear-gradient(135deg, #fbfdff, #f5f9ff); }
+.guide-home-hero::before { content: ''; position: absolute; inset: 0; opacity: .27; background-image: linear-gradient(rgba(74, 136, 221, .12) 1px, transparent 1px), linear-gradient(90deg, rgba(74, 136, 221, .12) 1px, transparent 1px); background-size: 65px 65px; mask-image: linear-gradient(90deg, transparent 42%, black); }
+.guide-home-copy { position: relative; z-index: 2; }
+.guide-eyebrow { color: #139dd8; font-size: 11px; font-weight: 800; letter-spacing: .14em; }
+.guide-home-copy .guide-eyebrow { visibility: hidden; }
+.guide-home-copy h1 { margin-top: 12px; color: #071228; font-size: clamp(42px, 4vw, 67px); font-weight: 850; line-height: 1.08; }
+.guide-title-underline { display: block; width: 255px; height: 7px; margin-top: 15px; border-radius: 99px; background: linear-gradient(90deg, #16c9e6, #2e7ff3, #8e51eb); }
+.guide-home-copy > p:not(.guide-eyebrow) { margin-top: 24px; color: #6a7b97; font-size: 15px; line-height: 1.8; }
+.guide-home-actions { display: none; gap: 12px; margin-top: 24px; }
+.guide-primary-action, .guide-secondary-action { display: inline-flex; min-height: 45px; align-items: center; justify-content: center; gap: 9px; border: 1px solid transparent; border-radius: 7px; padding: 0 18px; font-size: 13px; font-weight: 750; }
+.guide-primary-action { color: white; background: linear-gradient(100deg, #12bad9, #157ee7); box-shadow: 0 10px 23px rgba(10, 154, 220, .25); }
+.guide-secondary-action { border-color: #d6e0f2; color: #3b43a6; background: white; }
+.guide-home-hero-visual { position: relative; z-index: 1; width: 100%; height: 235px; perspective: 800px; }
+.visual-grid { position: absolute; inset: 15px -20px -10px 15px; transform: rotateX(62deg) rotateZ(-30deg); opacity: .3; background-image: linear-gradient(#71bff2 1px, transparent 1px), linear-gradient(90deg, #71bff2 1px, transparent 1px); background-size: 32px 32px; mask-image: radial-gradient(ellipse, black, transparent 70%); }
+.visual-stack { position: absolute; left: 50%; top: 50%; width: 280px; height: 150px; border: 1px solid rgba(159, 191, 237, .75); border-radius: 18px; transform: translate(-50%, -50%) rotateX(62deg) rotateZ(-29deg); background: linear-gradient(135deg, rgba(255,255,255,.9), rgba(219,233,255,.72)); box-shadow: 28px 38px 55px rgba(46, 90, 164, .14); }
+.visual-stack-back { margin-top: -33px; margin-left: 44px; opacity: .45; }
+.visual-stack-middle { margin-top: -8px; margin-left: 18px; opacity: .7; }
+.visual-stack-front { display: flex; align-items: center; justify-content: center; gap: 15px; }
+.visual-stack-front i { width: 48px; height: 48px; border: 1px solid rgba(90, 165, 255, .6); border-radius: 9px; background: linear-gradient(145deg, rgba(255,255,255,.9), rgba(75,152,255,.7)); box-shadow: 0 13px 20px rgba(40, 102, 211, .24); }
+.visual-stack-front i:nth-child(2) { background: linear-gradient(145deg, #1ce7ee, #4279f4); transform: translateY(18px); }
+.visual-stack-front i:nth-child(3) { background: linear-gradient(145deg, #c4d8ff, #ffffff); }
+.visual-spark { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #28d2e8; box-shadow: 0 0 15px #28d2e8; }
+.visual-spark-one { left: 15%; bottom: 22%; }.visual-spark-two { right: 11%; top: 19%; background: #7a6df3; box-shadow: 0 0 15px #7a6df3; }
+.guide-home-search-band { position: absolute; left: 0; right: 0; top: 99px; z-index: 30; height: 0; }
+.guide-search-results { position: absolute; left: 74px; top: 0; width: min(808px, calc(100vw - var(--sidebar-width) - 148px)); border: 1px solid #d9e4f5; border-radius: 8px; background: white; padding: 7px; box-shadow: 0 17px 40px rgba(20, 48, 88, .2); }
+.guide-search-results a { display: flex; align-items: center; gap: 10px; border-radius: 6px; padding: 9px 11px; color: #445875; }
+.guide-search-results a:hover { color: #0c8dd3; background: #f2f8ff; }
 .guide-search-results a span { min-width: 0; flex: 1; }
 .guide-search-results strong, .guide-search-results small { display: block; }
-.guide-search-results strong { font-size: .78rem; }
-.guide-search-results small { margin-top: .15rem; color: #94a3b8; font-size: .66rem; }
-.guide-search-results > p { padding: .75rem; color: #64748b; font-size: .78rem; text-align: center; }
-.guide-home-section, .guide-reading-route { max-width: 1240px; margin: 0 auto; padding: 5rem 3rem; }
-.guide-home-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 2rem; }
-.guide-home-heading > div > p, .guide-download-band > div > p { color: #0f766e; font-size: .7rem; font-weight: 800; letter-spacing: .12em; }
-.guide-home-heading h2, .guide-download-band h2 { margin-top: .45rem; color: #0f172a; font-size: 1.75rem; font-weight: 760; line-height: 1.25; }
-.dark .guide-home-heading h2, .dark .guide-download-band h2 { color: #f8fafc; }
-.guide-home-heading > span { color: #94a3b8; font-size: .76rem; }
-.guide-module-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .8rem; }
-.guide-module-entry { display: flex; min-width: 0; min-height: 11.5rem; flex-direction: column; border: 1px solid #e2e8f0; border-radius: .5rem; background: white; padding: 1.15rem; transition: border .2s, box-shadow .2s, transform .2s; }
-.dark .guide-module-entry { border-color: #334155; background: #0f172a; }
-.guide-module-entry:hover { border-color: #94a3b8; box-shadow: 0 12px 28px rgba(15, 23, 42, .09); transform: translateY(-2px); }
-.guide-module-icon, .guide-role-icon { display: flex; width: 2.45rem; height: 2.45rem; align-items: center; justify-content: center; border-radius: .5rem; }
-.guide-module-icon-teal { background: #ccfbf1; color: #0f766e; }
-.guide-module-icon-blue { background: #dbeafe; color: #1d4ed8; }
-.guide-module-icon-amber { background: #fef3c7; color: #b45309; }
-.guide-module-icon-rose { background: #ffe4e6; color: #be123c; }
-.guide-module-icon-violet { background: #ede9fe; color: #6d28d9; }
-.guide-module-entry h3 { margin-top: 1rem; color: #0f172a; font-size: .96rem; font-weight: 750; }
-.dark .guide-module-entry h3 { color: #f8fafc; }
-.guide-module-entry p { margin-top: .45rem; color: #64748b; font-size: .73rem; line-height: 1.55; }
-.dark .guide-module-entry p { color: #94a3b8; }
-.guide-module-arrow { margin-top: auto; color: #94a3b8; }
-.guide-role-band { border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: #f8fafc; padding: 5rem max(3rem, calc((100% - 1144px) / 2)); }
-.dark .guide-role-band { border-color: #1e293b; background: #0b1120; }
-.guide-role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
-.guide-role-path { display: grid; grid-template-columns: auto 1fr; gap: 1rem; border: 1px solid #e2e8f0; border-radius: .5rem; background: white; padding: 1.4rem; }
-.dark .guide-role-path { border-color: #334155; background: #0f172a; }
-.guide-role-icon { background: #0f172a; color: white; }
-.dark .guide-role-icon { background: #f8fafc; color: #0f172a; }
-.guide-role-path h3 { color: #0f172a; font-size: 1rem; font-weight: 750; }
-.dark .guide-role-path h3 { color: #f8fafc; }
-.guide-role-path > div > p { margin-top: .35rem; color: #64748b; font-size: .74rem; line-height: 1.55; }
-.dark .guide-role-path > div > p { color: #94a3b8; }
-.guide-role-path ol { grid-column: 1 / -1; margin-top: .5rem; border-top: 1px solid #e2e8f0; padding-top: .65rem; }
-.dark .guide-role-path ol { border-color: #334155; }
-.guide-role-path li { display: grid; grid-template-columns: 2rem 1fr; align-items: center; padding: .45rem 0; }
-.guide-role-path li b { color: #e11d48; font-size: .68rem; }
-.guide-role-path li a { display: flex; align-items: center; justify-content: space-between; color: #334155; font-size: .76rem; font-weight: 650; }
-.dark .guide-role-path li a { color: #e2e8f0; }
-.guide-role-path li a:hover { color: #0f766e; }
-.guide-reading-list { border-top: 1px solid #cbd5e1; }
-.dark .guide-reading-list { border-color: #334155; }
-.guide-reading-list > a { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; align-items: center; gap: 1.5rem; border-bottom: 1px solid #e2e8f0; padding: 1.5rem .5rem; color: #0f172a; }
-.dark .guide-reading-list > a { border-color: #1e293b; color: #f8fafc; }
-.guide-reading-list > a:hover { background: #f8fafc; }
-.dark .guide-reading-list > a:hover { background: #0f172a; }
-.guide-reading-list > a > strong { color: #e11d48; font-size: 2rem; }
-.guide-reading-list small { color: #0f766e; font-size: .68rem; font-weight: 700; }
-.guide-reading-list h3 { margin-top: .2rem; font-size: 1rem; font-weight: 750; }
-.guide-reading-list p { margin-top: .3rem; color: #64748b; font-size: .75rem; }
-.dark .guide-reading-list p { color: #94a3b8; }
-.guide-download-band { display: flex; align-items: center; justify-content: space-between; gap: 3rem; background: #0f172a; padding: 3.5rem max(3rem, calc((100% - 1144px) / 2)); color: white; }
-.guide-download-band h2 { color: white; }
-.guide-download-band > div > span { display: block; margin-top: .6rem; color: #cbd5e1; font-size: .78rem; line-height: 1.6; }
-.guide-download-actions { display: flex; flex-shrink: 0; gap: .75rem; }
-.guide-download-actions a { display: inline-flex; min-height: 2.65rem; align-items: center; justify-content: center; gap: .5rem; border: 1px solid #475569; border-radius: .5rem; padding: .65rem .9rem; color: white; font-size: .78rem; font-weight: 700; }
-.guide-download-actions a:first-child { border-color: #5eead4; background: #0f766e; }
-.guide-download-actions a:hover { border-color: white; background: #1e293b; }
+.guide-search-results strong { font-size: 12px; }.guide-search-results small { margin-top: 2px; color: #8798b3; font-size: 10px; }
+.guide-search-results > p { padding: 12px; color: #7486a3; font-size: 12px; text-align: center; }
+.guide-home-section, .guide-role-band, .guide-reading-route { padding: 25px 74px 30px; }
+.guide-home-heading { display: flex; align-items: end; justify-content: space-between; gap: 28px; margin-bottom: 28px; }
+.guide-home-heading > div > p, .guide-download-band > div > p { display: none; }
+.guide-home-heading h2, .guide-download-band h2 { color: #0b1730; font-size: 18px; font-weight: 780; }
+.guide-home-heading > span { display: inline-flex; align-items: center; gap: 7px; color: #7586a2; font-size: 12px; }
+.guide-module-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.guide-module-entry { display: grid; min-width: 0; min-height: 210px; grid-template-columns: auto 1fr; grid-template-rows: 1fr auto; gap: 0 16px; border: 1px solid #e3e9f2; border-radius: 8px; background: rgba(255, 255, 255, .88); padding: 24px 22px 18px; box-shadow: 0 9px 24px rgba(32, 65, 111, .08); }
+.guide-module-entry:hover { border-color: #9bdcf2; transform: translateY(-2px); }
+.guide-module-icon { display: inline-flex; width: 55px; height: 55px; align-items: center; justify-content: center; border-radius: 10px; }
+.guide-module-icon-teal { color: #0daacc; background: #e1f8fc; }.guide-module-icon-blue { color: #5746d9; background: #efedff; }.guide-module-icon-amber { color: #df8705; background: #fff5e3; }.guide-module-icon-rose { color: #c8379b; background: #ffecf8; }
+.guide-module-entry h3 { color: #0b1730; font-size: 16px; font-weight: 780; }.guide-module-entry p { margin-top: 8px; color: #697a96; font-size: 12px; line-height: 1.55; }
+.guide-module-arrow { display: inline-flex; width: 33px; height: 33px; align-items: center; justify-content: center; border-radius: 50%; color: #328adf; background: #f3f8ff; }
+.guide-role-band { padding-top: 5px; }
+.guide-role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; }
+.guide-role-path { display: grid; min-width: 0; min-height: 305px; grid-template-columns: auto 1fr; gap: 12px 15px; border: 1px solid #cfe1f7; border-radius: 8px; background: rgba(255,255,255,.72); padding: 17px 20px 13px; }
+.guide-role-path:nth-child(2) { border-color: #ded4f4; }.guide-role-path:nth-child(3) { border-color: #c5ebed; }
+.guide-role-avatar { position: relative; display: inline-flex; width: 58px; height: 58px; align-items: center; justify-content: center; overflow: hidden; border: 2px solid #b6d9f5; border-radius: 50%; background: #d8f0ff; }
+.guide-role-avatar::before { content: ''; position: absolute; top: 11px; width: 23px; height: 24px; border-radius: 50% 50% 45% 45%; background: #f6bf90; box-shadow: inset 0 10px 0 #172c51; }
+.guide-role-avatar i { position: absolute; bottom: -5px; width: 39px; height: 27px; border-radius: 50% 50% 0 0; background: #59b9ea; }
+.guide-role-avatar-1 { border-color: #d6c8fb; background: #eee7ff; }.guide-role-avatar-1::before { box-shadow: inset 0 10px 0 #513824; }.guide-role-avatar-1 i { background: #6f3ed0; }
+.guide-role-avatar-2 { border-color: #bce9ef; background: #ddfaff; }.guide-role-avatar-2::before { box-shadow: inset 0 10px 0 #092e4b; }.guide-role-avatar-2 i { background: #0a6174; }
+.guide-role-path h3 { color: #0c1831; font-size: 15px; font-weight: 780; }.guide-role-path > div > p { margin-top: 7px; color: #70809b; font-size: 11px; line-height: 1.5; }
+.guide-role-path ol { grid-column: 1 / -1; border-radius: 8px; background: rgba(255,255,255,.86); padding: 6px 12px; }
+.guide-role-path li { display: grid; grid-template-columns: 35px 1fr; align-items: center; border-bottom: 1px solid #edf1f6; padding: 8px 0; }.guide-role-path li:last-child { border-bottom: 0; }
+.guide-role-path li > b { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 7px; color: #318bdc; background: #eff7ff; font-size: 10px; }.guide-role-path:nth-child(2) li > b { color: #7646df; background: #f3eeff; }.guide-role-path:nth-child(3) li > b { color: #12a5b1; background: #eafafa; }
+.guide-role-path li a { display: flex; align-items: center; justify-content: space-between; color: #5d6f8d; font-size: 11px; }.guide-role-path li a:hover { color: #168fcf; }
+.guide-reading-route { max-width: 1200px; margin: 0 auto; padding-top: 40px; padding-bottom: 60px; }
+.guide-reading-list { border-top: 1px solid #d9e3f1; }.guide-reading-list > a { display: grid; grid-template-columns: 75px 1fr auto; align-items: center; gap: 18px; border-bottom: 1px solid #dfe7f2; padding: 18px 8px; color: #14213b; }.guide-reading-list > a > strong { color: #397edb; font-size: 25px; }.guide-reading-list small { color: #1199c5; font-size: 10px; font-weight: 700; }.guide-reading-list h3 { margin-top: 3px; font-size: 14px; font-weight: 750; }.guide-reading-list p { margin-top: 4px; color: #70819b; font-size: 11px; }
+.guide-download-band { display: flex; align-items: center; justify-content: space-between; gap: 30px; background: #07152e; padding: 42px 65px; color: white; }.guide-download-band h2 { color: white; }.guide-download-band > div > span { display: block; margin-top: 9px; color: #93a8ca; font-size: 12px; }.guide-download-actions { display: flex; gap: 10px; }.guide-download-actions a { display: inline-flex; min-height: 42px; align-items: center; gap: 8px; border: 1px solid #315079; border-radius: 7px; padding: 0 15px; color: white; font-size: 12px; }.guide-download-actions a:first-child { border-color: #21bfdc; background: #0c87af; }
 
-@media (max-width: 1023px) {
-  .guide-sidebar { position: fixed; left: 0; top: 0; z-index: 50; height: 100vh; transform: translateX(-100%); background: white; box-shadow: 15px 0 40px rgba(15, 23, 42, .16); transition: transform .25s ease; }
-  .dark .guide-sidebar { background: #020617; }
-  .guide-sidebar-open { transform: translateX(0); }
-  .guide-intro { grid-template-columns: 1fr; gap: 2rem; }
-  .guide-workspace { grid-template-columns: 1fr; }
-  .guide-toc { display: none; }
-  .guide-home-hero { grid-template-columns: 1fr; gap: 2.5rem; padding: 4.5rem 2rem; }
-  .guide-home-route { border-left: 0; border-top: 1px solid #cbd5e1; padding: 2rem 0 0; }
-  .guide-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .guide-role-grid { grid-template-columns: 1fr; }
-  .guide-role-band { padding-right: 2rem; padding-left: 2rem; }
+.guide-shell-article { color: #b3c2df; background: #020c1f; }
+.guide-shell-article .guide-frame { min-height: calc(100vh - 78px); }
+.guide-shell-article .guide-sidebar { position: sticky; top: 78px; height: calc(100vh - 78px); overflow-y: auto; }
+.guide-shell-article .guide-sidebar-brand { display: none; }
+.guide-article-main { min-width: 0; flex: 1; background-color: #020c1f; background-image: radial-gradient(circle at 63% 3%, rgba(26, 77, 150, .18), transparent 34%), linear-gradient(rgba(33, 74, 127, .085) 1px, transparent 1px), linear-gradient(90deg, rgba(33, 74, 127, .085) 1px, transparent 1px); background-size: auto, 32px 32px, 32px 32px; }
+.guide-article-container { width: 100%; padding: 32px 58px 70px; }
+.guide-breadcrumb { display: flex; align-items: center; gap: 10px; color: #8295b8; font-size: 15px; }.guide-breadcrumb strong { color: #d8e2f4; font-weight: 600; }
+.guide-intro { display: grid; grid-template-columns: minmax(0, .76fr) minmax(520px, 1fr); align-items: start; gap: 62px; border-bottom: 1px solid #172a49; padding: 18px 0 38px; }
+.guide-intro-copy { padding-top: 60px; }
+.guide-intro :deep(.diagram-frame) { min-height: 320px; }
+.guide-intro h1 { margin-top: 15px; color: white; font-size: clamp(36px, 3.7vw, 56px); font-weight: 850; line-height: 1.08; }.guide-intro .guide-title-underline { width: min(100%, 455px); height: 6px; margin-top: 18px; }
+.guide-summary { margin-top: 22px; color: #9aaed0; font-size: 18px; line-height: 1.75; }.guide-meta { display: flex; gap: 22px; margin-top: 23px; color: #8094b9; font-size: 15px; }.guide-meta span { display: inline-flex; align-items: center; gap: 7px; }
+.guide-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 415px; gap: 52px; padding: 40px 0 50px; }
+.guide-article { min-width: 0; color: #a9bad8; font-size: 18px; line-height: 1.85; }
+.guide-article :deep(h1) { display: none; }
+.guide-article :deep(h2) { scroll-margin-top: 88px; margin: 42px 0 14px; border: 0; padding: 0; color: #f7f9ff; font-size: 24px; font-weight: 780; line-height: 1.35; }.guide-article :deep(h2:first-of-type) { margin-top: 0; }.guide-article :deep(h2:nth-of-type(3n+1)) { color: #38d7ed; }.guide-article :deep(h2:nth-of-type(3n+2)) { color: #a27af8; }.guide-article :deep(h2:nth-of-type(3n)) { color: #4b9cff; }
+.guide-article :deep(p) { margin: 11px 0; }.guide-article :deep(ul), .guide-article :deep(ol) { margin: 12px 0 18px 24px; padding-left: 16px; }.guide-article :deep(li) { margin: 6px 0; }.guide-article :deep(li::marker) { color: #27cbe6; }.guide-article :deep(strong) { color: #f7f9ff; font-weight: 700; }
+.guide-article :deep(code) { border: 1px solid #244369; border-radius: 5px; background: #0b1c37; padding: 2px 6px; color: #78e8f4; font-size: .86em; }.guide-article :deep(pre) { overflow-x: auto; margin: 20px 0; border: 1px solid #1f3a62; border-radius: 8px; background: #06142b; padding: 18px; color: #b8f7ee; font-size: 12px; line-height: 1.75; }.guide-article :deep(pre code) { border: 0; background: transparent; padding: 0; color: inherit; }.guide-article :deep(blockquote) { margin: 18px 0; border-left: 3px solid #28cbe6; background: rgba(25, 84, 128, .24); padding: 12px 17px; color: #8fe8ef; }.guide-article :deep(table) { display: block; width: 100%; overflow-x: auto; margin: 20px 0; border-collapse: collapse; font-size: 12px; }.guide-article :deep(th), .guide-article :deep(td) { min-width: 112px; border: 1px solid #213c61; padding: 9px 11px; text-align: left; vertical-align: top; }.guide-article :deep(th) { background: #0d1e39; color: #f1f6ff; }.guide-article :deep(a) { color: #39d8ed; text-decoration: underline; text-underline-offset: 3px; }
+.guide-toc { position: sticky; top: 112px; align-self: start; border-left: 1px solid #183051; padding-left: 44px; }.guide-toc > p { margin-bottom: 18px; color: #8296ba; font-size: 13px; font-weight: 800; letter-spacing: .12em; }.guide-toc > a { display: block; margin: 0; border-left: 2px solid transparent; padding: 9px 0 9px 22px; color: #7f93b7; font-size: 16px; line-height: 1.45; }.guide-toc > a:first-of-type { border-left-color: #28cee6; color: #36d8e9; }.guide-toc > a:hover { color: #45d9ee; }.guide-toc-help { display: flex; align-items: center; gap: 10px; margin-top: 25px; border-top: 1px solid #172a49; padding-top: 20px; color: #7488ac; font-size: 13px; }.guide-toc-help span { margin-right: auto; }.guide-toc-help button { color: #7e93b7; }
+.guide-pager { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-top: 1px solid #172a49; padding: 22px 0 0; }.guide-pager-button { display: flex; min-width: 0; align-items: center; gap: 12px; border: 1px solid #1c385d; border-radius: 8px; padding: 12px 15px; color: #c0cde3; text-align: left; }.guide-pager-button:hover { border-color: #2599c5; background: rgba(16, 75, 113, .2); }.guide-pager-next { justify-content: flex-end; text-align: right; }.guide-pager-button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }.guide-pager-button small { display: block; margin-bottom: 2px; color: #7285a7; font-size: 10px; font-weight: 500; }
+
+@media (max-width: 1180px) {
+  .guide-sidebar { width: 260px; flex-basis: 260px; }
+  .guide-home-toprow { padding: 0 35px; }.guide-home-hero { padding-right: 45px; padding-left: 45px; }.guide-home-section, .guide-role-band { padding-right: 35px; padding-left: 35px; }
+  .guide-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.guide-role-grid { grid-template-columns: 1fr; }
+  .guide-intro { grid-template-columns: 1fr; gap: 30px; }.guide-intro-copy { padding-top: 0; }.guide-workspace { grid-template-columns: 1fr; }.guide-toc { display: none; }
+}
+@media (max-width: 900px) {
+  .guide-sidebar { position: fixed !important; left: 0; top: 0 !important; z-index: 80; height: 100vh !important; width: min(318px, 88vw); transform: translateX(-102%); transition: transform .25s ease; box-shadow: 18px 0 45px rgba(0,0,0,.45); }.guide-sidebar-open { transform: translateX(0); }
+  .guide-sidebar-brand { display: flex !important; }.guide-sidebar-mobile-head { display: flex; align-items: center; justify-content: space-between; padding: 0 28px 6px; color: #dbe8fb; font-size: 13px; }
+  .guide-mobile-menu, .guide-home-menu { display: inline-flex; }.guide-topbar { height: 64px; padding: 0 16px; }.guide-topbar-actions > span { display: none; }.guide-topbar-actions > a { padding: 0 11px; }.guide-topbar-actions > a span { display: none; }
+  .guide-home-toprow { grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; height: 82px; padding: 0 18px; }.guide-home-wordmark em { display: none; }.guide-home-wordmark b { font-size: 16px; }.guide-cube-mark { width: 32px; height: 32px; }
+  .guide-home-hero { grid-template-columns: 1fr; padding: 42px 28px; }.guide-home-hero-visual { display: none; }.guide-home-search-band { top: 74px; }.guide-search-results { left: 68px; width: calc(100% - 86px); }
+  .guide-article-container { padding-right: 25px; padding-left: 25px; }
 }
 @media (max-width: 640px) {
-  .guide-intro { padding: 2.4rem 0 2.2rem; }
-  .guide-intro h1 { font-size: 1.9rem; }
-  .guide-summary { font-size: .9rem; }
-  .guide-article { font-size: .88rem; }
-  .guide-workspace { padding-top: 2.1rem; }
-  .guide-pager-button { padding: .7rem; }
-  .guide-pager-button span { font-size: .73rem; }
-  .guide-home-hero { min-height: auto; padding: 3.5rem 1.25rem 3rem; }
-  .guide-home-copy h1 { font-size: 2.2rem; }
-  .guide-home-copy > p:not(.guide-eyebrow) { font-size: .92rem; }
-  .guide-home-actions { align-items: stretch; flex-direction: column; }
-  .guide-home-route { grid-template-columns: 1fr; gap: .7rem; }
-  .guide-home-route > svg { transform: rotate(90deg); justify-self: center; }
-  .guide-home-route > div { display: grid; grid-template-columns: 3rem 1fr; align-items: center; }
-  .guide-home-route span { margin-top: 0; }
-  .guide-home-search-band { padding: 1.5rem 1.25rem; }
-  .guide-home-section, .guide-reading-route { padding: 3.5rem 1.25rem; }
-  .guide-home-heading { align-items: start; flex-direction: column; gap: .6rem; }
-  .guide-home-heading h2, .guide-download-band h2 { font-size: 1.45rem; }
-  .guide-module-grid { grid-template-columns: 1fr; }
-  .guide-module-entry { min-height: 9.5rem; }
-  .guide-role-band { padding: 3.5rem 1.25rem; }
-  .guide-reading-list > a { grid-template-columns: 3.5rem minmax(0, 1fr); gap: .75rem; }
-  .guide-reading-list > a > svg { display: none; }
-  .guide-download-band { align-items: stretch; flex-direction: column; gap: 1.5rem; padding: 3rem 1.25rem; }
-  .guide-download-actions { flex-direction: column; }
+  .guide-topbar-actions > a { font-size: 0; }.guide-topbar-actions > a svg { width: 18px; height: 18px; }.guide-brand-link em { display: none; }
+  .guide-home-toprow { grid-template-columns: auto 1fr; }.guide-home-wordmark { display: none; }.guide-home-search { height: 48px; }.guide-home-search kbd { display: none; }
+  .guide-home-copy h1 { max-width: 100%; overflow-wrap: anywhere; font-size: 34px; line-height: 1.16; }.guide-home-copy > p:not(.guide-eyebrow) br { display: none; }.guide-title-underline { width: 190px; height: 5px; }.guide-home-actions { align-items: stretch; flex-direction: column; }
+  .guide-home-section, .guide-role-band, .guide-reading-route { padding-right: 18px; padding-left: 18px; }.guide-home-heading { align-items: start; flex-direction: column; gap: 8px; margin-bottom: 17px; }.guide-module-grid { grid-template-columns: 1fr; }.guide-module-entry { min-height: 135px; }.guide-role-path { min-height: 0; padding: 15px; }
+  .guide-reading-list > a { grid-template-columns: 45px 1fr; gap: 10px; }.guide-reading-list > a > svg { display: none; }.guide-download-band { align-items: stretch; flex-direction: column; padding: 36px 20px; }.guide-download-actions { flex-direction: column; }
+  .guide-article-container { padding: 22px 18px 50px; }.guide-intro { padding: 34px 0 28px; }.guide-intro :deep(.diagram-frame) { min-height: 0; }.guide-intro h1 { font-size: 34px; }.guide-summary, .guide-article { font-size: 14px; }.guide-meta { gap: 12px; }.guide-workspace { padding-top: 22px; }.guide-pager-button { padding: 10px; }.guide-pager-button span { font-size: 10px; }
 }
 </style>
