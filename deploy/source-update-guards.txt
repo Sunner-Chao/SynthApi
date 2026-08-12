@@ -6,6 +6,8 @@ Dockerfile|go build -p=1
 backend/internal/service/openai_gateway_forward.go|stripOpenAIResponsesInputStatuses(body)
 backend/internal/service/openai_responses_namespace.go|func stripOpenAIResponsesInputStatuses
 deploy/source-update.sh|BUILDKIT_STEP_LOG_MAX_SIZE=1048576
+deploy/source-update.sh|existing_state=$(python3
+deploy/source-update.sh|fetch_succeeded=false
 backend/internal/payment/provider/alipay.go|alipayEnvironmentSandbox
 backend/internal/payment/provider/alipay.go|usesRedirectMode
 backend/internal/service/payment_config_providers.go|"environment": {}

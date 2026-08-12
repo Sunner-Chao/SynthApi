@@ -306,7 +306,38 @@ if [[ "$REQUEST_REPOSITORY" != "$OFFICIAL_REPOSITORY" ]]; then
   finish_failed "failed" "Update repository is not the approved official source" "not_started"
 fi
 
-for command in git docker python3 flock grep sha256sum; do
+if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" ]]; then
+  STATUS_FINALIZED=true
+  CURRENT_PHASE="completed"
+  write_status "succeeded" "$CURRENT_PHASE" "v${TARGET_VERSION} is already deployed" "succeeded" "$STARTED_AT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  exit 0
+fi
+
+if [[ -f "$STATUS_FILE" ]]; then
+  existing_state=$(python3 - "$STATUS_FILE" "$OPERATION_ID" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        status = json.load(handle)
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    raise SystemExit(0)
+
+if status.get("operation_id") == sys.argv[2] and status.get("state") in {
+    "succeeded",
+    "failed",
+    "rolled_back",
+}:
+    print(status["state"])
+PY
+  )
+  if [[ -n "$existing_state" ]]; then
+    exit 0
+  fi
+fi
+
+for command in git docker python3 flock grep sha256sum timeout; do
   if ! command -v "$command" >/dev/null 2>&1; then
     finish_failed "failed" "Required command is unavailable: $command" "not_started"
   fi
@@ -343,8 +374,16 @@ fi
 CURRENT_PHASE="fetching_official"
 write_status "running" "$CURRENT_PHASE" "Fetching official v${TARGET_VERSION}" "pending" "$STARTED_AT"
 UPSTREAM_REF="refs/tags/upstream-v${TARGET_VERSION}"
-if ! git -C "$REPO_DIR" fetch --force --no-tags "$OFFICIAL_URL" \
-  "refs/tags/v${TARGET_VERSION}:${UPSTREAM_REF}"; then
+fetch_succeeded=false
+for attempt in 1 2 3; do
+  if timeout 120 git -C "$REPO_DIR" fetch --force --no-tags "$OFFICIAL_URL" \
+    "refs/tags/v${TARGET_VERSION}:${UPSTREAM_REF}"; then
+    fetch_succeeded=true
+    break
+  fi
+  sleep $((attempt * 3))
+done
+if [[ "$fetch_succeeded" != true ]]; then
   finish_failed "failed" "Failed to fetch the requested official tag" "not_started"
 fi
 UPSTREAM_COMMIT=$(git -C "$REPO_DIR" rev-parse "${UPSTREAM_REF}^{commit}")
