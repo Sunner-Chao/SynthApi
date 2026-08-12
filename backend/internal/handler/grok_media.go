@@ -226,18 +226,18 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
-			if endpoint.IsGenerationRequest() && errors.Is(err, service.ErrNoAvailableAccounts) &&
-				(len(failedAccountIDs) == 0 || (mediaEligibilityRejected && lastFailoverErr == nil)) {
-				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
-				return
-			}
 			if len(failedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, service.PlatformGrok)
+				cls := localizeGrokMediaNoAccountError(classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, routingModel, requestModel, service.PlatformGrok), requestModel)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
 				h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+				return
+			}
+			if endpoint.IsGenerationRequest() && errors.Is(err, service.ErrNoAvailableAccounts) &&
+				mediaEligibilityRejected && lastFailoverErr == nil {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "当前没有可用的媒体生成账号，请稍后重试")
 				return
 			}
 			if lastFailoverErr != nil {
@@ -248,12 +248,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 		if selection == nil || selection.Account == nil {
-			if endpoint.IsGenerationRequest() {
-				markOpsRoutingCapacityLimited(c)
-				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
-				return
-			}
-			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, service.PlatformGrok)
+			cls := localizeGrokMediaNoAccountError(classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, routingModel, requestModel, service.PlatformGrok), requestModel)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
@@ -291,7 +286,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				)
 				if switchCount >= maxAccountSwitches {
 					markOpsRoutingCapacityLimited(c)
-					h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+					h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "当前没有可用的媒体生成账号，请稍后重试")
 					return
 				}
 				switchCount++
@@ -497,6 +492,16 @@ func grokMediaScheduleModel(account *service.Account, routingModel string, resul
 		return strings.TrimSpace(routingModel)
 	}
 	return account.GetMappedModel(routingModel)
+}
+
+func localizeGrokMediaNoAccountError(cls noAccountErrorClassification, displayModel string) noAccountErrorClassification {
+	if cls.ModelNotFound {
+		cls.Message = "当前分组未配置模型 \"" + strings.TrimSpace(displayModel) + "\"，请检查模型名称或改用该分组已支持的模型"
+		return cls
+	}
+	cls.ErrType = "grok_media_no_eligible_account"
+	cls.Message = "当前没有可用的媒体生成账号，请稍后重试"
+	return cls
 }
 
 func isGrokVideoCreateEndpoint(endpoint service.GrokMediaEndpoint) bool {

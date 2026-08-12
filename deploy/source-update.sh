@@ -390,7 +390,7 @@ fi
 CURRENT_PHASE="building_image"
 write_status "running" "$CURRENT_PHASE" "Building candidate image for v${TARGET_VERSION}" "pending" "$STARTED_AT"
 CANDIDATE_IMAGE="synthapi:candidate-${TARGET_VERSION}-${OPERATION_SUFFIX}"
-if ! docker build --pull \
+if ! BUILDKIT_STEP_LOG_MAX_SIZE=1048576 BUILDKIT_STEP_LOG_MAX_SPEED=1048576 docker build --pull \
   --build-arg "VERSION=${TARGET_VERSION}" \
   --build-arg "COMMIT=${CANDIDATE_COMMIT}" \
   --label "club.ecobim.synthapi.official-version=${TARGET_VERSION}" \

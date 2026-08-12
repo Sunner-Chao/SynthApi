@@ -168,6 +168,40 @@ func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
 	require.Equal(t, gjson.GetBytes(body, "input.0.large").Raw, gjson.GetBytes(stripped, "input.0.large").Raw)
 }
 
+func TestStripOpenAIResponsesInputStatuses(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.6-sol",
+		"stream":true,
+		"status":"top-level-keep",
+		"input":[
+			{"type":"message","role":"user","status":"completed","content":[{"type":"input_text","text":"hello","status":"nested-keep"}]},
+			{"type":"function_call","call_id":"call_1","name":"search","arguments":"{}","status":"completed"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok","status":"completed"},
+			{"type":"future_tool_output","status":"failed","output":"done"}
+		]
+	}`)
+
+	stripped, err := stripOpenAIResponsesInputStatuses(body)
+
+	require.NoError(t, err)
+	require.Equal(t, "top-level-keep", gjson.GetBytes(stripped, "status").String())
+	require.Equal(t, "nested-keep", gjson.GetBytes(stripped, "input.0.content.0.status").String())
+	for index := 0; index < 4; index++ {
+		require.False(t, gjson.GetBytes(stripped, "input."+strconv.Itoa(index)+".status").Exists())
+	}
+	require.True(t, gjson.GetBytes(stripped, "stream").Bool())
+	require.Equal(t, "call_1", gjson.GetBytes(stripped, "input.2.call_id").String())
+}
+
+func TestStripOpenAIResponsesInputStatusesLeavesBodyUnchanged(t *testing.T) {
+	body := []byte(`{"input":[{"type":"message","content":[{"type":"input_text","status":"nested-keep"}]}],"stream":true}`)
+
+	stripped, err := stripOpenAIResponsesInputStatuses(body)
+
+	require.NoError(t, err)
+	require.Equal(t, body, stripped)
+}
+
 func TestStripOpenAIResponsesInputNamespacesLeavesOtherShapesByteExact(t *testing.T) {
 	tests := [][]byte{
 		[]byte(`{"input":"text","namespace":"top-level"}`),

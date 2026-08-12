@@ -190,6 +190,54 @@ func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces boo
 	return stripped, nil
 }
 
+// stripOpenAIResponsesInputStatuses removes output-only status metadata
+// emitted by some agent clients when replaying Responses history. The field is
+// invalid on direct input items and can reject the turn before SSE starts.
+func stripOpenAIResponsesInputStatuses(body []byte) ([]byte, error) {
+	if !bytes.Contains(body, []byte(`"status"`)) {
+		return body, nil
+	}
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return body, nil
+	}
+
+	var rebuilt bytes.Buffer
+	rebuilt.Grow(len(input.Raw))
+	_ = rebuilt.WriteByte('[')
+	changed := false
+	first := true
+	var stripErr error
+	input.ForEach(func(_, item gjson.Result) bool {
+		if !first {
+			_ = rebuilt.WriteByte(',')
+		}
+		first = false
+		itemBody := []byte(item.Raw)
+		if item.IsObject() && item.Get("status").Exists() {
+			itemBody, stripErr = sjson.DeleteBytes(itemBody, "status")
+			if stripErr != nil {
+				return false
+			}
+			changed = true
+		}
+		_, _ = rebuilt.Write(itemBody)
+		return true
+	})
+	if stripErr != nil {
+		return body, fmt.Errorf("delete OpenAI input status: %w", stripErr)
+	}
+	if !changed {
+		return body, nil
+	}
+	_ = rebuilt.WriteByte(']')
+	stripped, err := sjson.SetRawBytes(body, "input", rebuilt.Bytes())
+	if err != nil {
+		return body, fmt.Errorf("replace OpenAI input after status deletion: %w", err)
+	}
+	return stripped, nil
+}
+
 func setOpenAIResponsesNamespaceNames(c *gin.Context, names map[string]apicompat.ResponsesNamespaceName) {
 	if c != nil && len(names) > 0 {
 		c.Set(openAIResponsesNamespaceNamesContextKey, names)

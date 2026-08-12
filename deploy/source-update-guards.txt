@@ -1,5 +1,11 @@
 # Every non-comment line is: repository-relative path|literal that must survive.
 Dockerfile|ENV NODE_OPTIONS=--max-old-space-size=2048
+Dockerfile|ENV GOMAXPROCS=1
+Dockerfile|ENV GOMEMLIMIT=900MiB
+Dockerfile|go build -p=1
+backend/internal/service/openai_gateway_forward.go|stripOpenAIResponsesInputStatuses(body)
+backend/internal/service/openai_responses_namespace.go|func stripOpenAIResponsesInputStatuses
+deploy/source-update.sh|BUILDKIT_STEP_LOG_MAX_SIZE=1048576
 backend/internal/payment/provider/alipay.go|alipayEnvironmentSandbox
 backend/internal/payment/provider/alipay.go|usesRedirectMode
 backend/internal/service/payment_config_providers.go|"environment": {}
