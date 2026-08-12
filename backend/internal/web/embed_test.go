@@ -149,6 +149,42 @@ func TestInjectSiteFavicon(t *testing.T) {
 	})
 }
 
+func TestSynthAPIMetadataForPath(t *testing.T) {
+	t.Run("public guide route is indexable", func(t *testing.T) {
+		profile := synthAPIMetadataForPath("/guide/troubleshooting")
+
+		assert.Equal(t, "guide-troubleshooting", profile.CacheKey)
+		assert.Equal(t, synthAPIOrigin+"/guide/troubleshooting", profile.Canonical)
+		assert.Contains(t, profile.Title, "503")
+		assert.Contains(t, profile.Robots, "index,follow")
+		assert.Equal(t, "TechArticle", profile.SchemaType)
+	})
+
+	t.Run("private routes are noindex", func(t *testing.T) {
+		for _, path := range []string{"/login", "/dashboard", "/admin/accounts", "/unknown"} {
+			profile := synthAPIMetadataForPath(path)
+			assert.Equal(t, "private", profile.CacheKey, "path=%s", path)
+			assert.Equal(t, synthAPIOrigin+"/home", profile.Canonical, "path=%s", path)
+			assert.Contains(t, profile.Robots, "noindex", "path=%s", path)
+		}
+	})
+}
+
+func TestInjectSynthAPIMetadata(t *testing.T) {
+	html := []byte(`<!doctype html><html><head><meta name="description" content="default" /><link rel="canonical" href="https://example.invalid" /><title>Default</title></head><body><div id="app"><main data-synthapi-public-fallback="true"><h1>Default answer</h1></main></div></body></html>`)
+	profile := synthAPIMetadataForPath("/about")
+
+	result := string(injectSynthAPIMetadata(html, profile))
+
+	assert.Contains(t, result, `<title>SynthAPI 是什么：产品、开源关系与能力边界</title>`)
+	assert.Contains(t, result, `href="https://synthapi.ecobim.club/about"`)
+	assert.Contains(t, result, `type="application/ld+json"`)
+	assert.Contains(t, result, `SynthAPI 是基于 Sub2API 开源项目构建`)
+	assert.Equal(t, 1, strings.Count(result, `data-synthapi-public-fallback="true"`))
+	assert.NotContains(t, result, "example.invalid")
+	assert.NotContains(t, result, "Default answer")
+}
+
 func TestReplaceNoncePlaceholder(t *testing.T) {
 	t.Run("replaces_single_placeholder", func(t *testing.T) {
 		html := []byte(`<script nonce="__CSP_NONCE_VALUE__">console.log('test');</script>`)
@@ -650,11 +686,11 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		// Request for existing static file
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		req := httptest.NewRequest(http.MethodGet, "/logo.svg", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
 		assert.Empty(t, w.Header().Get("Cache-Control"))
 
 		entries, err := fs.ReadDir(server.distFS, "assets")
@@ -687,6 +723,78 @@ func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 	} {
 		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
 	}
+}
+
+func TestFrontendServer_GEORoutes(t *testing.T) {
+	provider := &mockSettingsProvider{settings: map[string]string{"site_name": "SynthAPI"}}
+	server, err := NewFrontendServer(provider)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(middleware.CSPNonceKey, "geo-test-nonce")
+		c.Next()
+	})
+	router.Use(server.Middleware())
+
+	t.Run("serves route-specific public metadata", func(t *testing.T) {
+		tests := []struct {
+			path      string
+			canonical string
+			title     string
+			answer    string
+		}{
+			{"/home", synthAPIOrigin + "/home", "SynthAPI - 多模型 AI API 网关", "统一 API Key"},
+			{"/guide/troubleshooting", synthAPIOrigin + "/guide/troubleshooting", "SynthAPI 503、524 和流式请求断开排查", "503 通常表示"},
+		}
+
+		for _, test := range tests {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, test.path, nil)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code, "path=%s", test.path)
+			body := w.Body.String()
+			assert.Contains(t, body, "<title>"+test.title+"</title>", "path=%s", test.path)
+			assert.Contains(t, body, `href="`+test.canonical+`"`, "path=%s", test.path)
+			assert.Contains(t, body, `type="application/ld+json"`, "path=%s", test.path)
+			assert.Contains(t, body, test.answer, "path=%s", test.path)
+			assert.NotContains(t, body, NonceHTMLPlaceholder, "path=%s", test.path)
+		}
+	})
+
+	t.Run("marks private routes noindex", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `content="noindex,nofollow,noarchive"`)
+		assert.Contains(t, w.Body.String(), `href="`+synthAPIOrigin+`/home"`)
+	})
+
+	t.Run("serves machine-readable GEO assets", func(t *testing.T) {
+		tests := []struct {
+			path        string
+			contentType string
+			contains    string
+		}{
+			{"/robots.txt", "text/plain", "Sitemap: " + synthAPIOrigin + "/sitemap.xml"},
+			{"/sitemap.xml", "xml", synthAPIOrigin + "/about"},
+			{"/llms.txt", "text/plain", "# SynthAPI"},
+			{"/ai/brand-facts.md", "text/plain", "SynthAPI 产品事实与表述边界"},
+		}
+
+		for _, test := range tests {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, test.path, nil)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code, "path=%s", test.path)
+			assert.Contains(t, w.Header().Get("Content-Type"), test.contentType, "path=%s", test.path)
+			assert.Contains(t, w.Body.String(), test.contains, "path=%s", test.path)
+		}
+	})
 }
 
 func TestNewFrontendServer(t *testing.T) {
@@ -735,11 +843,11 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 		router.Use(middleware)
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		req := httptest.NewRequest(http.MethodGet, "/logo.svg", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
 	})
 
 	t.Run("serves_index_html_for_root", func(t *testing.T) {
@@ -818,7 +926,7 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 func TestHTMLCache(t *testing.T) {
 	t.Run("new_cache_returns_nil", func(t *testing.T) {
 		cache := NewHTMLCache()
-		assert.Nil(t, cache.Get())
+		assert.Nil(t, cache.Get("home"))
 	})
 
 	t.Run("set_and_get", func(t *testing.T) {
@@ -827,9 +935,9 @@ func TestHTMLCache(t *testing.T) {
 
 		html := []byte("<html><body>test</body></html>")
 		settings := []byte(`{"key":"value"}`)
-		cache.Set(html, settings)
+		cache.Set("home", html, settings)
 
-		result := cache.Get()
+		result := cache.Get("home")
 		require.NotNil(t, result)
 		assert.Equal(t, html, result.Content)
 		assert.NotEmpty(t, result.ETag)
@@ -841,13 +949,13 @@ func TestHTMLCache(t *testing.T) {
 
 		html := []byte("<html><body>test</body></html>")
 		settings := []byte(`{"key":"value"}`)
-		cache.Set(html, settings)
+		cache.Set("home", html, settings)
 
-		require.NotNil(t, cache.Get())
+		require.NotNil(t, cache.Get("home"))
 
 		cache.Invalidate()
 
-		assert.Nil(t, cache.Get())
+		assert.Nil(t, cache.Get("home"))
 	})
 
 	t.Run("etag_changes_with_settings", func(t *testing.T) {
@@ -856,12 +964,12 @@ func TestHTMLCache(t *testing.T) {
 
 		html := []byte("<html><body>test</body></html>")
 
-		cache.Set(html, []byte(`{"v":1}`))
-		etag1 := cache.Get().ETag
+		cache.Set("home", html, []byte(`{"v":1}`))
+		etag1 := cache.Get("home").ETag
 
 		cache.Invalidate()
-		cache.Set(html, []byte(`{"v":2}`))
-		etag2 := cache.Get().ETag
+		cache.Set("home", html, []byte(`{"v":2}`))
+		etag2 := cache.Get("home").ETag
 
 		assert.NotEqual(t, etag1, etag2)
 	})
@@ -870,8 +978,8 @@ func TestHTMLCache(t *testing.T) {
 		cache := NewHTMLCache()
 		cache.SetBaseHTML([]byte("<html></html>"))
 
-		cache.Set([]byte("<html></html>"), []byte(`{}`))
-		result := cache.Get()
+		cache.Set("home", []byte("<html></html>"), []byte(`{}`))
+		result := cache.Get("home")
 
 		// ETag should be quoted
 		assert.True(t, strings.HasPrefix(result.ETag, `"`))

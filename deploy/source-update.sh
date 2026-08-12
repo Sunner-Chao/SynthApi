@@ -20,6 +20,8 @@ COMPOSE_LOCAL_FILE="${SYNTHAPI_COMPOSE_LOCAL_FILE:-${DEPLOY_DIR}/docker-compose.
 COMPOSE_OVERRIDE_FILE="${SYNTHAPI_COMPOSE_OVERRIDE_FILE:-${DEPLOY_DIR}/docker-compose.override.yml}"
 IMAGE_NAME="${SYNTHAPI_IMAGE_NAME:-synthapi:local}"
 HEALTH_TIMEOUT_SECONDS="${SYNTHAPI_HEALTH_TIMEOUT_SECONDS:-240}"
+GEO_AUDIT_URL="${SYNTHAPI_GEO_AUDIT_URL:-http://127.0.0.1:8080}"
+GEO_PUBLIC_ORIGIN="${SYNTHAPI_GEO_PUBLIC_ORIGIN:-https://synthapi.ecobim.club}"
 DIRTY_WORKTREE_POLICY="${SYNTHAPI_DIRTY_WORKTREE_POLICY:-fail}"
 
 OPERATION_ID=""
@@ -47,6 +49,8 @@ verify_customization_guards() {
     return 1
   fi
   while IFS='|' read -r relative_path required_literal; do
+	# Git may check this manifest out with CRLF on Windows workstations.
+	required_literal=${required_literal%$'\r'}
     [[ -z "$relative_path" || "$relative_path" == \#* ]] && continue
     if [[ "$relative_path" = /* || "$relative_path" == *".."* || -z "$required_literal" ]]; then
       printf '%s\n' "Customization guard manifest contains an invalid entry"
@@ -306,7 +310,7 @@ if [[ "$REQUEST_REPOSITORY" != "$OFFICIAL_REPOSITORY" ]]; then
   finish_failed "failed" "Update repository is not the approved official source" "not_started"
 fi
 
-if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" ]]; then
+if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" && -z "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
   STATUS_FINALIZED=true
   CURRENT_PHASE="completed"
   write_status "succeeded" "$CURRENT_PHASE" "v${TARGET_VERSION} is already deployed" "succeeded" "$STARTED_AT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -493,6 +497,17 @@ if ! wait_for_healthy_version "$TARGET_VERSION"; then
   docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --force-recreate --pull never sub2api || true
   wait_for_healthy_version "$CURRENT_VERSION" || true
   finish_failed "rolled_back" "Candidate health verification failed; previous image restored" "not_started"
+fi
+
+CURRENT_PHASE="geo_audit"
+write_status "running" "$CURRENT_PHASE" "Verifying public GEO routes and machine-readable assets" "pending" "$STARTED_AT"
+if ! python3 "$WORKTREE_DIR/deploy/geo-audit.py" \
+  --base-url "$GEO_AUDIT_URL" \
+  --expected-origin "$GEO_PUBLIC_ORIGIN"; then
+  docker tag "$OLD_IMAGE_ID" "$IMAGE_NAME"
+  docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --force-recreate --pull never sub2api || true
+  wait_for_healthy_version "$CURRENT_VERSION" || true
+  finish_failed "rolled_back" "Candidate GEO verification failed; previous image restored" "not_started"
 fi
 
 CURRENT_PHASE="recording_deployment"

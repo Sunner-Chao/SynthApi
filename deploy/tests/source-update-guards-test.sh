@@ -18,3 +18,8 @@ if SYNTHAPI_REPO_DIR="$ROOT_DIR" \
   echo "source updater accepted a missing customization guard" >&2
   exit 1
 fi
+
+printf 'Dockerfile|ENV NODE_OPTIONS=--max-old-space-size=2048\r\n' > "$TEMP_DIR/crlf-guards.txt"
+SYNTHAPI_REPO_DIR="$ROOT_DIR" \
+SYNTHAPI_UPDATE_GUARD_FILE="$TEMP_DIR/crlf-guards.txt" \
+  "$UPDATER" --check-guards

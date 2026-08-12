@@ -194,6 +194,15 @@ const routes: RouteRecordRaw[] = [
       title: 'Product Guide'
     }
   },
+  {
+    path: '/about',
+    name: 'AboutSynthAPI',
+    component: () => import('@/views/public/AboutSynthAPIView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '产品与开源关系'
+    }
+  },
 
   // ==================== User Routes ====================
   {

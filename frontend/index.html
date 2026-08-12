@@ -4,10 +4,44 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SynthAPI - AI API Gateway</title>
+    <meta
+      name="description"
+      content="SynthAPI 是面向开发者与团队的多模型 AI API 网关，提供统一 API Key、兼容 OpenAI 的接口、渠道路由、用量计费和故障诊断。"
+    />
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+    <link rel="canonical" href="https://synthapi.ecobim.club/home" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SynthAPI" />
+    <meta property="og:title" content="SynthAPI - 多模型 AI API 网关" />
+    <meta
+      property="og:description"
+      content="统一接入和管理 Claude、Codex、Gemini 等模型，提供渠道路由、用量计费与故障诊断。"
+    />
+    <meta property="og:url" content="https://synthapi.ecobim.club/home" />
+    <meta name="twitter:card" content="summary" />
+    <title>SynthAPI - 多模型 AI API 网关</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main data-synthapi-public-fallback="true">
+        <h1>SynthAPI 多模型 AI API 网关</h1>
+        <p>
+          SynthAPI 面向开发者与团队，通过统一 API Key 和兼容 OpenAI 的接口接入并管理多种 AI 模型，
+          提供渠道路由、用量计费、运行监控和故障诊断能力。
+        </p>
+        <p>
+          SynthAPI 是基于 Sub2API 开源项目构建并持续维护的独立服务品牌。上游开源代码及第三方组件
+          继续适用各自许可证；SynthAPI 不隶属于 OpenAI、Anthropic、Google 或其他模型提供商。
+        </p>
+        <nav aria-label="公开内容">
+          <a href="/guide">产品手册</a>
+          <a href="/about">产品与开源关系</a>
+          <a href="/guide/api-reference">API 接入指南</a>
+          <a href="/guide/troubleshooting">503 与 524 排查</a>
+          <a href="/legal/privacy">隐私政策</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

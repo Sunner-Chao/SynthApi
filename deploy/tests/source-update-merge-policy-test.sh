@@ -14,6 +14,25 @@ if ! grep -Fq 'replay_official_first_customizations' "$UPDATER"; then
   echo "source updater does not replay branding on official authentication views" >&2
   exit 1
 fi
+if ! grep -Fq 'CURRENT_PHASE="geo_audit"' "$UPDATER" || \
+  ! grep -Fq 'deploy/geo-audit.py' "$UPDATER" || \
+  ! grep -Fq 'Candidate GEO verification failed; previous image restored' "$UPDATER"; then
+  echo "source updater does not enforce the GEO audit before recording deployment" >&2
+  exit 1
+fi
+if ! grep -Fq 'CURRENT_VERSION" == "$TARGET_VERSION" && -z "$(git -C "$REPO_DIR" status --porcelain)"' "$UPDATER"; then
+  echo "source updater does not rebuild the current version when customizations are pending" >&2
+  exit 1
+fi
+for updater_guard in \
+  'BUILDKIT_STEP_LOG_MAX_SIZE=1048576' \
+  'existing_state=$(python3' \
+  'fetch_succeeded=false'; do
+  if ! grep -Fq "$updater_guard" "$UPDATER"; then
+    echo "source updater is missing production hardening: $updater_guard" >&2
+    exit 1
+  fi
+done
 for official_first_path in \
   'backend/internal/repository/gateway_cache.go' \
   'backend/internal/handler/grok_media.go' \

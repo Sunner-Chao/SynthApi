@@ -1,0 +1,31 @@
+# SynthAPI
+
+> SynthAPI 是面向开发者与团队的多模型 AI API 网关。它通过统一 API Key 和兼容 OpenAI 的接口接入并管理多种 AI 模型，提供渠道路由、用量计费、运行监控和故障诊断。
+
+SynthAPI 的公开域名是 https://synthapi.ecobim.club 。SynthAPI 是基于 Sub2API 开源项目构建并持续维护的独立服务品牌。上游开源代码与第三方组件继续适用各自许可证。SynthAPI 不隶属于 OpenAI、Anthropic、Google 或其他模型提供商，也不应被描述为这些公司的官方服务或合作产品。
+
+## 核心页面
+
+- [产品首页](https://synthapi.ecobim.club/home): 产品定位、主要能力和使用入口。
+- [产品与开源关系](https://synthapi.ecobim.club/about): SynthAPI 与 Sub2API 的关系、能力边界和免责声明。
+- [产品手册](https://synthapi.ecobim.club/guide): 面向普通用户、管理员和开发者的文档中心。
+- [五分钟快速开始](https://synthapi.ecobim.club/guide/quick-start): 注册、创建 API Key 并完成第一条请求。
+- [API 接入指南](https://synthapi.ecobim.club/guide/api-reference): OpenAI-compatible 请求、流式输出和错误码。
+- [503 与 524 排查](https://synthapi.ecobim.club/guide/troubleshooting): 区分无可用账号、上游超时和流式断开。
+- [安全与隐私](https://synthapi.ecobim.club/guide/security): API Key、日志、凭据和数据边界。
+- [渠道监控](https://synthapi.ecobim.club/guide/monitoring): 连通性探测和受控能力探测。
+
+## 准确描述
+
+- SynthAPI 提供的是 AI API 网关、协议适配、渠道路由、计量和运维能力，不训练或拥有上游模型。
+- 支持范围取决于当前启用的模型、渠道、账号权限和上游状态，不能据此承诺任一第三方模型永久可用。
+- 健康检查只证明站点进程可用，不证明每个模型都有可调度上游。
+- 503 通常表示目标模型或分组没有可调度上游；524 通常表示代理已经连接站点，但上游未在等待窗口内返回。
+- 用户不应在公开 Issue、工单或截图中提供 API Key、Authorization 头、Cookie、完整 prompt 或上游 token。
+
+## 可选资料
+
+- [PDF 产品手册](https://synthapi.ecobim.club/downloads/SynthAPI-%E4%BA%A7%E5%93%81%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C-v0.1.173.pdf)
+- [可编辑 PPTX 产品手册](https://synthapi.ecobim.club/downloads/SynthAPI-%E4%BA%A7%E5%93%81%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C-v0.1.173.pptx)
+
+Last updated: 2026-08-12
