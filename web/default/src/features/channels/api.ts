@@ -76,6 +76,9 @@ export type CodexUsageResponse = {
   reset_count?: number
   last_reset_at?: number
   provider_reset_supported?: boolean
+  provider_reset_credits?: {
+    available_count?: number
+  }
   data?: Record<string, unknown>
 }
 
@@ -87,6 +90,13 @@ export type ImportedAccountResetResponse = {
     reset_count?: number
     last_reset_at?: number
     provider_reset_supported?: boolean
+    provider_outcome?:
+      | 'reset'
+      | 'nothing_to_reset'
+      | 'no_credit'
+      | 'already_redeemed'
+    provider_windows_reset?: number
+    local_reset_applied?: boolean
   }
 }
 
@@ -201,9 +211,12 @@ export async function getImportedAccountResetState(
 export async function resetImportedAccountState(
   id: number
 ): Promise<ImportedAccountResetResponse> {
+  const idempotencyKey =
+    globalThis.crypto?.randomUUID?.() ||
+    `synthapi-reset-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const res = await api.post(
     `/api/channel/${id}/imported_account_reset`,
-    {},
+    { idempotency_key: idempotencyKey },
     channelActionConfig()
   )
   return res.data

@@ -84,7 +84,11 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import type { LogOtherData, RelayTrace, UsageLog } from '../../types'
-import { ApiLineBadge } from '../api-line-badge'
+import {
+  ApiLineBadge,
+  ChannelConcurrencyBadge,
+  WorkerNodeBadge,
+} from '../api-line-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
 function timingTextColorClass(
@@ -1183,10 +1187,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
               copyable={false}
             />
             {showTiming && (
-              <ApiLineBadge
-                line={other?.ingress_line}
-                host={other?.ingress_host}
-              />
+              <>
+                <ApiLineBadge
+                  line={other?.ingress_line}
+                  host={other?.ingress_host}
+                />
+                <WorkerNodeBadge node={other?.worker_node} />
+                <ChannelConcurrencyBadge
+                  active={other?.channel_concurrency_active}
+                  limit={other?.channel_concurrency_limit}
+                />
+              </>
             )}
           </DialogTitle>
           <DialogDescription className='sr-only'>

@@ -16,10 +16,8 @@ var globalStats = &HTTPStats{}
 // StatsMiddleware 统计中间件
 func StatsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 增加活跃连接数
 		atomic.AddInt64(&globalStats.activeConnections, 1)
 
-		// 确保在请求结束时减少连接数
 		defer func() {
 			atomic.AddInt64(&globalStats.activeConnections, -1)
 		}()

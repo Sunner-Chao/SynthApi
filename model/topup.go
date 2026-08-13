@@ -14,19 +14,23 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	DisplayAmount   float64 `json:"display_amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	ProviderTradeNo string  `json:"provider_trade_no" gorm:"type:varchar(128);index"`
-	Currency        string  `json:"currency" gorm:"type:varchar(8);default:''"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Id               int     `json:"id"`
+	UserId           int     `json:"user_id" gorm:"index"`
+	Amount           int64   `json:"amount"`
+	DisplayAmount    float64 `json:"display_amount"`
+	Money            float64 `json:"money"`
+	TradeNo          string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	ProviderTradeNo  string  `json:"provider_trade_no" gorm:"type:varchar(128);index"`
+	Currency         string  `json:"currency" gorm:"type:varchar(8);default:''"`
+	PaymentMethod    string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider  string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	PromotionScene   string  `json:"promotion_scene" gorm:"type:varchar(16);index"`
+	PromotionPercent int     `json:"promotion_percent" gorm:"default:0"`
+	PromotionQuota   int64   `json:"promotion_quota" gorm:"default:0"`
+	PromotionDay     string  `json:"promotion_day" gorm:"type:date;index"`
+	CreateTime       int64   `json:"create_time"`
+	CompleteTime     int64   `json:"complete_time"`
+	Status           string  `json:"status"`
 }
 
 const (

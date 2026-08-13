@@ -252,6 +252,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		stageTrace.channelCapacityQueue += capacityQueue
 		queued, _ := common.GetContextKeyType[time.Duration](c, constant.ContextKeyChannelCapacityQueue)
 		common.SetContextKey(c, constant.ContextKeyChannelCapacityQueue, queued+capacityQueue)
+		recordChannelConcurrencySnapshot(c, capacity)
 		if !capacity.Allowed {
 			service.MarkChannelCapacityExcluded(c, channel.Id)
 			logger.LogWarn(c, fmt.Sprintf("channel #%d concurrency limit reached: limited_by=%s active=%d/%d user_active=%d/%d",
@@ -569,6 +570,19 @@ func channelCapacityError(channelID int, capacity service.ChannelCapacitySnapsho
 	)
 }
 
+func recordChannelConcurrencySnapshot(c *gin.Context, capacity service.ChannelCapacitySnapshot) {
+	if c == nil || capacity.TotalLimit <= 0 {
+		return
+	}
+	active := capacity.Active
+	if capacity.Allowed {
+		// The tracker snapshot is taken immediately before admission.
+		active++
+	}
+	common.SetContextKey(c, constant.ContextKeyChannelConcurrencyActive, active)
+	common.SetContextKey(c, constant.ContextKeyChannelConcurrencyLimit, capacity.TotalLimit)
+}
+
 func processChannelError(c *gin.Context, relayInfo *relaycommon.RelayInfo, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	importedQuotaError := service.IsImportedAccountQuotaError(c, err)
@@ -846,6 +860,7 @@ func RelayTask(c *gin.Context) {
 		channelLimit := channelSettings.EffectiveMaxConcurrency(common.ModelRequestDefaultChannelMaxConcurrency)
 		channelUserLimit := channelSettings.EffectiveMaxConcurrencyPerUser(common.ModelRequestDefaultChannelMaxConcurrencyPerUser)
 		endActiveUse, capacity := service.TryBeginChannelActiveUse(channel.Id, relayInfo.UserId, channelLimit, channelUserLimit)
+		recordChannelConcurrencySnapshot(c, capacity)
 		if !capacity.Allowed {
 			service.MarkChannelCapacityExcluded(c, channel.Id)
 			if _, locked := relayInfo.LockedChannel.(*model.Channel); locked {

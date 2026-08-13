@@ -97,8 +97,7 @@ export function UserAuthForm({
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
   const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
-  const passkeyButtonDisabled =
-    isPasskeyLoading || !passkeySupported
+  const passkeyButtonDisabled = isPasskeyLoading || !passkeySupported
   const hasWeChatLogin = Boolean(status?.wechat_login)
   const hasOAuthLogin = Boolean(
     status?.github_oauth ||
@@ -392,6 +391,7 @@ export function UserAuthForm({
                 <Turnstile
                   siteKey={turnstileSiteKey}
                   onVerify={setTurnstileToken}
+                  onExpire={() => setTurnstileToken('')}
                 />
               </div>
             )}
@@ -482,7 +482,9 @@ export function UserAuthForm({
           <DialogHeader className='text-left'>
             <DialogTitle>{t('Agreement Required')}</DialogTitle>
             <DialogDescription>
-              {t('You need to read and agree to the User Agreement and Privacy Policy before signing in. Please check the agreement box below the form.')}
+              {t(
+                'You need to read and agree to the User Agreement and Privacy Policy before signing in. Please check the agreement box below the form.'
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

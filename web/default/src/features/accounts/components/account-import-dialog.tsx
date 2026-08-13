@@ -172,6 +172,7 @@ type ImportedChannelCheck = {
   responseTime?: number
   resetCount?: number
   lastResetAt?: number
+  providerResetCredits?: number
 }
 
 const CODEX_CHANNEL_TYPE = 57
@@ -386,6 +387,8 @@ function createMonitorSnapshot(
     balance_updated_time: patch.balanceUpdatedTime ?? item.balanceUpdatedTime,
     reset_count: patch.resetCount ?? item.resetCount ?? 0,
     last_reset_at: patch.lastResetAt ?? item.lastResetAt ?? 0,
+    provider_reset_credits:
+      patch.providerResetCredits ?? item.providerResetCredits,
   }
 }
 
@@ -417,6 +420,7 @@ function channelToImportedItem(
   const lastCheckedAt = Number(monitor.checked_at)
   const resetCount = Number(monitor.reset_count)
   const lastResetAt = Number(monitor.last_reset_at)
+  const providerResetCredits = Number(monitor.provider_reset_credits)
 
   return {
     key: getImportedChannelKey(index, channel.id),
@@ -461,6 +465,10 @@ function channelToImportedItem(
     resetCount: Number.isFinite(resetCount) && resetCount >= 0 ? resetCount : 0,
     lastResetAt:
       Number.isFinite(lastResetAt) && lastResetAt > 0 ? lastResetAt : undefined,
+    providerResetCredits:
+      Number.isFinite(providerResetCredits) && providerResetCredits >= 0
+        ? providerResetCredits
+        : undefined,
   }
 }
 
@@ -886,6 +894,9 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
                   formatCodexUsageSummary(response.data) || t('Usage fetched'),
                 resetCount: response.reset_count ?? item.resetCount ?? 0,
                 lastResetAt: response.last_reset_at || item.lastResetAt,
+                providerResetCredits:
+                  response.provider_reset_credits?.available_count ??
+                  item.providerResetCredits,
               })
               updateCheckItem(item.key, finalPatch)
             } else {
@@ -1022,10 +1033,15 @@ export function AccountImportPanel(props: AccountImportPanelProps) {
           channelMessage: undefined,
           responseTime: undefined,
           lastCheckedAt: undefined,
+          providerResetCredits: item.providerResetCredits,
         }
         updateCheckItem(item.key, nextItem)
         await runPostImportChecks([nextItem])
-        toast.success(t('Imported account monitor reset'))
+        toast.success(
+          item.type === CODEX_CHANNEL_TYPE
+            ? t('Official quota reset successful')
+            : t('Imported account monitor reset')
+        )
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -2370,6 +2386,10 @@ function ImportedChannelRow({
   resetting: boolean
 }) {
   const { t } = useTranslation()
+  const resetLabel =
+    item.type === CODEX_CHANNEL_TYPE
+      ? t('Consume official reset credit')
+      : t('Reset imported account monitor')
 
   return (
     <TableRow data-state={selected ? 'selected' : undefined}>
@@ -2402,8 +2422,8 @@ function ImportedChannelRow({
             size='icon-sm'
             onClick={onReset}
             disabled={!item.channelId || deleting || resetting}
-            aria-label={t('Reset imported account monitor')}
-            title={t('Reset imported account monitor')}
+            aria-label={resetLabel}
+            title={resetLabel}
           >
             {resetting ? (
               <Loader2 className='size-4 animate-spin' />
@@ -2446,6 +2466,10 @@ function ImportedChannelCard({
   resetting: boolean
 }) {
   const { t } = useTranslation()
+  const resetLabel =
+    item.type === CODEX_CHANNEL_TYPE
+      ? t('Consume official reset credit')
+      : t('Reset imported account monitor')
 
   return (
     <div
@@ -2471,8 +2495,8 @@ function ImportedChannelCard({
             size='icon-sm'
             onClick={onReset}
             disabled={!item.channelId || deleting || resetting}
-            aria-label={t('Reset imported account monitor')}
-            title={t('Reset imported account monitor')}
+            aria-label={resetLabel}
+            title={resetLabel}
           >
             {resetting ? (
               <Loader2 className='size-4 animate-spin' />
@@ -2614,6 +2638,12 @@ function QuotaCell({ item }: { item: ImportedChannelCheck }) {
       <div className='text-muted-foreground text-xs'>
         {t('Local resets:')} {item.resetCount ?? 0}
       </div>
+      {item.type === CODEX_CHANNEL_TYPE &&
+        item.providerResetCredits !== undefined && (
+          <div className='text-muted-foreground text-xs'>
+            {t('Official reset credits:')} {item.providerResetCredits}
+          </div>
+        )}
     </div>
   )
 }

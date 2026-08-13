@@ -65,6 +65,8 @@ const UserInfoModal = ({
     minWidth: 0,
   };
 
+  const rewardSummary = userInfoData?.reward_summary;
+
   return (
     <Modal
       title={t('用户信息')}
@@ -152,6 +154,70 @@ const UserInfoModal = ({
                 </div>
               </div>
             )}
+
+          {rewardSummary && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: 16,
+                border: '1px solid var(--semi-color-border)',
+                borderRadius: 8,
+                background: 'var(--semi-color-fill-0)',
+              }}
+            >
+              <div style={{ ...valueStyle, marginBottom: 14 }}>
+                {t('邀请返利与千元充能')}
+              </div>
+              <div style={rowStyle}>
+                <div style={colStyle}>
+                  {renderLabel(t('返利等级'), 'warning')}
+                  <div style={valueStyle}>
+                    {rewardSummary.affiliate?.current_stage?.name || '-'}
+                  </div>
+                </div>
+                <div style={colStyle}>
+                  {renderLabel(t('有效付费邀请'), 'success')}
+                  <div style={valueStyle}>
+                    {renderNumber(
+                      rewardSummary.affiliate?.effective_invite_count || 0,
+                    )}
+                  </div>
+                </div>
+                <div style={colStyle}>
+                  {renderLabel(t('累计返利'), 'warning')}
+                  <div style={valueStyle}>
+                    ¥
+                    {Number(
+                      rewardSummary.affiliate?.total_reward_cny || 0,
+                    ).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              <div style={{ ...rowStyle, marginBottom: 0 }}>
+                <div style={colStyle}>
+                  {renderLabel(t('累计净充值'), 'primary')}
+                  <div style={valueStyle}>
+                    ¥
+                    {Number(
+                      rewardSummary.recharge?.total_recharge_cny || 0,
+                    ).toFixed(2)}
+                  </div>
+                </div>
+                <div style={colStyle}>
+                  {renderLabel(t('充能已发放'), 'success')}
+                  <div style={valueStyle}>
+                    {renderNumber(rewardSummary.recharge?.granted_count || 0)}
+                  </div>
+                </div>
+                <div style={colStyle}>
+                  {renderLabel(t('充能待审核'), 'warning')}
+                  <div style={valueStyle}>
+                    {renderNumber(rewardSummary.recharge?.pending_count || 0)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 备注 */}
           {userInfoData.remark && (

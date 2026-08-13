@@ -30,8 +30,13 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil {
+		if capacityErr := newRecognizedAutoRouteError(oaiError, resp.StatusCode); capacityErr != nil {
+			return nil, capacityErr
+		}
+		if oaiError.Type != "" {
+			return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		}
 	}
 
 	if responsesResponse.HasImageGenerationCall() {
@@ -85,6 +90,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
 	streamCompleted := false
+	var streamErr *types.NewAPIError
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -94,6 +100,18 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
 			sr.Error(err)
 			return
+		}
+		if capacityErr := newRecognizedAutoRouteError(streamResponse.Error, http.StatusServiceUnavailable); capacityErr != nil {
+			streamErr = capacityErr
+			sr.Stop(streamErr)
+			return
+		}
+		if streamResponse.Response != nil {
+			if capacityErr := newRecognizedAutoRouteError(streamResponse.Response.Error, http.StatusServiceUnavailable); capacityErr != nil {
+				streamErr = capacityErr
+				sr.Stop(streamErr)
+				return
+			}
 		}
 		if err := sendResponsesStreamData(c, streamResponse, data); err != nil {
 			sr.Stop(err)
@@ -148,6 +166,14 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			service.MarkLongContextCompactionObserved(c)
 		}
 	})
+	if streamErr != nil {
+		return nil, streamErr
+	}
+	if !streamCompleted {
+		if streamFailure := newUpstreamStreamFailure(info); streamFailure != nil {
+			return nil, streamFailure
+		}
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量

@@ -40,7 +40,16 @@ export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
 }
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export type AffiliateCodeResponse = ApiResponse<string>
-export type AffiliateTransferResponse = ApiResponse
+export type AffiliateTransferResponse = ApiResponse<{
+  id: number
+  user_id: number
+  quota: number
+  aff_quota_before: number
+  aff_quota_after: number
+  quota_before: number
+  quota_after: number
+  created_at: number
+}>
 export type CreemPaymentResponse = ApiResponse<{ checkout_url: string }>
 export type WaffoPaymentResponse = ApiResponse<
   { payment_url?: string } | string

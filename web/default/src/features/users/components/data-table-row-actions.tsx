@@ -30,6 +30,7 @@ import {
   ShieldAlert,
   Link2,
   CreditCard,
+  Gift,
   UserX,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -53,14 +54,15 @@ import {
   isUserDeleted,
 } from '../constants'
 import { getUserActionMessage } from '../lib'
-import { type User, type ManageUserAction } from '../types'
+import { type UserWithRewardSummary, type ManageUserAction } from '../types'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
+import { UserRewardDialog } from './user-reward-dialog'
 import { UsersDeactivateDialog } from './users-deactivate-dialog'
 import { UsersDeleteDialog } from './users-delete-dialog'
 import { useUsers } from './users-provider'
 
 interface DataTableRowActionsProps {
-  row: Row<User>
+  row: Row<UserWithRewardSummary>
 }
 
 export function DataTableRowActions({ row }: DataTableRowActionsProps) {
@@ -71,6 +73,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
+  const [rewardDialogOpen, setRewardDialogOpen] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -261,6 +264,18 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </DropdownMenuShortcut>
           </DropdownMenuItem>
 
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              setRewardDialogOpen(true)
+            }}
+          >
+            {t('Reward details')}
+            <DropdownMenuShortcut>
+              <Gift size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+
           <DropdownMenuSeparator />
 
           <DropdownMenuItem
@@ -334,6 +349,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         onOpenChange={setSubscriptionsDialogOpen}
         user={{ id: user.id, username: user.username }}
         onSuccess={triggerRefresh}
+      />
+
+      <UserRewardDialog
+        user={user}
+        open={rewardDialogOpen}
+        onOpenChange={setRewardDialogOpen}
       />
 
       <UsersDeactivateDialog />

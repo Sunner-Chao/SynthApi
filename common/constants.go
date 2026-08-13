@@ -210,6 +210,10 @@ var ModelRequestDefaultChannelMaxConcurrencyPerUser int
 var ModelRequestLargeBodyThresholdMB int
 var ModelRequestMaxLargeConcurrencyPerUser int
 var ModelRequestConcurrencyExemptUserIDs map[int]struct{}
+
+// ModelRequestConcurrencyLeaseSeconds bounds the lifetime of a distributed
+// request slot if a process disappears before its release callback runs.
+var ModelRequestConcurrencyLeaseSeconds int
 var ModelTextRequestBodyMB int
 var ModelTextRequestBodyReadTimeout int
 

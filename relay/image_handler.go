@@ -150,6 +150,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if len(request.Size) > 0 {
 		logContent = append(logContent, fmt.Sprintf("大小 %s", request.Size))
 	}
+	if resolution := request.GetResolution(); resolution != "" && common.IsAPIMartAPIBaseURL(info.ChannelBaseUrl) {
+		logContent = append(logContent, fmt.Sprintf("分辨率档位 %s", strings.ToUpper(resolution)))
+	}
 	if len(quality) > 0 {
 		logContent = append(logContent, fmt.Sprintf("品质 %s", quality))
 	}

@@ -702,10 +702,18 @@ export const useLogsData = () => {
     if (!isAdminUser) {
       return;
     }
-    const res = await API.get(`/api/user/${userId}`);
+    const [res, rewardRes] = await Promise.all([
+      API.get(`/api/user/${userId}`),
+      API.get(`/api/user/rewards/admin/users/${userId}/summary`).catch(
+        () => null,
+      ),
+    ]);
     const { success, message, data } = res.data;
     if (success) {
-      setUserInfoData(data);
+      setUserInfoData({
+        ...data,
+        reward_summary: rewardRes?.data?.success ? rewardRes.data.data : null,
+      });
       setShowUserInfoModal(true);
     } else {
       showError(message);

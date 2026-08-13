@@ -213,6 +213,13 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 				imageRequest.Quality = "auto"
 			}
 		}
+		if imageRequest.IsAPIMartGPTImage2() {
+			switch imageRequest.GetResolution() {
+			case "", "1k", "2k", "4k":
+			default:
+				return nil, errors.New("resolution must be one of 1k, 2k, or 4k for gpt-image-2")
+			}
+		}
 
 		//if imageRequest.Prompt == "" {
 		//	return nil, errors.New("prompt is required")

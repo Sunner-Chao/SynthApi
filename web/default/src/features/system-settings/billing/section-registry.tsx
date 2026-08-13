@@ -24,6 +24,7 @@ import { PaymentSettingsSection } from '../integrations/payment-settings-section
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { RewardProgramSettingsSection } from './reward-program-settings-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
   ModelPrice: settings.ModelPrice,
@@ -54,6 +55,19 @@ const getGroupDefaults = (settings: BillingSettings) => ({
 })
 
 const BILLING_SECTIONS = [
+  {
+    id: 'reward-programs',
+    titleKey: 'Reward Programs',
+    build: (settings: BillingSettings) => (
+      <RewardProgramSettingsSection
+        defaultValues={{
+          AffiliateMilestoneRewardEnabled:
+            settings.AffiliateMilestoneRewardEnabled,
+          RechargeBenefitEnabled: settings.RechargeBenefitEnabled,
+        }}
+      />
+    ),
+  },
   {
     id: 'quota',
     titleKey: 'Quota Settings',
@@ -241,7 +255,7 @@ const billingRegistry = createSectionRegistry<
   BillingSettings
 >({
   sections: BILLING_SECTIONS,
-  defaultSection: 'quota',
+  defaultSection: 'reward-programs',
   basePath: '/system-settings/billing',
   urlStyle: 'path',
 })

@@ -34,6 +34,17 @@
       overflow: hidden;
     }
 
+    body.wechat-mode {
+      background: #02070b;
+      padding: 16px;
+      overflow: auto;
+      align-items: flex-start;
+    }
+
+    body.wechat-mode::before {
+      display: none;
+    }
+
     /* 背景装饰 */
     body::before {
       content: '';
@@ -63,6 +74,16 @@
       z-index: 1;
       backdrop-filter: blur(20px);
       border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    body.wechat-mode .container {
+      max-width: 1280px;
+      padding: 0;
+      background: #02070b;
+      border: 1px solid rgba(104, 243, 255, 0.32);
+      border-radius: 18px;
+      box-shadow: 0 24px 90px rgba(0, 0, 0, 0.65), 0 0 40px rgba(0, 224, 255, 0.12);
+      overflow: hidden;
     }
 
     /* 头部 Logo */
@@ -226,6 +247,292 @@
 
     .qr-hint strong {
       color: var(--primary);
+    }
+
+    /* The WeChat scene uses the supplied 16:9 video as the payment surface. */
+    .wechat-scene {
+      display: none;
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      min-height: 480px;
+      overflow: hidden;
+      isolation: isolate;
+      background: #02070b;
+    }
+
+    .wechat-scene.active {
+      display: block;
+    }
+
+    .wechat-scene video,
+    .wechat-scene-vignette,
+    .wechat-scene-scanlines {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .wechat-scene video {
+      display: block;
+      object-fit: cover;
+      object-position: center;
+      background: #02070b;
+    }
+
+    .wechat-scene-vignette {
+      z-index: 1;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 24%, transparent 74%, rgba(0, 0, 0, 0.62)),
+        radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, 0.58) 100%);
+    }
+
+    .wechat-scene-scanlines {
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0.12;
+      background: repeating-linear-gradient(180deg, rgba(147, 244, 255, 0.18) 0 1px, transparent 1px 5px);
+      mix-blend-mode: screen;
+    }
+
+    .wechat-scene-heading,
+    .wechat-scene-amount,
+    .wechat-scene-countdown,
+    .wechat-scene-guide,
+    .wechat-scene-back {
+      position: absolute;
+      z-index: 4;
+    }
+
+    .wechat-scene-heading {
+      top: 22px;
+      left: 28px;
+      color: #d9fbff;
+      text-shadow: 0 0 16px rgba(0, 238, 255, 0.75);
+      pointer-events: none;
+    }
+
+    .wechat-scene-heading strong {
+      display: block;
+      font-size: clamp(14px, 1.55vw, 22px);
+      letter-spacing: 0.18em;
+      font-weight: 800;
+    }
+
+    .wechat-scene-heading span {
+      display: block;
+      margin-top: 5px;
+      font-size: clamp(10px, 0.9vw, 13px);
+      letter-spacing: 0.12em;
+      color: rgba(190, 241, 247, 0.78);
+    }
+
+    .wechat-scene-amount {
+      top: 30.5%;
+      left: 50%;
+      min-width: 150px;
+      padding: 3px 18px 5px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(92, 250, 255, 0.28);
+      border-radius: 6px;
+      background: rgba(1, 22, 28, 0.7);
+      color: #73fbff;
+      font-size: clamp(21px, 3.3vw, 50px);
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      line-height: 1.1;
+      text-align: center;
+      text-shadow: 0 0 18px rgba(0, 244, 255, 0.95);
+      box-shadow: inset 0 0 18px rgba(0, 247, 255, 0.08), 0 0 16px rgba(0, 225, 255, 0.18);
+    }
+
+    .wechat-scene-amount::before {
+      content: 'AMOUNT  ·  CNY';
+      display: block;
+      margin-bottom: 4px;
+      color: rgba(176, 250, 255, 0.82);
+      font-size: clamp(8px, 0.75vw, 12px);
+      font-weight: 600;
+      letter-spacing: 0.14em;
+    }
+
+    .wechat-stone-qr {
+      position: absolute;
+      z-index: 5;
+      top: 53.2%;
+      left: 50.5%;
+      width: clamp(136px, 17.5vw, 336px);
+      aspect-ratio: 1;
+      padding: clamp(5px, 0.45vw, 9px);
+      transform: translate(-50%, -50%) perspective(1100px) rotateY(-7deg) rotateZ(-4deg) skewX(-1.5deg);
+      transform-origin: center;
+      border: 1px solid rgba(144, 255, 255, 0.82);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 0 0 2px rgba(0, 15, 22, 0.7), 0 0 18px rgba(32, 249, 255, 0.95), 0 0 44px rgba(0, 219, 255, 0.38);
+      transition: opacity 420ms ease, filter 420ms ease;
+    }
+
+    .wechat-stone-qr.is-hidden {
+      opacity: 0;
+      filter: blur(4px);
+      pointer-events: none;
+    }
+
+    .wechat-stone-qr::after {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border: 1px solid rgba(0, 182, 205, 0.42);
+      pointer-events: none;
+    }
+
+    .wechat-stone-qr img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 1px;
+      image-rendering: crisp-edges;
+    }
+
+    .wechat-scene-countdown {
+      top: 71.4%;
+      left: 50%;
+      min-width: 138px;
+      padding: 4px 16px 6px;
+      transform: translateX(-50%);
+      border-radius: 5px;
+      border: 1px solid rgba(98, 248, 255, 0.36);
+      background: rgba(1, 21, 28, 0.76);
+      color: #7bfbff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: clamp(20px, 2.75vw, 42px);
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      line-height: 1.1;
+      text-align: center;
+      text-shadow: 0 0 18px rgba(0, 244, 255, 0.95);
+    }
+
+    .wechat-scene-countdown::before {
+      content: 'TIME LEFT';
+      display: block;
+      margin-bottom: 3px;
+      font-family: inherit;
+      color: rgba(186, 250, 255, 0.78);
+      font-size: clamp(8px, 0.7vw, 11px);
+      letter-spacing: 0.18em;
+    }
+
+    .wechat-scene-guide {
+      left: 28px;
+      bottom: 24px;
+      max-width: min(350px, 42%);
+      padding: 10px 14px;
+      border-left: 2px solid #69faff;
+      border-radius: 0 8px 8px 0;
+      background: rgba(1, 18, 24, 0.68);
+      color: rgba(218, 253, 255, 0.9);
+      font-size: clamp(10px, 0.9vw, 14px);
+      line-height: 1.45;
+      box-shadow: 0 0 18px rgba(0, 219, 255, 0.12);
+    }
+
+    .wechat-scene-guide strong {
+      display: block;
+      color: #75fbff;
+      font-size: 0.95em;
+      letter-spacing: 0.08em;
+    }
+
+    .wechat-scene-back {
+      right: 28px;
+      bottom: 24px;
+      width: auto;
+      min-width: 132px;
+      margin: 0;
+      padding: 10px 16px;
+      border: 1px solid rgba(118, 248, 255, 0.55);
+      border-radius: 8px;
+      background: rgba(1, 18, 24, 0.76);
+      color: #c9fbff;
+      box-shadow: 0 0 18px rgba(0, 217, 255, 0.2);
+    }
+
+    body.wechat-mode .header {
+      position: absolute;
+      z-index: 6;
+      top: 22px;
+      left: 50%;
+      margin: 0;
+      transform: translateX(-50%);
+      color: #d9fbff;
+      pointer-events: none;
+    }
+
+    body.wechat-mode .header .logo,
+    body.wechat-mode .header p,
+    body.wechat-mode .amount-card,
+    body.wechat-mode .steps,
+    body.wechat-mode .notice,
+    body.wechat-mode .order-info,
+    body.wechat-mode > .container > .back-btn,
+    body.wechat-mode #qr-wechat {
+      display: none !important;
+    }
+
+    body.wechat-mode .header h1 {
+      color: #d9fbff;
+      font-size: clamp(15px, 1.65vw, 24px);
+      letter-spacing: 0.14em;
+      text-shadow: 0 0 16px rgba(0, 238, 255, 0.8);
+      white-space: nowrap;
+    }
+
+    body.wechat-mode .payment-tabs {
+      position: absolute;
+      z-index: 7;
+      top: 18px;
+      right: 22px;
+      width: 230px;
+      margin: 0;
+      gap: 7px;
+    }
+
+    body.wechat-mode .payment-tabs .tab {
+      padding: 7px 5px;
+      border: 1px solid rgba(119, 241, 249, 0.4);
+      border-radius: 7px;
+      background: rgba(1, 18, 24, 0.7);
+      color: rgba(205, 248, 250, 0.78);
+      font-size: 11px;
+    }
+
+    body.wechat-mode .payment-tabs .tab .icon {
+      display: none;
+    }
+
+    body.wechat-mode .payment-tabs .tab.active {
+      border-color: #65f9ff;
+      background: rgba(0, 173, 194, 0.34);
+      color: #d9feff;
+      box-shadow: 0 0 13px rgba(0, 232, 255, 0.28);
+    }
+
+    body.wechat-mode #payment-status {
+      position: absolute;
+      z-index: 8;
+      left: 50%;
+      bottom: 24px;
+      width: min(360px, calc(100% - 40px));
+      margin: 0;
+      transform: translateX(-50%);
+      background: rgba(4, 41, 37, 0.94);
+      border-color: #48e8a4;
+      box-shadow: 0 0 32px rgba(57, 245, 178, 0.28);
     }
 
     /* 步骤说明 */
@@ -444,6 +751,75 @@
         width: 180px;
         height: 180px;
       }
+
+      body.wechat-mode {
+        padding: 0;
+      }
+
+      body.wechat-mode .container {
+        min-height: 100vh;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+      }
+
+      .wechat-scene {
+        min-height: 100svh;
+        aspect-ratio: auto;
+      }
+
+      .wechat-scene-heading {
+        top: 66px;
+        left: 16px;
+      }
+
+      body.wechat-mode .header {
+        top: 16px;
+      }
+
+      body.wechat-mode .payment-tabs {
+        top: 16px;
+        right: 14px;
+        width: 164px;
+      }
+
+      .wechat-scene-amount {
+        top: 31%;
+        min-width: 116px;
+        padding: 3px 10px 4px;
+      }
+
+      .wechat-stone-qr {
+        top: 51.5%;
+        left: 50.5%;
+        width: min(43vw, 190px);
+      }
+
+      .wechat-scene-countdown {
+        top: 69.5%;
+        min-width: 112px;
+        padding: 4px 8px 5px;
+      }
+
+      .wechat-scene-guide {
+        left: 16px;
+        right: 16px;
+        bottom: 22px;
+        max-width: none;
+        font-size: 11px;
+      }
+
+      .wechat-scene-back {
+        right: 16px;
+        bottom: 82px;
+        min-width: 110px;
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      body.wechat-mode #payment-status {
+        bottom: 112px;
+      }
     }
   </style>
 </head>
@@ -502,6 +878,29 @@
         </span>
         云闪付
       </div>
+    </div>
+
+    <!-- WeChat payment scene: the live QR is composited over the stone tablet. -->
+    <div class="wechat-scene" id="wechat-scene" aria-label="微信支付场景">
+      <video id="wechat-video" muted playsinline loop preload="auto" poster="/favicon.png">
+        <source src="/payment-nightmare.mp4" type="video/mp4">
+      </video>
+      <div class="wechat-scene-vignette" aria-hidden="true"></div>
+      <div class="wechat-scene-scanlines" aria-hidden="true"></div>
+      <div class="wechat-scene-heading" aria-hidden="true">
+        <strong>SYNTHPAY · DEEP SEA GATE</strong>
+        <span>SECURE WECHAT CHECKOUT</span>
+      </div>
+      <div class="wechat-scene-amount" id="wechat-scene-amount">0.00</div>
+      <div class="wechat-stone-qr" aria-label="微信收款二维码">
+        <img src="/wechat-qr.png" alt="微信收款码">
+      </div>
+      <div class="wechat-scene-countdown" id="wechat-scene-countdown">00:15</div>
+      <div class="wechat-scene-guide">
+        <strong>微信扫一扫 · 扫描石碑上的二维码</strong>
+        支付完成后请停留片刻，系统会自动确认到账。
+      </div>
+      <button class="back-btn wechat-scene-back" onclick="goBack()">← 返回钱包</button>
     </div>
 
     <!-- 二维码 -->
@@ -577,6 +976,7 @@
 
     // 显示金额
     document.getElementById('amount').textContent = parseFloat(amount).toFixed(2);
+    document.getElementById('wechat-scene-amount').textContent = parseFloat(amount).toFixed(2);
 
     // 显示订单号
     if (tradeNo) {
@@ -602,8 +1002,80 @@
 
       // 更新二维码
       document.querySelectorAll('.qr-container').forEach(qr => qr.classList.remove('active'));
-      document.getElementById('qr-' + type).classList.add('active');
+      const legacyQr = document.getElementById('qr-' + type);
+      if (legacyQr) {
+        legacyQr.classList.add('active');
+      }
+
+      setWechatSceneActive(type === 'wechat');
     }
+
+    const wechatScene = document.getElementById('wechat-scene');
+    const wechatVideo = document.getElementById('wechat-video');
+    const wechatQr = document.querySelector('.wechat-stone-qr');
+    const wechatCountdown = document.getElementById('wechat-scene-countdown');
+    const wechatGuide = document.querySelector('.wechat-scene-guide');
+    const WECHAT_SCENE_SECONDS = 15;
+    let wechatSceneTimer = null;
+
+    function updateWechatSceneFrame() {
+      const currentTime = Number.isFinite(wechatVideo.duration) && wechatVideo.duration > 0
+        ? wechatVideo.currentTime
+        : 0;
+      const remaining = Math.max(0, Math.ceil(WECHAT_SCENE_SECONDS - currentTime));
+      const seconds = String(remaining).padStart(2, '0');
+      wechatCountdown.textContent = `00:${seconds}`;
+
+      // The stone tablet is in the opening section of the clip. Fade the live
+      // QR out before the camera moves to the creature, then show it again on
+      // the next 15-second loop instead of leaving it floating over the shot.
+      const qrVisible = currentTime < 8.5;
+      wechatQr.classList.toggle('is-hidden', !qrVisible);
+      if (wechatGuide) {
+        wechatGuide.innerHTML = qrVisible
+          ? '<strong>微信扫一扫 · 扫描石碑上的二维码</strong>支付完成后请停留片刻，系统会自动确认到账。'
+          : '<strong>石碑正在下沉 · 请等待下一轮画面</strong>二维码将在下一轮石碑出现时重新显示。';
+      }
+    }
+
+    function startWechatSceneTimer() {
+      if (wechatSceneTimer) {
+        clearInterval(wechatSceneTimer);
+      }
+      updateWechatSceneFrame();
+      wechatSceneTimer = setInterval(updateWechatSceneFrame, 180);
+    }
+
+    function stopWechatSceneTimer() {
+      if (wechatSceneTimer) {
+        clearInterval(wechatSceneTimer);
+        wechatSceneTimer = null;
+      }
+    }
+
+    function setWechatSceneActive(active) {
+      document.body.classList.toggle('wechat-mode', active);
+      wechatScene.classList.toggle('active', active);
+      if (active) {
+        startWechatSceneTimer();
+        wechatVideo.play().catch(() => {
+          // Muted inline video normally autoplays; keep the overlay usable if
+          // a browser requires an explicit gesture before playback.
+        });
+      } else {
+        stopWechatSceneTimer();
+        wechatVideo.pause();
+      }
+    }
+
+    wechatVideo.addEventListener('loadedmetadata', updateWechatSceneFrame);
+    wechatVideo.addEventListener('timeupdate', updateWechatSceneFrame);
+    wechatVideo.addEventListener('ended', () => {
+      wechatVideo.currentTime = 0;
+      if (document.body.classList.contains('wechat-mode')) {
+        wechatVideo.play().catch(() => {});
+      }
+    });
 
     // 返回钱包
     function goBack() {

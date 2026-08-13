@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -35,12 +36,20 @@ func TestClassifyIngressHost(t *testing.T) {
 
 func TestAppendIngressLogInfo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	oldNodeName := common.NodeName
+	common.NodeName = "shanghai-worker"
+	t.Cleanup(func() { common.NodeName = oldNodeName })
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest("POST", "https://116.62.113.242/v1/responses", nil)
+	common.SetContextKey(c, constant.ContextKeyChannelConcurrencyActive, 7)
+	common.SetContextKey(c, constant.ContextKeyChannelConcurrencyLimit, 15)
 
 	other := appendIngressLogInfo(c, nil)
 	require.Equal(t, "116.62.113.242", other["ingress_host"])
 	require.Equal(t, ingressLineFast, other["ingress_line"])
+	require.Equal(t, "shanghai-worker", other["worker_node"])
+	require.Equal(t, 7, other["channel_concurrency_active"])
+	require.Equal(t, 15, other["channel_concurrency_limit"])
 }
 
 func TestAppendIngressLogInfoIgnoresClientLineHeader(t *testing.T) {

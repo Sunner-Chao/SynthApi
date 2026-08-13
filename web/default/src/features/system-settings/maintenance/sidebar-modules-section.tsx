@@ -102,6 +102,10 @@ export function SidebarModulesSection({
         title: t('Group Monitor'),
         description: t('Monitor group health and current usage.'),
       },
+      intelligence_radar: {
+        title: t('Model Intelligence Radar'),
+        description: t('Compare live model intelligence and benchmark data.'),
+      },
       token: {
         title: t('Token management'),
         description: t('Create, revoke, and audit API tokens.'),
@@ -118,11 +122,19 @@ export function SidebarModulesSection({
         title: t('Task logs'),
         description: t('Background job tracker for queued work.'),
       },
+      image_workbench: {
+        title: t('Image Workbench'),
+        description: t('Generate images with supported models and groups.'),
+      },
     },
     personal: {
       topup: {
         title: t('Wallet'),
         description: t('Top up balance and view billing history.'),
+      },
+      rewards: {
+        title: t('Rewards Center'),
+        description: t('Invitation rebates and recharge milestones.'),
       },
       personal: {
         title: t('Profile'),

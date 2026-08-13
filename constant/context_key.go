@@ -11,6 +11,8 @@ const (
 	ContextKeyRequestStartTime        ContextKey = "request_start_time"
 	ContextKeyPromptCacheQueue        ContextKey = "prompt_cache_queue"
 	ContextKeyChannelCapacityQueue    ContextKey = "channel_capacity_queue"
+	ContextKeyChannelConcurrencyActive ContextKey = "channel_concurrency_active"
+	ContextKeyChannelConcurrencyLimit  ContextKey = "channel_concurrency_limit"
 	ContextKeyLongContextOptimization ContextKey = "long_context_optimization"
 
 	/* token related keys */

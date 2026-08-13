@@ -46,6 +46,7 @@ import {
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
+import { getUserRewardListSummaries } from '../api'
 import type { LogCategory, UsageLog } from '../types'
 import { CommonLogsCommandCenter } from './common-logs-command-center'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
@@ -119,7 +120,7 @@ export function UsageLogsTable({
 }: UsageLogsTableProps) {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
-  const { sensitiveVisible } = useUsageLogsContext()
+  const { sensitiveVisible, setRewardSummaries } = useUsageLogsContext()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
 
@@ -201,6 +202,36 @@ export function UsageLogsTable({
   })
 
   const logs = useMemo(() => data?.items || [], [data?.items])
+  const rewardUserIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (logs as UsageLog[])
+            .map((log) => log.user_id)
+            .filter((userId) => userId > 0)
+        )
+      ).sort((a, b) => a - b),
+    [logs]
+  )
+  const rewardSummaryQuery = useQuery({
+    queryKey: ['usage-log-reward-summaries', rewardUserIds],
+    queryFn: () => getUserRewardListSummaries(rewardUserIds),
+    enabled: isAdmin && logCategory === 'common' && rewardUserIds.length > 0,
+    staleTime: 60_000,
+  })
+  useEffect(() => {
+    if (!isAdmin || logCategory !== 'common') {
+      setRewardSummaries({})
+      return
+    }
+    const response = rewardSummaryQuery.data
+    setRewardSummaries(response?.success ? response.data ?? {} : {})
+  }, [
+    isAdmin,
+    logCategory,
+    rewardSummaryQuery.data,
+    setRewardSummaries,
+  ])
   const columns = useColumnsByCategory(logCategory, isAdmin)
   const isLoadingData = isLoading || (isFetching && !data)
 

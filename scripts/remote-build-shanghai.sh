@@ -23,6 +23,11 @@ BUILD_VERSION="$(printf '%s' "$BUILD_VERSION" | tr -cs 'A-Za-z0-9._+-' '-')"
 RSYNC_EXCLUDES=(
   '--exclude=/.git/'
   '--exclude=/.env'
+  # Shanghai keeps its own runtime environment and must never receive the
+  # production checkout's delete pass.
+  '--exclude=/.env.shanghai'
+  '--exclude=/.env.from-production'
+  '--exclude=/.env.shanghai.before-node-slave'
   '--exclude=/.env.postgres'
   '--exclude=/.env.sqlite.backup'
   '--exclude=*.db'
@@ -31,6 +36,7 @@ RSYNC_EXCLUDES=(
   '--exclude=*.sqlite3'
   '--exclude=*.log'
   '--exclude=logs/'
+  '--exclude=deploy-backups/'
   '--exclude=upload/'
   '--exclude=data/'
   '--exclude=**/__pycache__/'

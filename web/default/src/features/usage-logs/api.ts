@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import type { AdminUserRewardSummary } from '@/features/reward-center/types'
 import { buildQueryParams } from './lib/utils'
 import type {
   GetLogsParams,
@@ -26,6 +27,7 @@ import type {
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
   UserInfo,
+  UsageLogRewardSummaries,
 } from './types'
 
 // ============================================================================
@@ -87,6 +89,26 @@ export async function getUserInfo(
   userId: number
 ): Promise<{ success: boolean; message?: string; data?: UserInfo }> {
   const res = await api.get(`/api/user/${userId}`)
+  return res.data
+}
+
+export async function getUserRewardSummary(userId: number): Promise<{
+  success: boolean
+  message?: string
+  data?: AdminUserRewardSummary
+}> {
+  const res = await api.get(`/api/user/rewards/admin/users/${userId}/summary`)
+  return res.data
+}
+
+export async function getUserRewardListSummaries(userIds: number[]): Promise<{
+  success: boolean
+  message?: string
+  data?: UsageLogRewardSummaries
+}> {
+  const res = await api.get('/api/user/rewards/admin/users/summaries', {
+    params: { ids: userIds.join(',') },
+  })
   return res.data
 }
 

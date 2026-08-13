@@ -77,7 +77,11 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData, UsageLog } from '../../types'
-import { ApiLineBadge } from '../api-line-badge'
+import {
+  ApiLineBadge,
+  ChannelConcurrencyBadge,
+  WorkerNodeBadge,
+} from '../api-line-badge'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
@@ -331,14 +335,14 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const other = parseLogOther(log.other)
 
         return (
-          <div className='command-log-time flex flex-col gap-0.5'>
+          <div className='command-log-time flex min-w-[12rem] flex-col gap-1'>
             <span
               className='font-mono text-xs tabular-nums'
               title={fullTimestamp}
             >
               {compactTimestamp}
             </span>
-            <div className='flex flex-wrap items-center gap-1'>
+            <div className='grid grid-cols-2 items-center gap-x-1.5 gap-y-1'>
               <StatusBadge
                 label={t(config.label)}
                 variant={config.color as StatusBadgeProps['variant']}
@@ -346,12 +350,31 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 copyable={false}
                 className='!text-xs [&_span]:!text-xs'
               />
-              {isTimingLogType(log.type) && (
+              {isTimingLogType(log.type) ? (
                 <ApiLineBadge
                   line={other?.ingress_line}
                   host={other?.ingress_host}
                   className='!text-xs [&_span]:!text-xs'
                 />
+              ) : (
+                <span />
+              )}
+              {isTimingLogType(log.type) ? (
+                <WorkerNodeBadge
+                  node={other?.worker_node}
+                  className='!text-xs [&_span]:!text-xs'
+                />
+              ) : (
+                <span />
+              )}
+              {isTimingLogType(log.type) ? (
+                <ChannelConcurrencyBadge
+                  active={other?.channel_concurrency_active}
+                  limit={other?.channel_concurrency_limit}
+                  className='!text-xs [&_span]:!text-xs'
+                />
+              ) : (
+                <span />
               )}
             </div>
           </div>
@@ -396,7 +419,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           const channelName = sensitiveVisible ? log.channel_name : '••••'
 
           return (
-            <TooltipProvider>
+            <div className='command-log-channel flex min-w-0 flex-col gap-1'>
+              <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -469,7 +493,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   </div>
                 </TooltipContent>
               </Tooltip>
-            </TooltipProvider>
+              </TooltipProvider>
+            </div>
           )
         },
         meta: { label: t('Channel') },
@@ -481,9 +506,14 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <DataTableColumnHeader column={column} title={t('User')} />
         ),
         cell: function UserCell({ row }) {
-          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-            useUsageLogsContext()
+          const {
+            sensitiveVisible,
+            setSelectedUserId,
+            setUserInfoDialogOpen,
+            rewardSummaries,
+          } = useUsageLogsContext()
           const log = row.original
+          const reward = rewardSummaries[log.user_id]
 
           if (!log.username && log.user_id <= 0) return null
           const avatarSeed = log.username || String(log.user_id)
@@ -536,6 +566,43 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   <span className='command-log-secondary text-muted-foreground/60 font-mono text-xs'>
                     {t('ID')} {log.user_id}
                   </span>
+                )}
+                {isAdmin && reward && (
+                  <TooltipProvider delay={200}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className='usage-reward-rank max-w-full truncate' />
+                        }
+                      >
+                        <Sparkles aria-hidden='true' />
+                        {reward.current_stage.name}
+                        <b>{reward.current_stage.rate_bps / 100}%</b>
+                      </TooltipTrigger>
+                      <TooltipContent side='top'>
+                        <div className='grid gap-1 text-xs'>
+                          <strong>{reward.current_stage.name}</strong>
+                          <span>
+                            {t('Effective paid invitees')}：
+                            {reward.effective_invite_count}
+                          </span>
+                          <span>
+                            {t('Total rebate earned')}：¥
+                            {reward.total_reward_cny.toFixed(2)}
+                          </span>
+                          <span>
+                            {t('Total recharge')}：¥
+                            {reward.total_recharge_cny.toFixed(2)}
+                          </span>
+                          <span>
+                            {t('Recharge benefit')}：
+                            {reward.granted_benefit_count} {t('Granted')} /{' '}
+                            {reward.pending_benefit_count} {t('Pending')}
+                          </span>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
             </button>
@@ -592,6 +659,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             ? 'success'
             : 'info'
 
+      const autoRouteLabel = autoRoutePriority
+        ? `${t('Auto')} · P${autoRoutePriority}`
+        : t('Auto')
+
       const metaParts: string[] = []
       const groupRatioText = getGroupRatioText(other)
       if (isAdmin && tokenId > 0) {
@@ -638,21 +709,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               )}
               {isAutoRoute && (
                 <StatusBadge
-                  label={t('Auto')}
-                  variant='info'
-                  size='sm'
-                  copyable={false}
-                  showDot={false}
-                  className='h-4 rounded px-1 text-[10px] leading-none'
-                />
-              )}
-              {autoRouteStatusLabel && (
-                <StatusBadge
-                  label={
-                    autoRoutePriority && autoRouteStatus === 'degraded'
-                      ? `${autoRouteStatusLabel} · P${autoRoutePriority}`
-                      : autoRouteStatusLabel
-                  }
+                  label={autoRouteLabel}
                   icon={AutoRouteStatusIcon}
                   variant={autoRouteStatusVariant}
                   size='sm'
@@ -660,9 +717,9 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   showDot={false}
                   className='h-4 rounded px-1 text-[10px] leading-none'
                   title={
-                    autoRoutePriority
-                      ? `${autoRouteStatusLabel} · P${autoRoutePriority}`
-                      : autoRouteStatusLabel
+                    autoRouteStatusLabel
+                      ? `${autoRouteStatusLabel}${autoRoutePriority ? ` · P${autoRoutePriority}` : ''}`
+                      : autoRouteLabel
                   }
                 />
               )}

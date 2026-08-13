@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -74,6 +75,22 @@ const (
 )
 
 func appendIngressLogInfo(c *gin.Context, other map[string]interface{}) map[string]interface{} {
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	if node := strings.TrimSpace(common.NodeName); node != "" {
+		// Keep the worker marker top-level so it remains visible to both
+		// administrators and users after admin-only fields are filtered.
+		other["worker_node"] = node
+	}
+	if c != nil {
+		if active := common.GetContextKeyInt(c, constant.ContextKeyChannelConcurrencyActive); active > 0 {
+			other["channel_concurrency_active"] = active
+		}
+		if limit := common.GetContextKeyInt(c, constant.ContextKeyChannelConcurrencyLimit); limit > 0 {
+			other["channel_concurrency_limit"] = limit
+		}
+	}
 	if c == nil || c.Request == nil {
 		return other
 	}
@@ -245,6 +262,9 @@ func RecordPaymentLog(userId int, content string, audit PaymentAuditInfo) {
 		if err := GrantInviteRewardAfterPayment(audit.TradeNo); err != nil {
 			common.SysLog(fmt.Sprintf("failed to settle affiliate reward for trade %s: %v", audit.TradeNo, err))
 		}
+		if err := SettleAffiliateMilestoneRebate(audit.TradeNo); err != nil {
+			common.SysLog(fmt.Sprintf("failed to settle affiliate milestone rebate for trade %s: %v", audit.TradeNo, err))
+		}
 	}
 	username, _ := GetUsernameById(userId, false)
 	callerIp := strings.TrimSpace(audit.CallerIp)
@@ -348,7 +368,22 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	if !common.LogConsumeEnabled {
 		return
 	}
-	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	// The complete accounting and relay trace are persisted in Log.Other below.
+	// Keep the text log concise so high request volume does not duplicate large
+	// JSON documents into both the application log and the system journal.
+	logger.LogInfo(c, fmt.Sprintf(
+		"record consume log: user_id=%d channel_id=%d token_id=%d model=%q group=%q prompt_tokens=%d completion_tokens=%d quota=%d stream=%t use_time_s=%d",
+		userId,
+		params.ChannelId,
+		params.TokenId,
+		params.ModelName,
+		params.Group,
+		params.PromptTokens,
+		params.CompletionTokens,
+		params.Quota,
+		params.IsStream,
+		params.UseTimeSeconds,
+	))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)

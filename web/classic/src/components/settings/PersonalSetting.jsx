@@ -454,7 +454,14 @@ const PersonalSetting = () => {
     }
     setLoading(true);
     const res = await API.get(
-      `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`,
+      '/api/verification',
+      {
+        params: { email: inputs.email },
+        headers: turnstileToken
+          ? { 'X-Turnstile-Token': turnstileToken }
+          : undefined,
+        timeout: 10000,
+      },
     );
     const { success, message } = res.data;
     if (success) {

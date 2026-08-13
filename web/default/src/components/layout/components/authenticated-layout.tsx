@@ -27,6 +27,7 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar'
 import { AnimatedOutlet } from '@/components/page-transition'
+import { RewardBenefitNotice } from '@/components/reward-benefit-notice'
 import { SkipToMain } from '@/components/skip-to-main'
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
@@ -38,15 +39,20 @@ type AuthenticatedLayoutProps = {
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
   const pathname = useLocation({ select: (location) => location.pathname })
-  const isCommonLogsImmersive =
-    pathname.replace(/\/+$/, '') === '/usage-logs/common'
+  const normalizedPathname = pathname.replace(/\/+$/, '')
+  const isImmersive =
+    normalizedPathname === '/usage-logs/common' ||
+    normalizedPathname === '/intelligence-radar' ||
+    normalizedPathname === '/rewards/referral' ||
+    normalizedPathname === '/rewards/recharge'
 
   return (
     <LayoutProvider>
       <SearchProvider>
         <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
           <SkipToMain />
-          {isCommonLogsImmersive ? (
+          <RewardBenefitNotice />
+          {isImmersive ? (
             <div className='flex h-svh min-h-0 w-full flex-1 overflow-hidden'>
               <AppSidebar />
               <main className='@container/content relative flex h-svh min-h-0 min-w-0 flex-1 flex-col overflow-hidden'>

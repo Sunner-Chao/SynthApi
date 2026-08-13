@@ -13,6 +13,7 @@ import (
 
 type ImageRequest struct {
 	Model             string          `json:"model"`
+	Group             string          `json:"group,omitempty"`
 	Prompt            string          `json:"prompt" binding:"required"`
 	N                 *uint           `json:"n,omitempty"`
 	Size              string          `json:"size,omitempty"`
@@ -28,16 +29,53 @@ type ImageRequest struct {
 	OutputCompression json.RawMessage `json:"output_compression,omitempty"`
 	PartialImages     json.RawMessage `json:"partial_images,omitempty"`
 	// Stream            bool            `json:"stream,omitempty"`
-	Images        json.RawMessage `json:"images,omitempty"`
-	Mask          json.RawMessage `json:"mask,omitempty"`
-	InputFidelity json.RawMessage `json:"input_fidelity,omitempty"`
-	Watermark     *bool           `json:"watermark,omitempty"`
+	Images json.RawMessage `json:"images,omitempty"`
+	// APIMart GPT Image 2 parameters. Keep these typed so API-key clients can
+	// use the same contract as the workbench without relying on Extra.
+	ImageURLs        []string        `json:"image_urls,omitempty"`
+	OfficialFallback *bool           `json:"official_fallback,omitempty"`
+	Mask             json.RawMessage `json:"mask,omitempty"`
+	InputFidelity    json.RawMessage `json:"input_fidelity,omitempty"`
+	Watermark        *bool           `json:"watermark,omitempty"`
 	// zhipu 4v
 	WatermarkEnabled json.RawMessage `json:"watermark_enabled,omitempty"`
 	UserId           json.RawMessage `json:"user_id,omitempty"`
 	Image            json.RawMessage `json:"image,omitempty"`
 	// 用匿名参数接收额外参数
 	Extra map[string]json.RawMessage `json:"-"`
+}
+
+const (
+	apimartGPTImage2Price1K = 0.0085
+	apimartGPTImage2Price2K = 0.014
+	apimartGPTImage2Price4K = 0.021
+)
+
+func (i *ImageRequest) IsAPIMartGPTImage2() bool {
+	modelName := strings.ToLower(strings.TrimSpace(i.Model))
+	return modelName == "gpt-image-2" || modelName == "gpt-image-2-ext"
+}
+
+func (i *ImageRequest) GetResolution() string {
+	if len(i.Resolution) == 0 {
+		return ""
+	}
+	var resolution string
+	if err := common.Unmarshal(i.Resolution, &resolution); err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(resolution))
+}
+
+func APIMartGPTImage2ResolutionPriceRatio(resolution string) float64 {
+	switch strings.ToLower(strings.TrimSpace(resolution)) {
+	case "2k":
+		return apimartGPTImage2Price2K / apimartGPTImage2Price1K
+	case "4k":
+		return apimartGPTImage2Price4K / apimartGPTImage2Price1K
+	default:
+		return 1
+	}
 }
 
 func (i *ImageRequest) UnmarshalJSON(data []byte) error {
@@ -83,13 +121,15 @@ func (r ImageRequest) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	// 不能合并ExtraFields！！！！！！！！
-	// 合并 ExtraFields
-	//for k, v := range r.Extra {
-	//	if _, exists := baseMap[k]; !exists {
-	//		baseMap[k] = v
-	//	}
-	//}
+	// Preserve provider-specific parameters from the workbench while keeping
+	// typed fields authoritative. The gateway-only group selector must not be
+	// forwarded to the upstream provider.
+	for k, v := range r.Extra {
+		if _, exists := baseMap[k]; !exists {
+			baseMap[k] = v
+		}
+	}
+	delete(baseMap, "group")
 
 	return common.Marshal(baseMap)
 }
@@ -151,7 +191,6 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 			}
 		}
 	}
-
 	// n is NOT included here; it is handled via OtherRatio("n") in
 	// image_handler.go (default) or channel adaptors (actual count).
 	// Including n here caused double-counting for channels that also

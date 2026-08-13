@@ -353,12 +353,20 @@ func TransferAffQuota(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	err = user.TransferAffQuotaToQuota(tran.Quota)
+	record, err := user.TransferAffQuotaToQuota(tran.Quota)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
 		return
 	}
-	common.ApiSuccessI18n(c, i18n.MsgUserTransferSuccess, nil)
+	model.RecordLog(id, model.LogTypeSystem, fmt.Sprintf(
+		"邀请返利领取成功：%s 已转入主余额（返利余额 %s → %s）",
+		logger.LogQuota(record.Quota), logger.LogQuota(record.AffQuotaBefore), logger.LogQuota(record.AffQuotaAfter),
+	))
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("已成功将 %s 转入主余额", logger.LogQuota(record.Quota)),
+		"data":    record,
+	})
 }
 
 func GetAffCode(c *gin.Context) {

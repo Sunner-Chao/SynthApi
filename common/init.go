@@ -120,6 +120,10 @@ func InitEnv() {
 	ModelRequestDefaultChannelMaxConcurrencyPerUser = GetEnvOrDefault("MODEL_REQUEST_DEFAULT_CHANNEL_MAX_CONCURRENCY_PER_USER", 6)
 	ModelRequestLargeBodyThresholdMB = GetEnvOrDefault("MODEL_REQUEST_LARGE_BODY_THRESHOLD_MB", 10)
 	ModelRequestMaxLargeConcurrencyPerUser = GetEnvOrDefault("MODEL_REQUEST_MAX_LARGE_CONCURRENCY_PER_USER", 2)
+	ModelRequestConcurrencyLeaseSeconds = GetEnvOrDefault("MODEL_REQUEST_CONCURRENCY_LEASE_SECONDS", 7200)
+	if ModelRequestConcurrencyLeaseSeconds < 60 {
+		ModelRequestConcurrencyLeaseSeconds = 60
+	}
 	ModelRequestConcurrencyExemptUserIDs = make(map[int]struct{})
 	for _, rawUserID := range strings.Split(os.Getenv("MODEL_REQUEST_CONCURRENCY_EXEMPT_USER_IDS"), ",") {
 		userID, err := strconv.Atoi(strings.TrimSpace(rawUserID))

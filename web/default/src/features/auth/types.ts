@@ -129,6 +129,8 @@ export interface SystemStatus {
     password_login_enabled?: boolean
     password_register_enabled?: boolean
     public_business_preview_enabled?: boolean
+    affiliate_milestone_reward_enabled?: boolean
+    recharge_benefit_enabled?: boolean
     custom_oauth_providers?: CustomOAuthProviderInfo[]
     [key: string]: unknown
   }
@@ -173,6 +175,8 @@ export interface SystemStatus {
   password_login_enabled?: boolean
   password_register_enabled?: boolean
   public_business_preview_enabled?: boolean
+  affiliate_milestone_reward_enabled?: boolean
+  recharge_benefit_enabled?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
   [key: string]: unknown
 }

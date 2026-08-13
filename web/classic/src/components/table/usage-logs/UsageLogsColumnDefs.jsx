@@ -39,6 +39,8 @@ import { IconHelpCircle } from '@douyinfe/semi-icons';
 import {
   CircleAlert,
   CircleCheck,
+  Gauge,
+  Network,
   RotateCcw,
   Route,
   Sparkles,
@@ -61,6 +63,78 @@ const colors = [
   'violet',
   'yellow',
 ];
+
+function getWorkerDisplay(other, t) {
+  const node = String(other?.worker_node || '').trim();
+  if (!node) return null;
+
+  const normalized = node.toLowerCase();
+  const isShanghai =
+    normalized.includes('shanghai') || normalized.includes('上海');
+  const active = Number(other?.channel_concurrency_active);
+  const limit = Number(other?.channel_concurrency_limit);
+  const hasCapacity =
+    Number.isFinite(active) && Number.isFinite(limit) && limit > 0;
+  const safeActive = hasCapacity ? Math.max(0, Math.round(active)) : 0;
+  const safeLimit = hasCapacity ? Math.max(1, Math.round(limit)) : 0;
+  const utilization = hasCapacity ? (safeActive / safeLimit) * 100 : 0;
+
+  return {
+    isShanghai,
+    nodeLabel: isShanghai ? t('冰岛节点') : t('马达加斯加节点'),
+    hasCapacity,
+    active: safeActive,
+    limit: safeLimit,
+    utilization,
+    capacityColor:
+      utilization >= 90 ? 'red' : utilization >= 70 ? 'orange' : 'green',
+  };
+}
+
+function renderWorkerBadges(other, t) {
+  const worker = getWorkerDisplay(other, t);
+  if (!worker) return null;
+
+  return (
+    <Space spacing={4} wrap>
+      <Tooltip content={`${t('负载均衡节点')}: ${worker.nodeLabel}`}>
+        <Tag color={worker.isShanghai ? 'green' : 'blue'} shape='circle'>
+          <Network size={12} /> {worker.nodeLabel}
+        </Tag>
+      </Tooltip>
+      {worker.hasCapacity && (
+        <Tooltip content={t('并发容量')}>
+          <Tag color={worker.capacityColor} shape='circle'>
+            <Gauge size={12} /> {worker.active}/{worker.limit}
+            <span
+              aria-hidden='true'
+              style={{
+                display: 'inline-block',
+                width: 24,
+                height: 3,
+                marginLeft: 4,
+                overflow: 'hidden',
+                borderRadius: 999,
+                verticalAlign: 'middle',
+                background: 'rgba(127, 127, 127, 0.24)',
+              }}
+            >
+              <span
+                style={{
+                  display: 'block',
+                  width: `${Math.min(100, worker.utilization)}%`,
+                  height: '100%',
+                  borderRadius: 999,
+                  background: 'currentColor',
+                }}
+              />
+            </span>
+          </Tag>
+        </Tooltip>
+      )}
+    </Space>
+  );
+}
 
 function formatRatio(ratio) {
   if (ratio === undefined || ratio === null) {
@@ -529,6 +603,18 @@ export const getLogsColumns = ({
       key: COLUMN_KEYS.TIME,
       title: t('时间'),
       dataIndex: 'timestamp2string',
+      render: (text, record) => {
+        const other = getLogOther(record.other);
+        const workerBadges = renderWorkerBadges(other, t);
+        if (!workerBadges) return text;
+
+        return (
+          <Space vertical align='start' spacing={2}>
+            <span>{text}</span>
+            <Space spacing={4}>{workerBadges}</Space>
+          </Space>
+        );
+      },
     },
     {
       key: COLUMN_KEYS.CHANNEL,
@@ -565,7 +651,7 @@ export const getLogsColumns = ({
             record.type === 5 ||
             record.type === 6) ? (
           <Space>
-            <span style={{ position: 'relative', display: 'inline-block' }}>
+              <span style={{ position: 'relative', display: 'inline-block' }}>
               <Tooltip content={record.channel_name || t('未知渠道')}>
                 <span>
                   <Tag
@@ -614,12 +700,12 @@ export const getLogsColumns = ({
                   </span>
                 </Tooltip>
               )}
-            </span>
-            {isMultiKey && (
-              <Tag color='white' shape='circle'>
-                {multiKeyIndex}
-              </Tag>
-            )}
+              </span>
+              {isMultiKey && (
+                <Tag color='white' shape='circle'>
+                  {multiKeyIndex}
+                </Tag>
+              )}
           </Space>
         ) : null;
       },
@@ -696,38 +782,38 @@ export const getLogsColumns = ({
             <Space spacing={4}>
               {group ? renderGroup(group) : null}
               {isAutoRoute && (
-                <Tag color='cyan' shape='circle'>
-                  {t('自动分组')}
-                </Tag>
-              )}
-              {isAutoRoute && other?.auto_route_status && (
-                <Tag
-                  color={
-                    other.auto_route_status === 'degraded'
-                      ? 'orange'
-                      : other.auto_route_status === 'recovered'
-                        ? 'green'
-                        : 'cyan'
+                <Tooltip
+                  content={
+                    other?.auto_route_status === 'degraded'
+                      ? t('Auto 降级')
+                      : other?.auto_route_status === 'recovered'
+                        ? t('Auto 已恢复')
+                        : t('Auto 正常')
                   }
-                  shape='circle'
                 >
-                  {other.auto_route_status === 'degraded' ? (
-                    <CircleAlert size={12} />
-                  ) : other.auto_route_status === 'recovered' ? (
-                    <RotateCcw size={12} />
-                  ) : (
-                    <CircleCheck size={12} />
-                  )}{' '}
-                  {other.auto_route_status === 'degraded'
-                    ? t('Auto 降级')
-                    : other.auto_route_status === 'recovered'
-                      ? t('Auto 已恢复')
-                      : t('Auto 正常')}
-                  {other.auto_route_priority &&
-                  other.auto_route_status === 'degraded'
-                    ? ` · P${other.auto_route_priority}`
-                    : ''}
-                </Tag>
+                  <Tag
+                    color={
+                      other?.auto_route_status === 'degraded'
+                        ? 'orange'
+                        : other?.auto_route_status === 'recovered'
+                          ? 'green'
+                          : 'cyan'
+                    }
+                    shape='circle'
+                  >
+                    {other?.auto_route_status === 'degraded' ? (
+                      <CircleAlert size={12} />
+                    ) : other?.auto_route_status === 'recovered' ? (
+                      <RotateCcw size={12} />
+                    ) : (
+                      <CircleCheck size={12} />
+                    )}{' '}
+                    {t('Auto')}
+                    {other?.auto_route_priority
+                      ? ` · P${other.auto_route_priority}`
+                      : ''}
+                  </Tag>
+                </Tooltip>
               )}
             </Space>
           );

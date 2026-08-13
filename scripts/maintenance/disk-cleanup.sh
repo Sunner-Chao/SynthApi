@@ -16,6 +16,9 @@ readonly DEFAULT_TARGET_BYTES=$((7 * 1024 * 1024 * 1024))
 # Keep the inspection bounded without skipping normal release history. A full
 # release is roughly 100 MiB, so the limit remains far below an unbounded scan.
 readonly MAX_BINARY_CANDIDATES=512
+readonly RELEASE_ARCHIVE_KEEP_COUNT=2
+readonly DEPLOY_BACKUP_KEEP_COUNT=3
+readonly APP_LOG_RETENTION_DAYS=14
 
 THRESHOLD_BYTES="${THRESHOLD_BYTES:-${DEFAULT_THRESHOLD_BYTES}}"
 TARGET_BYTES="${TARGET_BYTES:-${DEFAULT_TARGET_BYTES}}"
@@ -159,6 +162,25 @@ remove_binary_file() {
 
   if [[ ! -f "${path}" || -L "${path}" ]]; then
     log "warning: ${path} is no longer a regular binary; leaving it in place"
+    return 0
+  fi
+  if (( DRY_RUN == 1 )); then
+    log "would remove ${path}"
+    return 0
+  fi
+
+  if rm -f -- "${path}"; then
+    log "removed ${path}"
+  else
+    log "warning: failed to remove ${path}"
+  fi
+}
+
+remove_regular_file() {
+  local path="$1"
+
+  if [[ ! -f "${path}" || -L "${path}" ]]; then
+    log "warning: ${path} is no longer a regular file; leaving it in place"
     return 0
   fi
   if (( DRY_RUN == 1 )); then
@@ -378,6 +400,58 @@ prune_service_binaries() {
   done
 }
 
+prune_release_archives() {
+  local entry path index=0
+
+  # Release packages are rollback artifacts, not live executables. Retain only
+  # the two newest packages; the active canonical binary is handled separately.
+  while IFS= read -r -d '' entry; do
+    path="${entry#* }"
+    (( index += 1 ))
+    (( index <= RELEASE_ARCHIVE_KEEP_COUNT )) && continue
+    remove_regular_file "${path}"
+  done < <(
+    find "${APP_DIR}" -xdev -mindepth 1 -maxdepth 1 -type f -name 'synthapi-server-*.gz' \
+      -printf '%T@ %p\0' 2>/dev/null | sort -znr
+  )
+
+  # Uncompressed rollback aliases are handled by prune_service_binaries, which
+  # explicitly keeps the active binary and the newest distinct rollback build.
+}
+
+prune_deploy_backups() {
+  local entry path index=0
+  local backup_root="${APP_DIR}/deploy-backups"
+
+  [[ -d "${backup_root}" && ! -L "${backup_root}" ]] || return 0
+  while IFS= read -r -d '' entry; do
+    path="${entry#* }"
+    (( index += 1 ))
+    (( index <= DEPLOY_BACKUP_KEEP_COUNT )) && continue
+    remove_path "${path}"
+  done < <(
+    find "${backup_root}" -xdev -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\0' 2>/dev/null | sort -znr
+  )
+}
+
+prune_application_logs() {
+  local path inode
+  local logs_dir="${APP_DIR}/logs"
+
+  [[ -d "${logs_dir}" && ! -L "${logs_dir}" ]] || return 0
+  while IFS= read -r -d '' path; do
+    inode="$(stat -Lc '%d:%i' "${path}" 2>/dev/null || true)"
+    if [[ "${inode}" =~ ^[0-9]+:[0-9]+$ ]] && inode_is_running "${inode}"; then
+      log "keeping active application log ${path}"
+      continue
+    fi
+    remove_regular_file "${path}"
+  done < <(
+    find "${logs_dir}" -xdev -mindepth 1 -maxdepth 1 -type f -name 'oneapi-*.log' \
+      -mtime "+${APP_LOG_RETENTION_DAYS}" -print0 2>/dev/null
+  )
+}
+
 build_is_running() {
   local process_name proc_cwd cwd
 
@@ -464,6 +538,15 @@ cleanup_module_download_caches() {
 }
 
 prune_service_binaries
+target_reached && exit 0
+
+prune_release_archives
+target_reached && exit 0
+
+prune_deploy_backups
+target_reached && exit 0
+
+prune_application_logs
 target_reached && exit 0
 
 cleanup_stale_build_artifacts

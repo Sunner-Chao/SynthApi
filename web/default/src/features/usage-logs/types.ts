@@ -20,6 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
  * Type definitions for usage logs
  */
 
+import type { AdminUserRewardListSummary } from '@/features/reward-center/types'
+
 export interface UsageLog {
   id: number
   user_id: number
@@ -43,6 +45,11 @@ export interface UsageLog {
   upstream_request_id?: string
   other: string
 }
+
+export type UsageLogRewardSummaries = Record<
+  number,
+  AdminUserRewardListSummary
+>
 
 // ============================================================================
 // Log Category Types
@@ -316,6 +323,12 @@ export interface LogOtherData {
   subscription_discount?: number
   ingress_host?: string
   ingress_line?: ApiIngressLine
+  /** Go worker that handled the request (e.g. aliyun-prod or shanghai). */
+  worker_node?: string
+  /** Active requests on the selected channel after this request was admitted. */
+  channel_concurrency_active?: number
+  /** Effective total concurrency limit on the selected channel. */
+  channel_concurrency_limit?: number
   relay_trace?: RelayTrace
 }
 

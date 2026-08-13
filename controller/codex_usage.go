@@ -122,9 +122,37 @@ func GetCodexChannelUsage(c *gin.Context) {
 	resetState := service.GetImportedAccountResetState(ch)
 	resp["reset_count"] = resetState.Count
 	resp["last_reset_at"] = resetState.LastResetAt
-	resp["provider_reset_supported"] = false
+	resp["provider_reset_supported"] = true
+	if available, ok := codexAvailableResetCredits(payload); ok {
+		resp["provider_reset_credits"] = gin.H{"available_count": available}
+	}
 	if !ok {
 		resp["message"] = fmt.Sprintf("upstream status: %d", statusCode)
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+func codexAvailableResetCredits(payload any) (int64, bool) {
+	root, ok := payload.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	credits, ok := root["rate_limit_reset_credits"].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	value, ok := credits["available_count"]
+	if !ok {
+		return 0, false
+	}
+	switch typed := value.(type) {
+	case float64:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case int:
+		return int64(typed), true
+	default:
+		return 0, false
+	}
 }

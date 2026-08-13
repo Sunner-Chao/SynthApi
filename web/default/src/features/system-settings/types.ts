@@ -200,6 +200,8 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
+  AffiliateMilestoneRewardEnabled: boolean
+  RechargeBenefitEnabled: boolean
   QuotaForNewUser: number
   PreConsumedQuota: number
   QuotaForInviter: number

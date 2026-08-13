@@ -229,10 +229,16 @@ const LoginForm = () => {
     try {
       if (username && password) {
         const res = await API.post(
-          `/api/user/login?turnstile=${turnstileToken}`,
+          '/api/user/login',
           {
             username,
             password,
+          },
+          {
+            headers: turnstileToken
+              ? { 'X-Turnstile-Token': turnstileToken }
+              : undefined,
+            timeout: 10000,
           },
         );
         const { success, message, data } = res.data;

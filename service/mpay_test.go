@@ -42,3 +42,23 @@ func TestExtractMPayCallbackFields(t *testing.T) {
 		t.Fatal("WAIT_BUYER_PAY should not be paid")
 	}
 }
+
+func TestMPayPromotionSceneDistributionBoundaries(t *testing.T) {
+	tests := []struct {
+		roll int64
+		want string
+	}{
+		{roll: 0, want: mpaySceneRelic},
+		{roll: 17, want: mpaySceneRelic},
+		{roll: 18, want: mpaySceneNightmare},
+		{roll: 58, want: mpaySceneNightmare},
+		{roll: 59, want: mpaySceneHyper},
+		{roll: 99, want: mpaySceneHyper},
+	}
+
+	for _, test := range tests {
+		if got := mpaySceneForEligibleRoll(test.roll); got != test.want {
+			t.Fatalf("roll %d: got %s want %s", test.roll, got, test.want)
+		}
+	}
+}

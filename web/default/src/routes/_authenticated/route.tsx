@@ -47,12 +47,9 @@ export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ location }) => {
     const { auth } = useAuthStore.getState()
 
-    // 如果本地没有用户信息，直接跳转登录页
-    if (!auth.user) {
-      await redirectSignedOutUser(location.pathname, location.href)
-    }
-
-    // 本地有用户信息，但需要验证 session 是否有效（每个会话只验证一次）
+    // Always validate the server session on the first authenticated navigation.
+    // localStorage is origin-scoped, so it cannot be the source of truth when
+    // switching between synthapi.asia and admin.synthapi.asia.
     if (!sessionVerified) {
       const res = await getSelf().catch(() => null)
       if (res?.success && res.data) {
@@ -64,6 +61,8 @@ export const Route = createFileRoute('/_authenticated')({
         auth.reset()
         await redirectSignedOutUser(location.pathname, location.href)
       }
+    } else if (!auth.user) {
+      await redirectSignedOutUser(location.pathname, location.href)
     }
   },
   component: AuthenticatedLayout,

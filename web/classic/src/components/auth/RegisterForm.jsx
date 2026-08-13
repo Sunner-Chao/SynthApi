@@ -236,8 +236,14 @@ const RegisterForm = () => {
         }
         inputs.aff_code = affCode;
         const res = await API.post(
-          `/api/user/register?turnstile=${turnstileToken}`,
+          '/api/user/register',
           inputs,
+          {
+            headers: turnstileToken
+              ? { 'X-Turnstile-Token': turnstileToken }
+              : undefined,
+            timeout: 10000,
+          },
         );
         const { success, message } = res.data;
         if (success) {
@@ -263,7 +269,14 @@ const RegisterForm = () => {
     setVerificationCodeLoading(true);
     try {
       const res = await API.get(
-        `/api/verification?email=${encodeURIComponent(inputs.email)}&turnstile=${turnstileToken}`,
+        '/api/verification',
+        {
+          params: { email: inputs.email },
+          headers: turnstileToken
+            ? { 'X-Turnstile-Token': turnstileToken }
+            : undefined,
+          timeout: 10000,
+        },
       );
       const { success, message } = res.data;
       if (success) {

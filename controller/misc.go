@@ -73,29 +73,30 @@ func GetStatus(c *gin.Context) {
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
-		"display_in_currency":             operation_setting.IsCurrencyDisplay(),
-		"quota_display_type":              operation_setting.GetQuotaDisplayType(),
-		"custom_currency_symbol":          operation_setting.GetGeneralSetting().CustomCurrencySymbol,
-		"custom_currency_exchange_rate":   operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
-		"enable_batch_update":             common.BatchUpdateEnabled,
-		"enable_drawing":                  common.DrawingEnabled,
-		"enable_task":                     common.TaskEnabled,
-		"enable_data_export":              common.DataExportEnabled,
-		"data_export_default_time":        common.DataExportDefaultTime,
-		"default_collapse_sidebar":        common.DefaultCollapseSidebar,
-		"mj_notify_enabled":               setting.MjNotifyEnabled,
-		"chats":                           setting.Chats,
-		"demo_site_enabled":               operation_setting.DemoSiteEnabled,
-		"self_use_mode_enabled":           operation_setting.SelfUseModeEnabled,
-		"register_enabled":                common.RegisterEnabled,
-		"password_login_enabled":          common.PasswordLoginEnabled,
-		"password_register_enabled":       common.PasswordRegisterEnabled,
-		"public_business_preview_enabled": setting.IsPublicBusinessPreviewEnabled(),
-		"default_use_auto_group":          setting.DefaultUseAutoGroup,
-
-		"usd_exchange_rate": operation_setting.USDExchangeRate,
-		"price":             operation_setting.Price,
-		"stripe_unit_price": setting.StripeUnitPrice,
+		"display_in_currency":                operation_setting.IsCurrencyDisplay(),
+		"quota_display_type":                 operation_setting.GetQuotaDisplayType(),
+		"custom_currency_symbol":             operation_setting.GetGeneralSetting().CustomCurrencySymbol,
+		"custom_currency_exchange_rate":      operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
+		"enable_batch_update":                common.BatchUpdateEnabled,
+		"enable_drawing":                     common.DrawingEnabled,
+		"enable_task":                        common.TaskEnabled,
+		"enable_data_export":                 common.DataExportEnabled,
+		"data_export_default_time":           common.DataExportDefaultTime,
+		"default_collapse_sidebar":           common.DefaultCollapseSidebar,
+		"mj_notify_enabled":                  setting.MjNotifyEnabled,
+		"chats":                              setting.Chats,
+		"demo_site_enabled":                  operation_setting.DemoSiteEnabled,
+		"self_use_mode_enabled":              operation_setting.SelfUseModeEnabled,
+		"register_enabled":                   common.RegisterEnabled,
+		"password_login_enabled":             common.PasswordLoginEnabled,
+		"password_register_enabled":          common.PasswordRegisterEnabled,
+		"public_business_preview_enabled":    setting.IsPublicBusinessPreviewEnabled(),
+		"affiliate_milestone_reward_enabled": setting.IsAffiliateMilestoneRewardEnabled(),
+		"recharge_benefit_enabled":           setting.IsRechargeBenefitEnabled(),
+		"default_use_auto_group":             setting.DefaultUseAutoGroup,
+		"usd_exchange_rate":                  operation_setting.USDExchangeRate,
+		"price":                              operation_setting.Price,
+		"stripe_unit_price":                  setting.StripeUnitPrice,
 
 		// 面板启用开关
 		"api_info_enabled":      cs.ApiInfoEnabled,
@@ -128,7 +129,7 @@ func GetStatus(c *gin.Context) {
 		data["api_info"] = console_setting.GetApiInfo()
 	}
 	if cs.AnnouncementsEnabled {
-		data["announcements"] = console_setting.GetAnnouncements()
+		data["announcements"] = compactAnnouncementImages(console_setting.GetAnnouncements())
 	}
 	if cs.FAQEnabled {
 		data["faq"] = console_setting.GetFAQ()

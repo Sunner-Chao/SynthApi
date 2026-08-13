@@ -53,6 +53,8 @@ func InitOptionMap() {
 	common.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(common.TurnstileCheckEnabled)
 	common.OptionMap["RegisterEnabled"] = strconv.FormatBool(common.RegisterEnabled)
 	common.OptionMap["PublicBusinessPreviewEnabled"] = strconv.FormatBool(setting.IsPublicBusinessPreviewEnabled())
+	common.OptionMap["AffiliateMilestoneRewardEnabled"] = strconv.FormatBool(setting.IsAffiliateMilestoneRewardEnabled())
+	common.OptionMap["RechargeBenefitEnabled"] = strconv.FormatBool(setting.IsRechargeBenefitEnabled())
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
@@ -450,6 +452,10 @@ func updateOptionMap(key string, value string) (err error) {
 			common.RegisterEnabled = boolValue
 		case "PublicBusinessPreviewEnabled":
 			setting.SetPublicBusinessPreviewEnabled(boolValue)
+		case "AffiliateMilestoneRewardEnabled":
+			setting.SetAffiliateMilestoneRewardEnabled(boolValue)
+		case "RechargeBenefitEnabled":
+			setting.SetRechargeBenefitEnabled(boolValue)
 		case "EmailDomainRestrictionEnabled":
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":

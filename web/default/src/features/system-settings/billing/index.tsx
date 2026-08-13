@@ -25,6 +25,8 @@ import {
 } from './section-registry.tsx'
 
 const defaultBillingSettings: BillingSettings = {
+  AffiliateMilestoneRewardEnabled: true,
+  RechargeBenefitEnabled: true,
   QuotaForNewUser: 0,
   PreConsumedQuota: 0,
   QuotaForInviter: 0,

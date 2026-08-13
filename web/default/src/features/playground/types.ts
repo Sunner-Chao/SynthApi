@@ -131,10 +131,26 @@ export interface ImageGenerationRequest {
   prompt: string
   size?: string
   resolution?: string
+  quality?: string
+  background?: string
+  output_format?: string
+  output_compression?: number
+  moderation?: string
+  input_fidelity?: string
+  response_format?: string
+  partial_images?: number
+  user?: string
   n?: number
+  images?: string[]
+  image_urls?: string[]
+  official_fallback?: boolean
+  image?: string
+  watermark?: boolean
+  [key: string]: unknown
 }
 
 export interface ImageGenerationData {
+  id?: string
   url?: string
   b64_json?: string
   revised_prompt?: string
@@ -148,7 +164,7 @@ export interface ImageGenerationResponse {
   status?: string
   progress?: string | number
   message?: string
-  data?: ImageGenerationData[]
+  data?: ImageGenerationData[] | ImageGenerationData
   error?: {
     message?: string
     code?: string
@@ -203,4 +219,5 @@ export interface GroupOption {
   value: string
   ratio: number
   desc?: string
+  supportsResolutionPricing?: boolean
 }

@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { formatQuota, formatTimestamp } from '@/lib/format'
@@ -33,8 +34,9 @@ import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { USER_STATUSES, USER_ROLES, isUserDeleted } from '../constants'
-import { type User } from '../types'
+import { type UserWithRewardSummary } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
+import { UserRewardDialog } from './user-reward-dialog'
 
 function getQuotaProgressColor(percentage: number): string {
   if (percentage <= 10) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
@@ -42,7 +44,73 @@ function getQuotaProgressColor(percentage: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-export function useUsersColumns(): ColumnDef<User>[] {
+function RewardStatusCell(props: { user: UserWithRewardSummary }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const reward = props.user.reward_summary
+  const effectiveCount = reward?.effective_invite_count ?? 0
+  const stageName = reward?.current_stage.name ?? t('Pending voyage')
+  const stageRate = (reward?.current_stage.rate_bps ?? 0) / 100
+  const rewardCNY = reward?.total_reward_cny ?? 0
+  const rechargeCNY = reward?.total_recharge_cny ?? 0
+  const inviterId = props.user.inviter_id || 0
+
+  return (
+    <>
+      <button
+        type='button'
+        className='hover:bg-muted/60 flex min-w-[210px] flex-col gap-1.5 rounded-md p-1.5 text-left transition-colors'
+        title={t('Click to view reward details')}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen(true)
+        }}
+      >
+        <div className='grid grid-cols-2 gap-1'>
+          <StatusBadge
+            label={`${stageName} · ${stageRate}%`}
+            variant={effectiveCount > 0 ? 'success' : 'neutral'}
+            copyable={false}
+          />
+          <StatusBadge
+            label={`${t('Effective paid invitees')} ${effectiveCount}`}
+            variant={effectiveCount > 0 ? 'success' : 'neutral'}
+            copyable={false}
+          />
+          <StatusBadge
+            label={`${t('Rebate')} ¥${rewardCNY.toFixed(2)}`}
+            variant={rewardCNY > 0 ? 'warning' : 'neutral'}
+            copyable={false}
+          />
+          <StatusBadge
+            label={`${t('Total recharge')} ¥${rechargeCNY.toFixed(2)}`}
+            variant={rechargeCNY > 0 ? 'info' : 'neutral'}
+            copyable={false}
+          />
+        </div>
+        <div className='flex flex-wrap items-center gap-1'>
+          <StatusBadge
+            label={`${t('Recharge benefit')} ${reward?.granted_benefit_count ?? 0} ${t('Granted')} · ${reward?.pending_benefit_count ?? 0} ${t('Pending')}`}
+            variant={
+              (reward?.pending_benefit_count ?? 0) > 0 ? 'warning' : 'neutral'
+            }
+            copyable={false}
+          />
+        </div>
+        <span className='text-muted-foreground text-[11px]'>
+          {t('Inviter')}: {inviterId || '--'} · {t('Click for details')}
+        </span>
+      </button>
+      <UserRewardDialog
+        user={props.user}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  )
+}
+
+export function useUsersColumns(): ColumnDef<UserWithRewardSummary>[] {
   const { t } = useTranslation()
   return [
     {
@@ -269,77 +337,13 @@ export function useUsersColumns(): ColumnDef<User>[] {
     {
       id: 'invite_info',
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Invite Info')} />
+        <DataTableColumnHeader column={column} title={t('Reward status')} />
       ),
       cell: ({ row }) => {
-        const user = row.original
-        const affCount = user.aff_count || 0
-        const affHistoryQuota = user.aff_history_quota || 0
-        const inviterId = user.inviter_id || 0
-
-        return (
-          <div className='flex items-center gap-1'>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <StatusBadge
-                    label={`${t('Invited')}: ${affCount}`}
-                    variant='neutral'
-                    copyable={false}
-                    className='cursor-help'
-                  />
-                }
-              />
-              <TooltipContent>
-                <p className='text-xs'>{t('Number of users invited')}</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <StatusBadge
-                    label={`${t('Revenue')}: ${formatQuota(affHistoryQuota)}`}
-                    variant='neutral'
-                    copyable={false}
-                    className='cursor-help'
-                  />
-                }
-              />
-              <TooltipContent>
-                <p className='text-xs'>{t('Total invitation revenue')}</p>
-              </TooltipContent>
-            </Tooltip>
-            {inviterId > 0 && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <StatusBadge
-                      label={`${t('Inviter')}: ${inviterId}`}
-                      variant='neutral'
-                      copyable={false}
-                      className='cursor-help'
-                    />
-                  }
-                />
-                <TooltipContent>
-                  <p className='text-xs'>
-                    {t('Invited by user ID')} {inviterId}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {inviterId === 0 && (
-              <StatusBadge
-                label={t('No Inviter')}
-                variant='neutral'
-                copyable={false}
-              />
-            )}
-          </div>
-        )
+        return <RewardStatusCell user={row.original} />
       },
       enableSorting: false,
-      meta: { label: t('Invite Info'), mobileHidden: true },
+      meta: { label: t('Reward status'), mobileHidden: true },
     },
     {
       accessorKey: 'created_at',

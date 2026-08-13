@@ -91,7 +91,14 @@ const PasswordResetForm = () => {
     setDisableButton(true);
     setLoading(true);
     const res = await API.get(
-      `/api/reset_password?email=${email}&turnstile=${turnstileToken}`,
+      '/api/reset_password',
+      {
+        params: { email },
+        headers: turnstileToken
+          ? { 'X-Turnstile-Token': turnstileToken }
+          : undefined,
+        timeout: 10000,
+      },
     );
     const { success, message } = res.data;
     if (success) {

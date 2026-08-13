@@ -25,6 +25,7 @@ import { type TFunction } from 'i18next'
 type BaseNavItem = {
   title: string
   badge?: string
+  highlight?: 'reward'
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]

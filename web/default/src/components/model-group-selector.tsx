@@ -72,6 +72,7 @@ interface GroupSelectorProps {
   onGroupChange: (value: string) => void
   className?: string
   disabled?: boolean
+  showRatio?: boolean
 }
 
 const ModelTriggerButton = React.forwardRef<
@@ -350,7 +351,14 @@ ModelSelector.displayName = 'ModelSelector'
  * Styled following Scira's form-component design patterns
  */
 export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
-  ({ selectedGroup, groups, onGroupChange, className, disabled = false }) => {
+  ({
+    selectedGroup,
+    groups,
+    onGroupChange,
+    className,
+    disabled = false,
+    showRatio = true,
+  }) => {
     const { t } = useTranslation()
     const [open, setOpen] = useState(false)
     const isMobile = useIsMobile()
@@ -383,6 +391,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
           const searchTerm = search.toLowerCase()
           const searchableFields = [
             group.label,
+            group.desc || '',
             group.description || '',
             group.value,
           ]
@@ -419,9 +428,9 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
                       {group.label}
                     </span>
                     {(group.desc || group.description) && (
-                      <div className='text-muted-foreground truncate text-[9px] leading-tight'>
+                      <div className='text-muted-foreground text-[9px] leading-tight break-words whitespace-normal'>
                         {group.desc || group.description}
-                        {group.ratio && (
+                        {showRatio && group.ratio != null && (
                           <>
                             {' · '}
                             {t('Ratio: {{value}}', { value: group.ratio })}
@@ -483,7 +492,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
                           {(group.desc || group.description) && (
                             <div className='text-muted-foreground mt-0.5 text-xs'>
                               {group.desc || group.description}
-                              {group.ratio && (
+                              {showRatio && group.ratio != null && (
                                 <>
                                   {' · '}
                                   {t('Ratio: {{value}}', {

@@ -142,6 +142,7 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	defaultConfig["personal"] = map[string]interface{}{
 		"enabled":  true,
 		"topup":    true,
+		"rewards":  true,
 		"personal": true,
 	}
 
@@ -398,28 +399,35 @@ func inviteUser(inviterId int) (err error) {
 	return DB.Save(user).Error
 }
 
-func (user *User) TransferAffQuotaToQuota(quota int) error {
-	// 检查quota是否小于最小额度
-	if float64(quota) < common.QuotaPerUnit {
-		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
+func (user *User) TransferAffQuotaToQuota(quota int) (*AffiliateTransferRecord, error) {
+	// Milestone rebates can legitimately be smaller than one display unit.
+	// Allow users to transfer any positive reward balance.
+	if quota <= 0 {
+		return nil, errors.New("转移额度必须大于 0！")
 	}
 
 	// 开始数据库事务
 	tx := DB.Begin()
 	if tx.Error != nil {
-		return tx.Error
+		return nil, tx.Error
 	}
 	defer tx.Rollback() // 确保在函数退出时事务能回滚
 
 	// 加锁查询用户以确保数据一致性
 	err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, user.Id).Error
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 再次检查用户的AffQuota是否足够
 	if user.AffQuota < quota {
-		return errors.New("邀请额度不足！")
+		return nil, errors.New("邀请额度不足！")
+	}
+	record := &AffiliateTransferRecord{
+		UserId: user.Id, Quota: quota,
+		AffQuotaBefore: user.AffQuota, AffQuotaAfter: user.AffQuota - quota,
+		QuotaBefore: user.Quota, QuotaAfter: user.Quota + quota,
+		CreatedAt: common.GetTimestamp(),
 	}
 
 	// 更新用户额度
@@ -428,11 +436,17 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 
 	// 保存用户状态
 	if err := tx.Save(user).Error; err != nil {
-		return err
+		return nil, err
+	}
+	if err := tx.Create(record).Error; err != nil {
+		return nil, err
 	}
 
 	// 提交事务
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 func (user *User) Insert(inviterId int) error {

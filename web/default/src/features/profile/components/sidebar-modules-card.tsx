@@ -119,6 +119,11 @@ export function SidebarModulesCard() {
           description: t('Balance and top-up management'),
         },
         {
+          key: 'rewards',
+          title: t('Reward Center'),
+          description: t('Referral rebates and recharge benefits'),
+        },
+        {
           key: 'personal',
           title: t('Personal Settings'),
           description: t('Personal info settings'),

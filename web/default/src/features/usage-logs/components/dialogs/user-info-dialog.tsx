@@ -17,11 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Gift, Loader2, Sparkles, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatAccountingQuotaWithCurrency } from '@/lib/currency'
 import { formatQuota, formatCompactNumber } from '@/lib/format'
+import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
@@ -30,13 +31,23 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { getUserInfo } from '../../api'
+import type { AdminUserRewardSummary } from '@/features/reward-center/types'
+import { getUserInfo, getUserRewardSummary } from '../../api'
 import type { UserInfo } from '../../types'
 
 interface UserInfoDialogProps {
   userId: number | null
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+function InfoItem(props: { label: string; value: string | number }) {
+  return (
+    <div className='space-y-1.5'>
+      <Label className='text-muted-foreground text-xs'>{props.label}</Label>
+      <div className='text-sm font-semibold'>{props.value}</div>
+    </div>
+  )
 }
 
 export function UserInfoDialog({
@@ -46,18 +57,28 @@ export function UserInfoDialog({
 }: UserInfoDialogProps) {
   const { t } = useTranslation()
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [rewardSummary, setRewardSummary] =
+    useState<AdminUserRewardSummary | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const fetchUserInfo = useCallback(
     async (id: number) => {
       setIsLoading(true)
       try {
-        const result = await getUserInfo(id)
-        if (result.success) {
-          setUserInfo(result.data || null)
+        const [userResult, rewardResult] = await Promise.all([
+          getUserInfo(id),
+          getUserRewardSummary(id),
+        ])
+        if (userResult.success) {
+          setUserInfo(userResult.data || null)
         } else {
-          toast.error(result.message || t('Failed to fetch user information'))
+          toast.error(
+            userResult.message || t('Failed to fetch user information')
+          )
         }
+        setRewardSummary(
+          rewardResult.success ? rewardResult.data || null : null
+        )
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to fetch user info:', error)
@@ -71,26 +92,15 @@ export function UserInfoDialog({
 
   useEffect(() => {
     if (open && userId) {
-      fetchUserInfo(userId)
+      // The dialog owns this request lifecycle and refreshes when its target changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void fetchUserInfo(userId)
     }
   }, [open, userId, fetchUserInfo])
 
-  const InfoItem = ({
-    label,
-    value,
-  }: {
-    label: string
-    value: string | number
-  }) => (
-    <div className='space-y-1.5'>
-      <Label className='text-muted-foreground text-xs'>{label}</Label>
-      <div className='text-sm font-semibold'>{value}</div>
-    </div>
-  )
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-lg'>
+      <DialogContent className='max-h-[88vh] overflow-y-auto sm:max-w-2xl'>
         <DialogHeader>
           <DialogTitle>{t('User Information')}</DialogTitle>
           <DialogDescription>
@@ -169,6 +179,79 @@ export function UserInfoDialog({
                   />
                 )}
               </>
+            )}
+
+            {rewardSummary && (
+              <div className='space-y-3'>
+              <div className='bg-muted/20 space-y-4 rounded-lg border p-4'>
+                <div className='flex flex-wrap items-center justify-between gap-2'>
+                  <div className='flex items-center gap-2 font-semibold'>
+                    <Sparkles className='size-4 text-amber-500' />
+                    {t('Invitation rebate details')}
+                  </div>
+                  <Badge className='bg-amber-500 text-slate-950 hover:bg-amber-500'>
+                    {rewardSummary.affiliate.current_stage.name}
+                  </Badge>
+                </div>
+                <div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
+                  <InfoItem
+                    label={t('Current rebate rate')}
+                    value={`${(rewardSummary.affiliate.current_stage.rate_bps / 100).toFixed(1)}%`}
+                  />
+                  <InfoItem
+                    label={t('Effective paid invitees')}
+                    value={rewardSummary.affiliate.effective_invite_count}
+                  />
+                  <InfoItem
+                    label={t('Rebate orders')}
+                    value={rewardSummary.affiliate.rebate_order_count}
+                  />
+                  <InfoItem
+                    label={t('Total rebate earned')}
+                    value={`¥${rewardSummary.affiliate.total_reward_cny.toFixed(2)}`}
+                  />
+                </div>
+                <div className='grid grid-cols-1 gap-3 border-t pt-3 sm:grid-cols-2'>
+                  <div className='flex items-center gap-2 text-sm'>
+                    <Users className='text-muted-foreground size-4' />
+                    {rewardSummary.affiliate.next_stage
+                      ? t('{{count}} more paid invitees to {{stage}}', {
+                          count: Math.max(
+                            0,
+                            rewardSummary.affiliate.next_stage.min_invites -
+                              rewardSummary.affiliate.effective_invite_count
+                          ),
+                          stage: rewardSummary.affiliate.next_stage.name,
+                        })
+                      : t('Highest invitation rebate stage reached')}
+                  </div>
+                </div>
+              </div>
+              <div className='bg-muted/20 space-y-3 rounded-lg border p-4'>
+                <div className='flex items-center gap-2 font-semibold'>
+                  <Gift className='size-4 text-cyan-500' />
+                  {t('Thousand-yuan recharge benefit')}
+                </div>
+                <div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
+                  <InfoItem
+                    label={t('Total recharge')}
+                    value={`¥${rewardSummary.recharge.total_recharge_cny.toFixed(2)}`}
+                  />
+                  <InfoItem
+                    label={t('Unlocked')}
+                    value={rewardSummary.recharge.unlocked_count}
+                  />
+                  <InfoItem
+                    label={t('Granted')}
+                    value={rewardSummary.recharge.granted_count}
+                  />
+                  <InfoItem
+                    label={t('Pending review')}
+                    value={rewardSummary.recharge.pending_count}
+                  />
+                </div>
+              </div>
+              </div>
             )}
 
             {/* Remark */}

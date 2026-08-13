@@ -84,15 +84,21 @@ export async function getUserModels(): Promise<ModelOption[]> {
 /**
  * Get user groups
  */
-export async function getUserGroups(): Promise<GroupOption[]> {
-  const res = await api.get(API_ENDPOINTS.USER_GROUPS)
+export async function getUserGroups(imageOnly = false): Promise<GroupOption[]> {
+  const endpoint = imageOnly
+    ? `${API_ENDPOINTS.USER_GROUPS}?image=true`
+    : API_ENDPOINTS.USER_GROUPS
+  const res = await api.get(endpoint)
   const { data } = res
 
   if (!data.success || !data.data) {
     return []
   }
 
-  const groupData = data.data as Record<string, { desc: string; ratio: number }>
+  const groupData = data.data as Record<
+    string,
+    { desc: string; ratio: number; supports_resolution_pricing?: boolean }
+  >
 
   // label is for button display (name only); desc is for dropdown content
   return Object.entries(groupData).map(([group, info]) => ({
@@ -100,5 +106,6 @@ export async function getUserGroups(): Promise<GroupOption[]> {
     value: group,
     ratio: info.ratio,
     desc: info.desc,
+    supportsResolutionPricing: info.supports_resolution_pricing,
   }))
 }

@@ -48,6 +48,7 @@ func GetTopupGroups(c *gin.Context) {
 }
 
 func GetUserGroups(c *gin.Context) {
+	imageOnly := strings.EqualFold(strings.TrimSpace(c.Query("image")), "true")
 	usableGroups := make(map[string]map[string]interface{})
 	userGroup := ""
 	userId := c.GetInt("id")
@@ -102,11 +103,54 @@ func GetUserGroups(c *gin.Context) {
 		"ratio": "自动",
 		"desc":  description,
 	}
+	if imageOnly {
+		capabilities := getImageGroupCapabilities()
+		for groupName := range usableGroups {
+			capability, ok := capabilities[groupName]
+			if !ok {
+				delete(usableGroups, groupName)
+				continue
+			}
+			usableGroups[groupName]["supports_resolution_pricing"] = capability.SupportsResolutionPricing
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data":    usableGroups,
 	})
+}
+
+type imageGroupCapability struct {
+	SupportsResolutionPricing bool
+}
+
+type imageAbilityWithChannel struct {
+	model.Ability
+	ChannelBaseURL string `gorm:"column:channel_base_url"`
+}
+
+func getImageGroupCapabilities() map[string]imageGroupCapability {
+	var rows []imageAbilityWithChannel
+	model.DB.Table("abilities").
+		Select("abilities.*, channels.base_url AS channel_base_url").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
+		Scan(&rows)
+
+	capabilities := make(map[string]imageGroupCapability)
+	for _, row := range rows {
+		modelName := strings.ToLower(strings.TrimSpace(row.Model))
+		if !isImageGenerationProbeModel(modelName) && !strings.Contains(modelName, "image") {
+			continue
+		}
+		capability := capabilities[row.Group]
+		if (modelName == "gpt-image-2" || modelName == "gpt-image-2-ext") && common.IsAPIMartAPIBaseURL(row.ChannelBaseURL) {
+			capability.SupportsResolutionPricing = true
+		}
+		capabilities[row.Group] = capability
+	}
+	return capabilities
 }
 
 type groupChannelStatusSummary struct {
