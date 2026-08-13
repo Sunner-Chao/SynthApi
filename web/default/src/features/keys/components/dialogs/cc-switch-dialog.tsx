@@ -61,7 +61,9 @@ const APP_CONFIGS = {
 type AppType = keyof typeof APP_CONFIGS
 
 const SYNTHAPI_USAGE_QUERY_SCRIPT =
-  '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){return r&&r.data?r.data:r}})'
+  '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){var v=r&&r.data?r.data:r;return v&&typeof v==="object"?v:{isValid:false,invalidMessage:"Invalid usage response"}}})'
+
+const CCSWITCH_USAGE_BASE_URL = 'https://synthapi.asia'
 
 function base64EncodeUtf8(value: string): string {
   if (typeof window === 'undefined') return ''
@@ -94,28 +96,6 @@ function normalizePublicServerAddress(value: unknown): string {
   } catch {
     return ''
   }
-}
-
-function normalizeLocalServerAddress(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  const trimmed = value.trim().replace(/\/+$/, '')
-  if (!trimmed) return ''
-
-  try {
-    const url = new URL(trimmed)
-    const hostname = url.hostname.toLowerCase()
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '::1'
-    ) {
-      return url.origin
-    }
-  } catch {
-    /* empty */
-  }
-
-  return ''
 }
 
 function getServerAddress(): string {
@@ -152,15 +132,6 @@ function getServerAddress(): string {
   return ''
 }
 
-function getCCSwitchUsageBaseUrl(serverAddress: string): string {
-  if (typeof window === 'undefined') return serverAddress
-
-  const localOrigin = normalizeLocalServerAddress(window.location.origin)
-  if (localOrigin) return localOrigin
-
-  return serverAddress
-}
-
 function buildCCSwitchURL(
   app: string,
   name: string,
@@ -181,14 +152,11 @@ function buildCCSwitchURL(
   params.set('homepage', serverAddress)
   params.set('enabled', 'true')
 
-  const usageBaseUrl = getCCSwitchUsageBaseUrl(serverAddress)
-  if (usageBaseUrl) {
-    params.set('usageEnabled', 'true')
-    params.set('usageScript', base64EncodeUtf8(SYNTHAPI_USAGE_QUERY_SCRIPT))
-    params.set('usageApiKey', apiKey)
-    params.set('usageBaseUrl', usageBaseUrl)
-    params.set('usageAutoInterval', '10')
-  }
+  params.set('usageEnabled', 'true')
+  params.set('usageScript', base64EncodeUtf8(SYNTHAPI_USAGE_QUERY_SCRIPT))
+  params.set('usageApiKey', apiKey)
+  params.set('usageBaseUrl', CCSWITCH_USAGE_BASE_URL)
+  params.set('usageAutoInterval', '10')
 
   return `ccswitch://v1/import?${params.toString()}`
 }

@@ -53,6 +53,18 @@ const APP_CONFIGS = {
 };
 
 const FAST_API_BASE_URL = 'https://116.62.113.242';
+const CCSWITCH_USAGE_BASE_URL = 'https://synthapi.asia';
+const SYNTHAPI_USAGE_QUERY_SCRIPT =
+  '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){var v=r&&r.data?r.data:r;return v&&typeof v==="object"?v:{isValid:false,invalidMessage:"Invalid usage response"}}})';
+
+function base64EncodeUtf8(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return window.btoa(binary);
+}
 
 function getServerAddress() {
   try {
@@ -80,6 +92,11 @@ function buildCCSwitchURL(app, name, models, apiKey) {
   }
   params.set('homepage', serverAddress);
   params.set('enabled', 'true');
+  params.set('usageEnabled', 'true');
+  params.set('usageScript', base64EncodeUtf8(SYNTHAPI_USAGE_QUERY_SCRIPT));
+  params.set('usageApiKey', apiKey);
+  params.set('usageBaseUrl', CCSWITCH_USAGE_BASE_URL);
+  params.set('usageAutoInterval', '10');
   return `ccswitch://v1/import?${params.toString()}`;
 }
 
