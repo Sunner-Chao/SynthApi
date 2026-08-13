@@ -54,7 +54,6 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible={collapsible} variant={variant}>
       {view && <SidebarViewHeader view={view} />}
-      {isAdminPortal && <AdminRewardSidebarPanel />}
 
       <SidebarContent className='py-2'>
         <AnimatePresence mode='wait' initial={false}>
@@ -76,6 +75,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <RewardSidebarEntry />
+      {isAdminPortal && <AdminRewardSidebarPanel />}
 
       <SidebarRail />
     </Sidebar>

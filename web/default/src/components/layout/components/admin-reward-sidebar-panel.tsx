@@ -1,7 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { Gift, Sparkles } from 'lucide-react'
 import {
-  SidebarHeader,
+  SidebarFooter,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -22,7 +22,7 @@ export function AdminRewardSidebarPanel() {
   if (!isAdminPortal) return null
 
   return (
-    <SidebarHeader className='admin-reward-sidebar-panel border-sidebar-border border-b px-2 py-2.5'>
+    <SidebarFooter className='admin-reward-sidebar-panel border-sidebar-border border-t px-2 py-2.5'>
       <div className='admin-reward-sidebar-label flex items-center justify-between gap-2 px-2 pb-1.5'>
         <span className='flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold'>
           <Sparkles className='size-3 shrink-0' aria-hidden='true' />
@@ -56,6 +56,6 @@ export function AdminRewardSidebarPanel() {
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
-    </SidebarHeader>
+    </SidebarFooter>
   )
 }
