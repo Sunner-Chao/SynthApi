@@ -234,9 +234,6 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		key := c.Request.Header.Get("Authorization")
 		if key == "" {
-			key = c.Request.Header.Get("x-api-key")
-		}
-		if key == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": common.TranslateMessage(c, i18n.MsgTokenNotProvided),
@@ -244,7 +241,12 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
-		key = normalizeReadOnlyTokenKey(key)
+		if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
+			key = strings.TrimSpace(key[7:])
+		}
+		key = strings.TrimPrefix(key, "sk-")
+		parts := strings.Split(key, "-")
+		key = parts[0]
 
 		token, err := model.GetTokenByKey(key, false)
 		if err != nil {
@@ -288,23 +290,6 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		c.Set("token_key", token.Key)
 		c.Next()
 	}
-}
-
-func normalizeReadOnlyTokenKey(raw string) string {
-	key := strings.TrimSpace(raw)
-	if len(key) >= 7 && strings.EqualFold(key[:7], "Bearer ") {
-		key = strings.TrimSpace(key[7:])
-	}
-	// Older CC Switch imports could persist sk-sk-... after the UI added a
-	// prefix to an already-prefixed key. Accept repeated prefixes on these
-	// read-only endpoints so saved desktop providers recover without reimport.
-	for len(key) >= 3 && strings.EqualFold(key[:3], "sk-") {
-		key = strings.TrimSpace(key[3:])
-	}
-	if separator := strings.IndexByte(key, '-'); separator >= 0 {
-		key = key[:separator]
-	}
-	return key
 }
 
 func TokenAuth() func(c *gin.Context) {

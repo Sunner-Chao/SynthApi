@@ -53,7 +53,7 @@ const APP_CONFIGS = {
 };
 
 const FAST_API_BASE_URL = 'https://116.62.113.242';
-const CCSWITCH_USAGE_BASE_URL = FAST_API_BASE_URL;
+const CCSWITCH_USAGE_BASE_URL = 'https://synthapi.asia';
 const SYNTHAPI_USAGE_QUERY_SCRIPT =
   '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){var v=r&&r.data?r.data:r;return v&&typeof v==="object"?v:{isValid:false,invalidMessage:"Invalid usage response"}}})';
 

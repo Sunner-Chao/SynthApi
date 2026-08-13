@@ -22,6 +22,7 @@ import { useLayout } from '@/context/layout-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
 import { NavGroup } from './nav-group'
+import { AdminRewardSidebarPanel } from './admin-reward-sidebar-panel'
 import { RewardSidebarEntry } from './reward-sidebar-entry'
 import { SidebarViewHeader } from './sidebar-view-header'
 
@@ -46,10 +47,14 @@ export function AppSidebar() {
   const { collapsible, variant } = useLayout()
   const { key, view, navGroups } = useSidebarView()
   const shouldReduce = useReducedMotion()
+  const isAdminPortal =
+    typeof window !== 'undefined' &&
+    window.location.hostname === 'admin.synthapi.asia'
 
   return (
     <Sidebar collapsible={collapsible} variant={variant}>
       {view && <SidebarViewHeader view={view} />}
+      {isAdminPortal && <AdminRewardSidebarPanel />}
 
       <SidebarContent className='py-2'>
         <AnimatePresence mode='wait' initial={false}>
