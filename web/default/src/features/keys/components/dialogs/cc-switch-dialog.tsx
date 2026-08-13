@@ -63,7 +63,10 @@ type AppType = keyof typeof APP_CONFIGS
 const SYNTHAPI_USAGE_QUERY_SCRIPT =
   '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){var v=r&&r.data?r.data:r;return v&&typeof v==="object"?v:{isValid:false,invalidMessage:"Invalid usage response"}}})'
 
-const CCSWITCH_USAGE_BASE_URL = 'https://synthapi.asia'
+// Keep the usage query on the same direct origin as the imported provider.
+// This avoids making CC Switch depend on the dashboard/Cloudflare route while
+// the actual API traffic uses the high-speed public-IP route.
+const CCSWITCH_USAGE_BASE_URL = FAST_API_BASE_URL
 
 function base64EncodeUtf8(value: string): string {
   if (typeof window === 'undefined') return ''

@@ -24,6 +24,15 @@ func SetRelayRouter(router *gin.Engine) {
 	legacyCCSwitchUsageRouter.Use(middleware.TokenAuthReadOnly())
 	legacyCCSwitchUsageRouter.GET("/", controller.GetCCSwitchTokenUsage)
 
+	// Some CC Switch provider configurations probe the Sub2API billing metadata
+	// endpoint in addition to the custom balance script. Preserve that public
+	// read-only contract so imported providers do not fail on a 404.
+	ccSwitchBillingRouter := router.Group("/v1/sub2api/billing")
+	ccSwitchBillingRouter.Use(middleware.RouteTag("api"))
+	ccSwitchBillingRouter.Use(middleware.CriticalRateLimit())
+	ccSwitchBillingRouter.Use(middleware.TokenAuthReadOnly())
+	ccSwitchBillingRouter.GET("", controller.GetCCSwitchBillingInfo)
+
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))
