@@ -66,6 +66,11 @@ function base64EncodeUtf8(value) {
   return window.btoa(binary);
 }
 
+function normalizeApiKey(value) {
+  const trimmed = String(value || '').trim();
+  return trimmed.startsWith('sk-') ? trimmed : `sk-${trimmed}`;
+}
+
 function getServerAddress() {
   try {
     const raw = localStorage.getItem('status');
@@ -136,7 +141,12 @@ export default function CCSwitchModal({
       Toast.warning(t('请选择主模型'));
       return;
     }
-    const url = buildCCSwitchURL(app, name, models, 'sk-' + tokenKey);
+    const url = buildCCSwitchURL(
+      app,
+      name,
+      models,
+      normalizeApiKey(tokenKey),
+    );
     window.open(url, '_blank');
     onClose();
   };

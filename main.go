@@ -39,6 +39,7 @@ import (
 )
 
 var backfillAffiliateRebates = flag.Bool("backfill-affiliate-rebates", false, "rebuild historical affiliate rebate ledger")
+var backfillAdminRecharges = flag.Bool("backfill-admin-recharges", false, "rebuild historical administrator recharge ledger")
 var applyAffiliateRebates = flag.Bool("apply", false, "apply affiliate rebate backfill changes")
 
 //go:embed web/default/dist
@@ -70,6 +71,20 @@ func main() {
 		payload, marshalErr := common.Marshal(summary)
 		if marshalErr != nil {
 			common.FatalLog("affiliate rebate backfill output failed: " + marshalErr.Error())
+			return
+		}
+		fmt.Println(string(payload))
+		return
+	}
+	if *backfillAdminRecharges {
+		summary, backfillErr := model.BackfillAdminQuotaRechargeLedger(*applyAffiliateRebates)
+		if backfillErr != nil {
+			common.FatalLog("administrator recharge backfill failed: " + backfillErr.Error())
+			return
+		}
+		payload, marshalErr := common.Marshal(summary)
+		if marshalErr != nil {
+			common.FatalLog("administrator recharge backfill output failed: " + marshalErr.Error())
 			return
 		}
 		fmt.Println(string(payload))
@@ -249,8 +264,8 @@ func newHTTPServer(assets router.ThemeAssets, exposure router.ExposureMode) *gin
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	store.Options(sessions.Options{
-		Path:   "/",
-		Domain: os.Getenv("SESSION_COOKIE_DOMAIN"),
+		Path:     "/",
+		Domain:   os.Getenv("SESSION_COOKIE_DOMAIN"),
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
 		Secure:   false,

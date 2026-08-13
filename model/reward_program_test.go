@@ -22,7 +22,7 @@ func setupRewardProgramTestDB(t *testing.T) {
 	originalRechargeEnabled := setting.IsRechargeBenefitEnabled()
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &AffiliateRebateRecord{}, &AffiliateTransferRecord{}, &RechargeBenefitClaim{}, &PaymentRefundReview{}, &Log{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &AffiliateRebateRecord{}, &AffiliateTransferRecord{}, &RechargeBenefitClaim{}, &AdminQuotaRechargeRecord{}, &PaymentRefundReview{}, &Log{}))
 	DB = db
 	LOG_DB = db
 	common.QuotaPerUnit = 500_000
@@ -228,6 +228,64 @@ func TestAdminUserRewardListSummariesAggregateCurrentPage(t *testing.T) {
 	require.Equal(t, 16.0, summaries[320].TotalRewardCNY)
 	require.Equal(t, 1000.0, summaries[320].TotalRechargeCNY)
 	require.Equal(t, 1, summaries[320].GrantedBenefitCount)
+}
+
+func TestAdminQuotaIncreaseCountsAsNetRechargeButNotAffiliateRebate(t *testing.T) {
+	setupRewardProgramTestDB(t)
+	createRewardTestUsers(t, 330, 331)
+
+	result, err := AdjustUserQuotaByAdmin(331, 1, "add", cnyToQuota(1000), "admin-recharge-test")
+	require.NoError(t, err)
+	require.Equal(t, cnyToQuota(1000), result.RechargeQuota)
+	require.InDelta(t, 1000, result.RechargeCNY, 0.01)
+
+	overview, err := GetRewardProgramOverview(331, "recharge")
+	require.NoError(t, err)
+	require.InDelta(t, 1000, overview.Recharge.TotalRechargeCNY, 0.01)
+	require.Equal(t, 1, overview.Recharge.AvailableCount)
+
+	var rebates int64
+	require.NoError(t, DB.Model(&AffiliateRebateRecord{}).Count(&rebates).Error)
+	require.Zero(t, rebates)
+}
+
+func TestAdminQuotaOverrideOnlyCountsPositiveDelta(t *testing.T) {
+	setupRewardProgramTestDB(t)
+	user := &User{Id: 340, Username: "admin-override", Password: "password", AffCode: "ADMIN340", Quota: cnyToQuota(100)}
+	require.NoError(t, DB.Create(user).Error)
+
+	result, err := AdjustUserQuotaByAdmin(340, 1, "override", cnyToQuota(250), "admin-override-up")
+	require.NoError(t, err)
+	require.InDelta(t, 150, result.RechargeCNY, 0.01)
+	result, err = AdjustUserQuotaByAdmin(340, 1, "override", cnyToQuota(50), "admin-override-down")
+	require.NoError(t, err)
+	require.Zero(t, result.RechargeQuota)
+
+	overview, err := GetRewardProgramOverview(340, "recharge")
+	require.NoError(t, err)
+	require.InDelta(t, 150, overview.Recharge.TotalRechargeCNY, 0.01)
+}
+
+func TestAdminQuotaRechargeBackfillIsIdempotent(t *testing.T) {
+	setupRewardProgramTestDB(t)
+	require.NoError(t, DB.Create(&User{Id: 350, Username: "admin-backfill", Password: "password", AffCode: "ADMIN350"}).Error)
+	require.NoError(t, DB.Create(&Log{
+		Id: 91, UserId: 350, CreatedAt: 1000, Type: LogTypeManage,
+		Content: "管理员增加用户额度 ¥1000.000000 额度",
+		Other:   common.MapToJsonStr(map[string]interface{}{"admin_info": map[string]interface{}{"admin_id": 1}}),
+	}).Error)
+
+	first, err := BackfillAdminQuotaRechargeLedger(true)
+	require.NoError(t, err)
+	require.Equal(t, 1, first.CreatedRecords)
+	second, err := BackfillAdminQuotaRechargeLedger(true)
+	require.NoError(t, err)
+	require.Equal(t, 1, second.ExistingRecords)
+	require.Zero(t, second.CreatedRecords)
+
+	overview, err := GetRewardProgramOverview(350, "recharge")
+	require.NoError(t, err)
+	require.InDelta(t, 1000, overview.Recharge.TotalRechargeCNY, 0.01)
 }
 
 func TestNonCNYTopUpDoesNotSettleAffiliateRebate(t *testing.T) {

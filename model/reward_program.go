@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -82,6 +84,36 @@ type RechargeBenefitClaim struct {
 	CreatedAt      int64  `json:"created_at" gorm:"not null"`
 	UpdatedAt      int64  `json:"updated_at" gorm:"not null"`
 	Username       string `json:"username,omitempty" gorm:"-"`
+}
+
+type AdminQuotaRechargeRecord struct {
+	Id          int     `json:"id"`
+	EventKey    string  `json:"event_key" gorm:"type:varchar(128);not null;uniqueIndex"`
+	SourceLogId int     `json:"source_log_id" gorm:"not null;default:0;index"`
+	UserId      int     `json:"user_id" gorm:"not null;index"`
+	AdminId     int     `json:"admin_id" gorm:"not null;index"`
+	Mode        string  `json:"mode" gorm:"type:varchar(20);not null"`
+	Quota       int     `json:"quota" gorm:"not null"`
+	AmountCNY   float64 `json:"amount_cny" gorm:"type:decimal(20,6);not null"`
+	CreatedAt   int64   `json:"created_at" gorm:"not null;index"`
+}
+
+type AdminQuotaAdjustmentResult struct {
+	OldQuota      int                       `json:"old_quota"`
+	NewQuota      int                       `json:"new_quota"`
+	RechargeQuota int                       `json:"recharge_quota"`
+	RechargeCNY   float64                   `json:"recharge_cny"`
+	Recharge      *AdminQuotaRechargeRecord `json:"recharge,omitempty"`
+}
+
+type AdminQuotaRechargeBackfillSummary struct {
+	DryRun          bool    `json:"dry_run"`
+	ScannedLogs     int     `json:"scanned_logs"`
+	EligibleLogs    int     `json:"eligible_logs"`
+	CreatedRecords  int     `json:"created_records"`
+	ExistingRecords int     `json:"existing_records"`
+	SkippedLogs     int     `json:"skipped_logs"`
+	TotalCNY        float64 `json:"total_cny"`
 }
 
 type AdminUserRewardSummary struct {
@@ -380,6 +412,188 @@ func quotaToCNY(quota int64) float64 {
 	return value
 }
 
+func adminQuotaRechargeEventKey(requestID string, userID int, adminID int) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		requestID = fmt.Sprintf("%d-%s", common.GetTimestamp(), common.GetRandomString(12))
+	}
+	return fmt.Sprintf("admin-quota:%d:%d:%s", adminID, userID, requestID)
+}
+
+// AdjustUserQuotaByAdmin changes the wallet and records any positive balance
+// delta as net recharge in the same transaction.
+func AdjustUserQuotaByAdmin(userID int, adminID int, mode string, value int, requestID string) (*AdminQuotaAdjustmentResult, error) {
+	if userID <= 0 || adminID <= 0 {
+		return nil, errors.New("invalid user or admin id")
+	}
+	if mode != "override" && value <= 0 {
+		return nil, errors.New("quota change must be positive")
+	}
+	var result AdminQuotaAdjustmentResult
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "quota").Where("id = ?", userID).First(&user).Error; err != nil {
+			return err
+		}
+		result.OldQuota = user.Quota
+		switch mode {
+		case "add":
+			result.NewQuota = user.Quota + value
+		case "subtract":
+			result.NewQuota = user.Quota - value
+		case "override":
+			result.NewQuota = value
+		default:
+			return errors.New("invalid quota adjustment mode")
+		}
+		if err := tx.Model(&User{}).Where("id = ?", userID).Update("quota", result.NewQuota).Error; err != nil {
+			return err
+		}
+		if result.NewQuota <= result.OldQuota {
+			return nil
+		}
+		result.RechargeQuota = result.NewQuota - result.OldQuota
+		result.RechargeCNY = quotaToCNY(int64(result.RechargeQuota))
+		if result.RechargeCNY <= 0 {
+			return errors.New("admin recharge quota conversion is invalid")
+		}
+		record := &AdminQuotaRechargeRecord{
+			EventKey:  adminQuotaRechargeEventKey(requestID, userID, adminID),
+			UserId:    userID,
+			AdminId:   adminID,
+			Mode:      mode,
+			Quota:     result.RechargeQuota,
+			AmountCNY: decimal.NewFromFloat(result.RechargeCNY).Round(6).InexactFloat64(),
+			CreatedAt: common.GetTimestamp(),
+		}
+		if err := tx.Create(record).Error; err != nil {
+			return err
+		}
+		result.Recharge = record
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := updateUserQuotaCache(userID, result.NewQuota); err != nil {
+		common.SysLog(fmt.Sprintf("failed to update user %d quota cache after admin adjustment: %s", userID, err.Error()))
+	}
+	if result.NewQuota > result.OldQuota {
+		if err := ClearWalletLowQuotaNotifyStateIfRecovered(userID); err != nil {
+			common.SysLog(fmt.Sprintf("failed to clear user %d low quota state after admin adjustment: %s", userID, err.Error()))
+		}
+	}
+	return &result, nil
+}
+
+func adminRechargeCNYByUserIDs(userIDs []int) (map[int]decimal.Decimal, error) {
+	result := make(map[int]decimal.Decimal, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	type row struct {
+		UserId    int
+		AmountCNY float64
+	}
+	var rows []row
+	if err := DB.Model(&AdminQuotaRechargeRecord{}).Select("user_id, SUM(amount_cny) AS amount_cny").
+		Where("user_id IN ?", userIDs).Group("user_id").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range rows {
+		result[item.UserId] = decimal.NewFromFloat(item.AmountCNY)
+	}
+	return result, nil
+}
+
+var adminQuotaCNYPattern = regexp.MustCompile(`¥([0-9]+(?:\.[0-9]+)?)`)
+
+func adminQuotaRechargeFromLog(log *Log) (float64, string, int, bool) {
+	if log == nil || log.UserId <= 0 {
+		return 0, "", 0, false
+	}
+	matches := adminQuotaCNYPattern.FindAllStringSubmatch(log.Content, -1)
+	mode := ""
+	amount := 0.0
+	switch {
+	case strings.HasPrefix(log.Content, "管理员增加用户额度 ") && len(matches) >= 1:
+		mode = "add"
+		amount, _ = strconv.ParseFloat(matches[0][1], 64)
+	case strings.HasPrefix(log.Content, "管理员覆盖用户额度从 ") && len(matches) >= 2:
+		mode = "override"
+		before, _ := strconv.ParseFloat(matches[0][1], 64)
+		after, _ := strconv.ParseFloat(matches[1][1], 64)
+		amount = after - before
+	default:
+		return 0, "", 0, false
+	}
+	if amount <= 0 {
+		return 0, "", 0, false
+	}
+	adminID := 0
+	if other, err := common.StrToMap(log.Other); err == nil {
+		if adminInfo, ok := other["admin_info"].(map[string]interface{}); ok {
+			if counted, ok := adminInfo["net_recharge_counted"].(bool); ok && counted {
+				return 0, "", 0, false
+			}
+			switch value := adminInfo["admin_id"].(type) {
+			case float64:
+				adminID = int(value)
+			case int:
+				adminID = value
+			}
+		}
+	}
+	return decimal.NewFromFloat(amount).Round(6).InexactFloat64(), mode, adminID, true
+}
+
+// BackfillAdminQuotaRechargeLedger imports historical administrator quota-add
+// audit logs. SourceLogId makes repeated runs idempotent.
+func BackfillAdminQuotaRechargeLedger(apply bool) (*AdminQuotaRechargeBackfillSummary, error) {
+	summary := &AdminQuotaRechargeBackfillSummary{DryRun: !apply}
+	var logs []Log
+	if err := LOG_DB.Where("type = ? AND (content LIKE ? OR content LIKE ?)", LogTypeManage, "管理员增加用户额度 %", "管理员覆盖用户额度从 %").Order("id asc").Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	summary.ScannedLogs = len(logs)
+	for i := range logs {
+		amountCNY, mode, adminID, eligible := adminQuotaRechargeFromLog(&logs[i])
+		if !eligible {
+			summary.SkippedLogs++
+			continue
+		}
+		summary.EligibleLogs++
+		var existing int64
+		if err := DB.Model(&AdminQuotaRechargeRecord{}).Where("source_log_id = ?", logs[i].Id).Count(&existing).Error; err != nil {
+			return nil, err
+		}
+		if existing > 0 {
+			summary.ExistingRecords++
+			continue
+		}
+		summary.CreatedRecords++
+		summary.TotalCNY = decimal.NewFromFloat(summary.TotalCNY).Add(decimal.NewFromFloat(amountCNY)).InexactFloat64()
+		if !apply {
+			continue
+		}
+		record := &AdminQuotaRechargeRecord{
+			EventKey:    fmt.Sprintf("legacy-admin-log:%d", logs[i].Id),
+			SourceLogId: logs[i].Id,
+			UserId:      logs[i].UserId,
+			AdminId:     adminID,
+			Mode:        mode,
+			Quota:       cnyToQuota(amountCNY),
+			AmountCNY:   amountCNY,
+			CreatedAt:   logs[i].CreatedAt,
+		}
+		if err := DB.Clauses(clause.OnConflict{DoNothing: true}).Create(record).Error; err != nil {
+			return nil, err
+		}
+	}
+	summary.TotalCNY = decimal.NewFromFloat(summary.TotalCNY).Round(2).InexactFloat64()
+	return summary, nil
+}
+
 func effectiveInviteCountTx(tx *gorm.DB, inviterID int) (int, error) {
 	var ledgerIDs []int
 	if err := tx.Model(&AffiliateRebateRecord{}).
@@ -516,6 +730,13 @@ func userNetRechargeCNY(userID int) (float64, error) {
 		if strings.EqualFold(refund.Currency, "CNY") {
 			total = total.Sub(decimal.NewFromFloat(refund.RefundAmount))
 		}
+	}
+	adminRecharge, err := adminRechargeCNYByUserIDs([]int{userID})
+	if err != nil {
+		return 0, err
+	}
+	if amount, exists := adminRecharge[userID]; exists {
+		total = total.Add(amount)
 	}
 	if total.IsNegative() {
 		total = decimal.Zero
@@ -702,6 +923,17 @@ func GetAdminUserRewardListSummaries(userIDs []int) (map[int]AdminUserRewardList
 			}
 			rechargeByUser[refund.UserId] = current.Sub(decimal.NewFromFloat(refund.RefundAmount))
 		}
+	}
+	adminRechargeByUser, err := adminRechargeCNYByUserIDs(uniqueIDs)
+	if err != nil {
+		return nil, err
+	}
+	for userID, amount := range adminRechargeByUser {
+		current, exists := rechargeByUser[userID]
+		if !exists {
+			current = decimal.Zero
+		}
+		rechargeByUser[userID] = current.Add(amount)
 	}
 
 	var claims []RechargeBenefitClaim

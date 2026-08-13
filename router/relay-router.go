@@ -15,6 +15,15 @@ func SetRelayRouter(router *gin.Engine) {
 	router.Use(middleware.DecompressRequestMiddleware())
 	router.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	router.Use(middleware.StatsMiddleware())
+	// Older CC Switch imports used the OpenAI endpoint (/v1) as usageBaseUrl,
+	// producing /v1/api/usage/ccswitch/. Keep that exact read-only alias so
+	// existing desktop configurations recover without exposing relay writes.
+	legacyCCSwitchUsageRouter := router.Group("/v1/api/usage/ccswitch")
+	legacyCCSwitchUsageRouter.Use(middleware.RouteTag("api"))
+	legacyCCSwitchUsageRouter.Use(middleware.CriticalRateLimit())
+	legacyCCSwitchUsageRouter.Use(middleware.TokenAuthReadOnly())
+	legacyCCSwitchUsageRouter.GET("/", controller.GetCCSwitchTokenUsage)
+
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))

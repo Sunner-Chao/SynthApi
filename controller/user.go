@@ -972,10 +972,13 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
+			result, err := model.AdjustUserQuotaByAdmin(user.Id, adminId, req.Mode, req.Value, c.GetString(common.RequestIdKey))
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}
+			adminInfo["net_recharge_counted"] = result.RechargeQuota > 0
+			adminInfo["net_recharge_cny"] = result.RechargeCNY
 			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
 				fmt.Sprintf("管理员增加用户额度 %s", logger.LogQuota(req.Value)), adminInfo)
 		case "subtract":
@@ -983,26 +986,22 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.DecreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if _, err := model.AdjustUserQuotaByAdmin(user.Id, adminId, req.Mode, req.Value, c.GetString(common.RequestIdKey)); err != nil {
 				common.ApiError(c, err)
 				return
 			}
 			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
 				fmt.Sprintf("管理员减少用户额度 %s", logger.LogQuota(req.Value)), adminInfo)
 		case "override":
-			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			result, err := model.AdjustUserQuotaByAdmin(user.Id, adminId, req.Mode, req.Value, c.GetString(common.RequestIdKey))
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}
-			if req.Value >= model.LowQuotaNotifyThreshold(user.GetSetting().QuotaWarningThreshold) {
-				if err := model.ClearLowQuotaNotifyState(user.Id, model.LowQuotaNotifyScopeWallet, 0); err != nil {
-					common.ApiError(c, err)
-					return
-				}
-			}
+			adminInfo["net_recharge_counted"] = result.RechargeQuota > 0
+			adminInfo["net_recharge_cny"] = result.RechargeCNY
 			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
-				fmt.Sprintf("管理员覆盖用户额度从 %s 为 %s", logger.LogQuota(oldQuota), logger.LogQuota(req.Value)), adminInfo)
+				fmt.Sprintf("管理员覆盖用户额度从 %s 为 %s", logger.LogQuota(result.OldQuota), logger.LogQuota(result.NewQuota)), adminInfo)
 		default:
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
