@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-const FRONTEND_CACHE_VERSION = 'default-v1'
+const FRONTEND_CACHE_VERSION = 'default-v2-admin-sidebar-reset'
 const FRONTEND_CACHE_VERSION_KEY = 'newapi:default:cache-version'
+const ADMIN_CACHE_MIGRATION_KEY = 'synthapi:admin:cache-migration'
 const PRESERVED_LOCAL_STORAGE_KEYS = new Set([
   FRONTEND_CACHE_VERSION_KEY,
+  ADMIN_CACHE_MIGRATION_KEY,
   'user',
   'uid',
   'aff',
@@ -31,6 +33,8 @@ export function initializeFrontendCache(): void {
   if (typeof window === 'undefined') return
 
   try {
+    migrateAdminPortalCache()
+
     const currentVersion = window.localStorage.getItem(
       FRONTEND_CACHE_VERSION_KEY
     )
@@ -44,6 +48,36 @@ export function initializeFrontendCache(): void {
   } catch {
     // Storage can be unavailable in private mode; the app should still boot.
   }
+}
+
+function migrateAdminPortalCache(): void {
+  if (window.location.hostname.toLowerCase() !== 'admin.synthapi.asia') return
+  if (
+    window.localStorage.getItem(ADMIN_CACHE_MIGRATION_KEY) ===
+    FRONTEND_CACHE_VERSION
+  ) {
+    return
+  }
+
+  // Preserve authentication while removing stale server-status and sidebar
+  // snapshots that can keep long-lived admin browsers on an obsolete menu.
+  window.localStorage.removeItem('status')
+  window.localStorage.removeItem('app:rev')
+  document.cookie =
+    'sidebar_state=; Path=/; Max-Age=0; SameSite=Lax; Secure'
+  document.cookie =
+    'sidebar_state=; Path=/; Domain=.synthapi.asia; Max-Age=0; SameSite=Lax; Secure'
+
+  try {
+    window.sessionStorage.clear()
+  } catch {
+    // Session storage can be disabled independently from local storage.
+  }
+
+  window.localStorage.setItem(
+    ADMIN_CACHE_MIGRATION_KEY,
+    FRONTEND_CACHE_VERSION
+  )
 }
 
 function clearLocalUiCache(): void {
