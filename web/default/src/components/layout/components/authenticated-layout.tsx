@@ -37,7 +37,13 @@ type AuthenticatedLayoutProps = {
 }
 
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
-  const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const isAdminPortal =
+    typeof window !== 'undefined' &&
+    window.location.hostname === 'admin.synthapi.asia'
+  // The administrator portal has a dedicated operations entry at the top of
+  // the sidebar. Do not let a stale per-subdomain collapsed-state cookie hide
+  // that entry on the management host.
+  const defaultOpen = isAdminPortal || getCookie('sidebar_state') !== 'false'
   const pathname = useLocation({ select: (location) => location.pathname })
   const normalizedPathname = pathname.replace(/\/+$/, '')
   const isImmersive =
