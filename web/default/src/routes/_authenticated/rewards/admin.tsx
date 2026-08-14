@@ -3,7 +3,7 @@ import { AdminRewardPage } from '@/features/reward-center/admin-page'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-export const Route = createFileRoute('/_authenticated/rewards/admin/')({
+export const Route = createFileRoute('/_authenticated/rewards/admin')({
   beforeLoad: () => {
     if (
       Number(useAuthStore.getState().auth.user?.role) !== ROLE.SUPER_ADMIN

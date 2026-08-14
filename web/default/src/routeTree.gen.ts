@@ -56,6 +56,9 @@ import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedChannelMonitorIndexRouteImport } from './routes/_authenticated/channel-monitor/index'
 import { Route as AuthenticatedAccountsIndexRouteImport } from './routes/_authenticated/accounts/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
+import { Route as AuthenticatedRewardsReferralRouteImport } from './routes/_authenticated/rewards/referral'
+import { Route as AuthenticatedRewardsRechargeRouteImport } from './routes/_authenticated/rewards/recharge'
+import { Route as AuthenticatedRewardsAdminRouteImport } from './routes/_authenticated/rewards/admin'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
@@ -68,9 +71,6 @@ import { Route as AuthenticatedSystemSettingsModelsIndexRouteImport } from './ro
 import { Route as AuthenticatedSystemSettingsContentIndexRouteImport } from './routes/_authenticated/system-settings/content/index'
 import { Route as AuthenticatedSystemSettingsBillingIndexRouteImport } from './routes/_authenticated/system-settings/billing/index'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
-import { Route as AuthenticatedRewardsReferralIndexRouteImport } from './routes/_authenticated/rewards/referral/index'
-import { Route as AuthenticatedRewardsRechargeIndexRouteImport } from './routes/_authenticated/rewards/recharge/index'
-import { Route as AuthenticatedRewardsAdminIndexRouteImport } from './routes/_authenticated/rewards/admin/index'
 import { Route as AuthenticatedSystemSettingsSiteSectionRouteImport } from './routes/_authenticated/system-settings/site/$section'
 import { Route as AuthenticatedSystemSettingsSecuritySectionRouteImport } from './routes/_authenticated/system-settings/security/$section'
 import { Route as AuthenticatedSystemSettingsOperationsSectionRouteImport } from './routes/_authenticated/system-settings/operations/$section'
@@ -329,6 +329,24 @@ const AuthenticatedUsageLogsSectionRoute =
     path: '/usage-logs/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedRewardsReferralRoute =
+  AuthenticatedRewardsReferralRouteImport.update({
+    id: '/rewards/referral',
+    path: '/rewards/referral',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRewardsRechargeRoute =
+  AuthenticatedRewardsRechargeRouteImport.update({
+    id: '/rewards/recharge',
+    path: '/rewards/recharge',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRewardsAdminRoute =
+  AuthenticatedRewardsAdminRouteImport.update({
+    id: '/rewards/admin',
+    path: '/rewards/admin',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedModelsSectionRoute =
   AuthenticatedModelsSectionRouteImport.update({
     id: '/models/$section',
@@ -398,24 +416,6 @@ const AuthenticatedSystemSettingsAuthIndexRoute =
     id: '/auth/',
     path: '/auth/',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
-  } as any)
-const AuthenticatedRewardsReferralIndexRoute =
-  AuthenticatedRewardsReferralIndexRouteImport.update({
-    id: '/rewards/referral/',
-    path: '/rewards/referral/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedRewardsRechargeIndexRoute =
-  AuthenticatedRewardsRechargeIndexRouteImport.update({
-    id: '/rewards/recharge/',
-    path: '/rewards/recharge/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedRewardsAdminIndexRoute =
-  AuthenticatedRewardsAdminIndexRouteImport.update({
-    id: '/rewards/admin/',
-    path: '/rewards/admin/',
-    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSystemSettingsSiteSectionRoute =
   AuthenticatedSystemSettingsSiteSectionRouteImport.update({
@@ -492,6 +492,9 @@ export interface FileRoutesByFullPath {
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/rewards/admin': typeof AuthenticatedRewardsAdminRoute
+  '/rewards/recharge': typeof AuthenticatedRewardsRechargeRoute
+  '/rewards/referral': typeof AuthenticatedRewardsReferralRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/accounts/': typeof AuthenticatedAccountsIndexRoute
   '/channel-monitor/': typeof AuthenticatedChannelMonitorIndexRoute
@@ -518,9 +521,6 @@ export interface FileRoutesByFullPath {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
-  '/rewards/admin/': typeof AuthenticatedRewardsAdminIndexRoute
-  '/rewards/recharge/': typeof AuthenticatedRewardsRechargeIndexRoute
-  '/rewards/referral/': typeof AuthenticatedRewardsReferralIndexRoute
   '/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -560,6 +560,9 @@ export interface FileRoutesByTo {
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/rewards/admin': typeof AuthenticatedRewardsAdminRoute
+  '/rewards/recharge': typeof AuthenticatedRewardsRechargeRoute
+  '/rewards/referral': typeof AuthenticatedRewardsReferralRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/accounts': typeof AuthenticatedAccountsIndexRoute
   '/channel-monitor': typeof AuthenticatedChannelMonitorIndexRoute
@@ -586,9 +589,6 @@ export interface FileRoutesByTo {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
-  '/rewards/admin': typeof AuthenticatedRewardsAdminIndexRoute
-  '/rewards/recharge': typeof AuthenticatedRewardsRechargeIndexRoute
-  '/rewards/referral': typeof AuthenticatedRewardsReferralIndexRoute
   '/system-settings/auth': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -632,6 +632,9 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/_authenticated/rewards/admin': typeof AuthenticatedRewardsAdminRoute
+  '/_authenticated/rewards/recharge': typeof AuthenticatedRewardsRechargeRoute
+  '/_authenticated/rewards/referral': typeof AuthenticatedRewardsReferralRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/accounts/': typeof AuthenticatedAccountsIndexRoute
   '/_authenticated/channel-monitor/': typeof AuthenticatedChannelMonitorIndexRoute
@@ -658,9 +661,6 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/_authenticated/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/_authenticated/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
-  '/_authenticated/rewards/admin/': typeof AuthenticatedRewardsAdminIndexRoute
-  '/_authenticated/rewards/recharge/': typeof AuthenticatedRewardsRechargeIndexRoute
-  '/_authenticated/rewards/referral/': typeof AuthenticatedRewardsReferralIndexRoute
   '/_authenticated/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/_authenticated/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/_authenticated/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -703,6 +703,9 @@ export interface FileRouteTypes {
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
+    | '/rewards/admin'
+    | '/rewards/recharge'
+    | '/rewards/referral'
     | '/usage-logs/$section'
     | '/accounts/'
     | '/channel-monitor/'
@@ -729,9 +732,6 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
-    | '/rewards/admin/'
-    | '/rewards/recharge/'
-    | '/rewards/referral/'
     | '/system-settings/auth/'
     | '/system-settings/billing/'
     | '/system-settings/content/'
@@ -771,6 +771,9 @@ export interface FileRouteTypes {
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
+    | '/rewards/admin'
+    | '/rewards/recharge'
+    | '/rewards/referral'
     | '/usage-logs/$section'
     | '/accounts'
     | '/channel-monitor'
@@ -797,9 +800,6 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
-    | '/rewards/admin'
-    | '/rewards/recharge'
-    | '/rewards/referral'
     | '/system-settings/auth'
     | '/system-settings/billing'
     | '/system-settings/content'
@@ -842,6 +842,9 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
+    | '/_authenticated/rewards/admin'
+    | '/_authenticated/rewards/recharge'
+    | '/_authenticated/rewards/referral'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/accounts/'
     | '/_authenticated/channel-monitor/'
@@ -868,9 +871,6 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/operations/$section'
     | '/_authenticated/system-settings/security/$section'
     | '/_authenticated/system-settings/site/$section'
-    | '/_authenticated/rewards/admin/'
-    | '/_authenticated/rewards/recharge/'
-    | '/_authenticated/rewards/referral/'
     | '/_authenticated/system-settings/auth/'
     | '/_authenticated/system-settings/billing/'
     | '/_authenticated/system-settings/content/'
@@ -1234,6 +1234,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsageLogsSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/rewards/referral': {
+      id: '/_authenticated/rewards/referral'
+      path: '/rewards/referral'
+      fullPath: '/rewards/referral'
+      preLoaderRoute: typeof AuthenticatedRewardsReferralRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rewards/recharge': {
+      id: '/_authenticated/rewards/recharge'
+      path: '/rewards/recharge'
+      fullPath: '/rewards/recharge'
+      preLoaderRoute: typeof AuthenticatedRewardsRechargeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rewards/admin': {
+      id: '/_authenticated/rewards/admin'
+      path: '/rewards/admin'
+      fullPath: '/rewards/admin'
+      preLoaderRoute: typeof AuthenticatedRewardsAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/models/$section': {
       id: '/_authenticated/models/$section'
       path: '/models/$section'
@@ -1317,27 +1338,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/system-settings/auth/'
       preLoaderRoute: typeof AuthenticatedSystemSettingsAuthIndexRouteImport
       parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
-    }
-    '/_authenticated/rewards/referral/': {
-      id: '/_authenticated/rewards/referral/'
-      path: '/rewards/referral'
-      fullPath: '/rewards/referral/'
-      preLoaderRoute: typeof AuthenticatedRewardsReferralIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/rewards/recharge/': {
-      id: '/_authenticated/rewards/recharge/'
-      path: '/rewards/recharge'
-      fullPath: '/rewards/recharge/'
-      preLoaderRoute: typeof AuthenticatedRewardsRechargeIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/rewards/admin/': {
-      id: '/_authenticated/rewards/admin/'
-      path: '/rewards/admin'
-      fullPath: '/rewards/admin/'
-      preLoaderRoute: typeof AuthenticatedRewardsAdminIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/system-settings/site/$section': {
       id: '/_authenticated/system-settings/site/$section'
@@ -1481,6 +1481,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
+  AuthenticatedRewardsAdminRoute: typeof AuthenticatedRewardsAdminRoute
+  AuthenticatedRewardsRechargeRoute: typeof AuthenticatedRewardsRechargeRoute
+  AuthenticatedRewardsReferralRoute: typeof AuthenticatedRewardsReferralRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAccountsIndexRoute: typeof AuthenticatedAccountsIndexRoute
   AuthenticatedChannelMonitorIndexRoute: typeof AuthenticatedChannelMonitorIndexRoute
@@ -1498,9 +1501,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
-  AuthenticatedRewardsAdminIndexRoute: typeof AuthenticatedRewardsAdminIndexRoute
-  AuthenticatedRewardsRechargeIndexRoute: typeof AuthenticatedRewardsRechargeIndexRoute
-  AuthenticatedRewardsReferralIndexRoute: typeof AuthenticatedRewardsReferralIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1511,6 +1511,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
+  AuthenticatedRewardsAdminRoute: AuthenticatedRewardsAdminRoute,
+  AuthenticatedRewardsRechargeRoute: AuthenticatedRewardsRechargeRoute,
+  AuthenticatedRewardsReferralRoute: AuthenticatedRewardsReferralRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAccountsIndexRoute: AuthenticatedAccountsIndexRoute,
   AuthenticatedChannelMonitorIndexRoute: AuthenticatedChannelMonitorIndexRoute,
@@ -1530,11 +1533,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
-  AuthenticatedRewardsAdminIndexRoute: AuthenticatedRewardsAdminIndexRoute,
-  AuthenticatedRewardsRechargeIndexRoute:
-    AuthenticatedRewardsRechargeIndexRoute,
-  AuthenticatedRewardsReferralIndexRoute:
-    AuthenticatedRewardsReferralIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
