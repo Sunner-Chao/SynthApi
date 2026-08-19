@@ -169,6 +169,35 @@ func TestOpenAIGatewayService_OpenAIHTTPStripsInputNamespacesBeforeFirstForward(
 	}
 }
 
+func TestOpenAIGatewayService_StripsStudioBotInputStatusesBeforeFirstForward(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"inspect project"}]},{"type":"function_call","call_id":"call_search","name":"search_files","arguments":"{}","status":"completed"},{"type":"function_call_output","call_id":"call_search","output":"found","status":"completed"}]}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_studiobot_ok\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"input_tokens_details\":{\"cached_tokens\":0}}}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		},
+	}}
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(),
+		newOpenAIRejectedFieldTestContext(body),
+		newOpenAIRejectedFieldTestAccount(),
+		body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1, "StudioBot compatibility must not require a rejected-request retry")
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "input.1.status").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "input.2.status").Exists())
+	require.True(t, gjson.GetBytes(upstream.bodies[0], "stream").Bool())
+	require.Equal(t, "call_search", gjson.GetBytes(upstream.bodies[0], "input.2.call_id").String())
+}
+
 func TestOpenAIGatewayService_RetriesExplicitMaxOutputTokensRejection(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","stream":false,"max_output_tokens":4096,"input":[{"type":"message","role":"user","content":{"max_output_tokens":"keep"}}]}`)
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
