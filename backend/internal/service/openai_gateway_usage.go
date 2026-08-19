@@ -588,46 +588,6 @@ func cmccSeedancePriceCNYPerMillion(inputHasVideo bool, resolution string) float
 	return 92
 }
 
-func calculateCMCCSeedanceUsageCost(result *OpenAIForwardResult, multiplier float64) (*CostBreakdown, error) {
-	if result == nil || result.CMCCSeedanceBilling == nil {
-		return nil, errors.New("cmcc seedance billing metadata is missing")
-	}
-	completionTokens := result.Usage.OutputTokens
-	if completionTokens <= 0 {
-		return nil, errors.New("cmcc seedance completion tokens are missing")
-	}
-	metadata := result.CMCCSeedanceBilling
-	cnyPerUSD := metadata.CNYPerUSD
-	if cnyPerUSD <= 0 {
-		return nil, errors.New("cmcc seedance CNY per USD exchange rate is invalid")
-	}
-	resolution := normalizeCMCCSeedanceStatusResolution(metadata.VideoResolution)
-	if resolution == "" {
-		return nil, fmt.Errorf("cmcc seedance billing resolution %q is invalid", metadata.VideoResolution)
-	}
-	priceCNYPerMillion := cmccSeedancePriceCNYPerMillion(metadata.InputHasVideo, resolution)
-	rawUSD := float64(completionTokens) * priceCNYPerMillion / 1_000_000 / cnyPerUSD
-	return &CostBreakdown{
-		OutputCost:  rawUSD,
-		TotalCost:   rawUSD,
-		ActualCost:  rawUSD * multiplier,
-		BillingMode: string(BillingModeToken),
-	}, nil
-}
-
-func cmccSeedancePriceCNYPerMillion(inputHasVideo bool, resolution string) float64 {
-	if normalizeCMCCSeedanceStatusResolution(resolution) == VideoBillingResolution1080P {
-		if inputHasVideo {
-			return 62
-		}
-		return 102
-	}
-	if inputHasVideo {
-		return 56
-	}
-	return 92
-}
-
 func isGrokVideoBillingModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
 	return strings.HasPrefix(model, "grok-imagine-video") ||
