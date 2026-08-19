@@ -22,7 +22,26 @@ func SetRelayRouter(router *gin.Engine) {
 	legacyCCSwitchUsageRouter.Use(middleware.RouteTag("api"))
 	legacyCCSwitchUsageRouter.Use(middleware.CriticalRateLimit())
 	legacyCCSwitchUsageRouter.Use(middleware.TokenAuthReadOnly())
+	legacyCCSwitchUsageRouter.GET("", controller.GetCCSwitchTokenUsage)
 	legacyCCSwitchUsageRouter.GET("/", controller.GetCCSwitchTokenUsage)
+
+	// Existing CC Switch providers may still use its built-in general balance
+	// template instead of the SynthAPI import script. Keep those providers
+	// working without requiring users to recreate every Claude configuration.
+	legacyCCSwitchBalanceRouter := router.Group("")
+	legacyCCSwitchBalanceRouter.Use(middleware.RouteTag("api"))
+	legacyCCSwitchBalanceRouter.Use(middleware.CriticalRateLimit())
+	legacyCCSwitchBalanceRouter.Use(middleware.TokenAuthReadOnly())
+	legacyCCSwitchBalanceRouter.GET("/user/balance", controller.GetCCSwitchTokenUsage)
+	legacyCCSwitchBalanceRouter.GET("/v1/user/balance", controller.GetCCSwitchTokenUsage)
+	legacyCCSwitchBalanceRouter.GET("/v1/usage", controller.GetCCSwitchTokenUsage)
+
+	ccSwitchBillingRouter := router.Group("/v1/sub2api/billing")
+	ccSwitchBillingRouter.Use(middleware.RouteTag("api"))
+	ccSwitchBillingRouter.Use(middleware.CriticalRateLimit())
+	ccSwitchBillingRouter.Use(middleware.TokenAuthReadOnly())
+	ccSwitchBillingRouter.GET("", controller.GetCCSwitchBillingInfo)
+	ccSwitchBillingRouter.GET("/", controller.GetCCSwitchBillingInfo)
 
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")

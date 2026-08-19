@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -315,6 +316,13 @@ func ccswitchUsageUnit() string {
 	}
 }
 
+func quotaToCCSwitchLegacyUSD(quota int) float64 {
+	if common.QuotaPerUnit <= 0 {
+		return 0
+	}
+	return float64(quota) / common.QuotaPerUnit
+}
+
 func GetCCSwitchTokenUsage(c *gin.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")
@@ -361,8 +369,12 @@ func GetCCSwitchTokenUsage(c *gin.Context) {
 	}
 
 	response := gin.H{
-		"isValid":      true,
-		"planName":     token.Name,
+		"isValid":   true,
+		"is_active": true,
+		"planName":  token.Name,
+		// CC Switch's built-in general template reads `balance` and labels it
+		// as USD. New SynthAPI imports use the richer display-currency fields.
+		"balance":      quotaToCCSwitchLegacyUSD(availableQuota),
 		"remaining":    quotaToDisplayAmount(availableQuota),
 		"used":         quotaToDisplayAmount(usedQuota),
 		"total":        quotaToDisplayAmount(totalQuota),
@@ -376,6 +388,70 @@ func GetCCSwitchTokenUsage(c *gin.Context) {
 		response["extra"] = "Unlimited API key; showing wallet balance"
 	}
 	c.JSON(http.StatusOK, response)
+}
+
+// GetCCSwitchBillingInfo exposes only the effective billing multiplier needed
+// by CC Switch's read-only Sub2API compatibility probe.
+func GetCCSwitchBillingInfo(c *gin.Context) {
+	tokenId := c.GetInt("token_id")
+	userId := c.GetInt("id")
+	token, err := model.GetTokenByIds(tokenId, userId)
+	if err != nil {
+		common.SysError("failed to get token for ccswitch billing info: " + err.Error())
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "authentication_error",
+				"message": "Invalid API key",
+			},
+		})
+		return
+	}
+
+	userGroup, err := model.GetUserGroup(userId, false)
+	if err != nil {
+		common.SysError("failed to get user group for ccswitch billing info: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "api_error",
+				"message": "Billing information is unavailable",
+			},
+		})
+		return
+	}
+
+	billingGroup := strings.TrimSpace(token.Group)
+	if billingGroup == "" {
+		billingGroup = userGroup
+	}
+	if billingGroup == "auto" {
+		autoGroups, parseErr := token.GetAutoGroups()
+		if parseErr != nil {
+			common.SysError("failed to parse token auto groups for ccswitch billing info: " + parseErr.Error())
+		}
+		if len(autoGroups) == 0 {
+			autoGroups = service.GetUserAutoGroup(userGroup)
+		}
+		if len(autoGroups) > 0 {
+			billingGroup = autoGroups[0]
+		} else {
+			billingGroup = userGroup
+		}
+	}
+
+	effectiveRate := service.GetUserGroupRatio(userGroup, billingGroup)
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{
+		"object":                    "sub2api.key_billing",
+		"schema_version":            1,
+		"billing_scope":             "token",
+		"group_rate_multiplier":     effectiveRate,
+		"resolved_rate_multiplier":  effectiveRate,
+		"peak_rate_enabled":         false,
+		"effective_rate_multiplier": effectiveRate,
+		"observed_at":               time.Now().UTC().Format(time.RFC3339Nano),
+	})
 }
 
 func AddToken(c *gin.Context) {

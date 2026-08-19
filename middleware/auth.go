@@ -234,6 +234,9 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		key := c.Request.Header.Get("Authorization")
 		if key == "" {
+			key = c.Request.Header.Get("x-api-key")
+		}
+		if key == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": common.TranslateMessage(c, i18n.MsgTokenNotProvided),
@@ -241,14 +244,19 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
-		if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
-			key = strings.TrimSpace(key[7:])
-		}
-		key = strings.TrimPrefix(key, "sk-")
-		parts := strings.Split(key, "-")
-		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		var token *model.Token
+		var err error
+		candidates := readOnlyTokenKeyCandidates(key)
+		for _, candidate := range candidates {
+			token, err = model.GetTokenByKey(candidate, false)
+			if err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
+				break
+			}
+		}
+		if len(candidates) == 0 {
+			err = gorm.ErrRecordNotFound
+		}
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusUnauthorized, gin.H{
@@ -290,6 +298,36 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		c.Set("token_key", token.Key)
 		c.Next()
 	}
+}
+
+// readOnlyTokenKeyCandidates normalizes the key formats emitted by CC Switch.
+// The complete key is always checked before progressively removing optional
+// routing suffixes, so a legitimate token containing '-' is not truncated.
+func readOnlyTokenKeyCandidates(raw string) []string {
+	key := strings.TrimSpace(raw)
+	if len(key) >= 7 && strings.EqualFold(key[:7], "Bearer ") {
+		key = strings.TrimSpace(key[7:])
+	}
+	for len(key) >= 3 && strings.EqualFold(key[:3], "sk-") {
+		key = strings.TrimSpace(key[3:])
+	}
+	if key == "" {
+		return nil
+	}
+
+	candidates := []string{key}
+	for len(candidates) < 8 {
+		separator := strings.LastIndexByte(key, '-')
+		if separator <= 0 {
+			break
+		}
+		key = strings.TrimSpace(key[:separator])
+		if key == "" {
+			break
+		}
+		candidates = append(candidates, key)
+	}
+	return candidates
 }
 
 func TokenAuth() func(c *gin.Context) {

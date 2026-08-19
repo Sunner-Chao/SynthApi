@@ -615,6 +615,27 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+// applyNonAdminLogScope keeps administrative traffic visible in the log table,
+// but excludes it from aggregate usage statistics. Admin requests are control
+// plane activity and must not inflate the user-facing total cost or throughput
+// figures shown on the usage-logs page.
+func applyNonAdminLogScope(tx *gorm.DB) (*gorm.DB, error) {
+	if DB == nil {
+		return tx, nil
+	}
+
+	var adminUserIDs []int
+	if err := DB.Model(&User{}).
+		Where("role >= ?", common.RoleAdminUser).
+		Pluck("id", &adminUserIDs).Error; err != nil {
+		return nil, err
+	}
+	if len(adminUserIDs) > 0 {
+		tx = tx.Where("user_id NOT IN ?", adminUserIDs)
+	}
+	return tx, nil
+}
+
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
@@ -650,6 +671,12 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
 		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+	if tx, err = applyNonAdminLogScope(tx); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyNonAdminLogScope(rpmTpmQuery); err != nil {
+		return stat, err
 	}
 
 	tx = tx.Where("type = ?", LogTypeConsume)

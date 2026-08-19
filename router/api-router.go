@@ -343,6 +343,7 @@ func SetApiRouter(router *gin.Engine) {
 			ccswitchUsageRoute := usageRoute.Group("/ccswitch")
 			ccswitchUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{
+				ccswitchUsageRoute.GET("", controller.GetCCSwitchTokenUsage)
 				ccswitchUsageRoute.GET("/", controller.GetCCSwitchTokenUsage)
 			}
 		}
