@@ -201,6 +201,23 @@ func TestSchedule_RepairedAPIKeyCanBeScheduled(t *testing.T) {
 	stoppedWithin(t, r, 3*time.Second)
 }
 
+func TestSchedule_ConnectivityOnlyAllowsDecryptFailedKey(t *testing.T) {
+	svc := &stubMonitorSvc{runCalled: make(chan int64, 1)}
+	r := newRunnerForTest(svc)
+	r.Start()
+
+	r.Schedule(&ChannelMonitor{
+		ID:                  111,
+		Enabled:             true,
+		IntervalSeconds:     60,
+		ProbeMode:           MonitorProbeModeConnectivityOnly,
+		APIKeyDecryptFailed: true,
+	})
+	waitFor(t, time.Second, "connectivity-only task registered", func() bool { return runnerTaskCount(r) == 1 })
+
+	stoppedWithin(t, r, 3*time.Second)
+}
+
 func TestRunOne_DecryptFailureUnschedulesTask(t *testing.T) {
 	svc := &stubMonitorSvc{
 		runCalled: make(chan int64, 1),

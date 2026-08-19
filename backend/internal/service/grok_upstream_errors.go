@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // isGrokContentPolicyRejection identifies request-scoped safety refusals from
@@ -14,7 +16,7 @@ import (
 // Keep this matcher deliberately narrow: account entitlement and suspension
 // messages may mention policy but must retain the normal account failover path.
 func isGrokContentPolicyRejection(statusCode int, responseBody []byte) bool {
-	if statusCode != http.StatusForbidden || len(responseBody) == 0 {
+	if (statusCode != http.StatusBadRequest && statusCode != http.StatusForbidden) || len(responseBody) == 0 {
 		return false
 	}
 	if grokAccountAccessMessage(string(responseBody)) {
@@ -40,7 +42,7 @@ func grokStructuredAccountAccessMarker(value any) bool {
 		for key, child := range node {
 			normalizedKey := normalizeGrokErrorMarker(key)
 			switch normalizedKey {
-			case "code", "error_code", "type", "category", "reason":
+			case "code", "error_code", "errorcode", "type", "category", "reason":
 				if marker, ok := child.(string); ok && isGrokAccountAccessCode(marker) {
 					return true
 				}
@@ -65,7 +67,7 @@ func grokStructuredContentPolicyMarker(value any) bool {
 		for key, child := range node {
 			normalizedKey := normalizeGrokErrorMarker(key)
 			switch normalizedKey {
-			case "code", "error_code", "type", "category", "reason":
+			case "code", "error_code", "errorcode", "type", "category", "reason":
 				if marker, ok := child.(string); ok && isGrokContentPolicyCode(marker) {
 					return true
 				}
@@ -92,7 +94,11 @@ func normalizeGrokErrorMarker(value string) string {
 }
 
 func isGrokContentPolicyCode(value string) bool {
-	switch normalizeGrokErrorMarker(value) {
+	normalized := normalizeGrokErrorMarker(value)
+	if strings.HasPrefix(normalized, "inputimagesensitivecontentdetected.") {
+		return true
+	}
+	switch normalized {
 	case "content_filter",
 		"content_policy",
 		"content_policy_violation",
@@ -181,11 +187,30 @@ func grokContentPolicyMessage(value string) bool {
 }
 
 func grokContentPolicyClientMessage(responseBody []byte) string {
+	if message := cmccSeedanceClientErrorMessage(responseBody); message != "" {
+		return message
+	}
 	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
 	if message == "" {
-		return "Request blocked by upstream content policy"
+		return "请求内容未通过上游安全审核，请修改提示词或输入素材后重试"
 	}
 	return message
+}
+
+func cmccSeedanceClientErrorMessage(responseBody []byte) string {
+	code := strings.TrimSpace(gjson.GetBytes(responseBody, "ErrorCode").String())
+	if code == "" {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(code, "InputImageSensitiveContentDetected.PrivacyInformation"):
+		return "输入图片可能包含真人或隐私信息，未通过上游安全审核；请更换不含清晰真人面部或隐私信息的图片后重试"
+	case strings.HasPrefix(code, "InputImageSensitiveContentDetected"):
+		return "输入图片包含敏感内容，未通过上游安全审核；请更换图片后重试"
+	case strings.HasPrefix(code, "InputTextSensitiveContentDetected"):
+		return "提示词包含敏感内容，未通过上游安全审核；请修改提示词后重试"
+	}
+	return ""
 }
 
 // shouldFailoverGrokUpstreamError is the body-aware counterpart of the

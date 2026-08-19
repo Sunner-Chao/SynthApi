@@ -133,6 +133,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		Name:             strings.TrimSpace(p.Name),
 		Provider:         p.Provider,
 		APIMode:          defaultAPIMode(p.APIMode),
+		ProbeMode:        defaultProbeMode(p.ProbeMode),
 		Endpoint:         normalizeEndpoint(p.Endpoint),
 		APIKey:           encrypted, // 注意：传入 repository 时该字段为密文
 		PrimaryModel:     normalizeMonitorPrimaryModel(p.Provider, p.PrimaryModel),
@@ -198,6 +199,7 @@ func (s *ChannelMonitorService) Duplicate(
 		Name:                 duplicateChannelMonitorName(source.Name),
 		Provider:             source.Provider,
 		APIMode:              source.APIMode,
+		ProbeMode:            defaultProbeMode(source.ProbeMode),
 		Endpoint:             source.Endpoint,
 		APIKey:               encryptedAPIKey,
 		PrimaryModel:         source.PrimaryModel,
@@ -265,7 +267,7 @@ func (s *ChannelMonitorService) decryptAPIKeyForDuplicate(source *ChannelMonitor
 		return "", ErrChannelMonitorAPIKeyDecryptFailed
 	}
 	plain, err := s.encryptor.Decrypt(source.APIKey)
-	if err != nil || strings.TrimSpace(plain) == "" {
+	if err != nil || (strings.TrimSpace(plain) == "" && defaultProbeMode(source.ProbeMode) == MonitorProbeModeModelRequest) {
 		slog.Warn("channel_monitor: decrypt api key for duplicate failed",
 			"monitor_id", source.ID, "error", err)
 		return "", ErrChannelMonitorAPIKeyDecryptFailed
@@ -325,6 +327,9 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 	if err := validateAPIMode(p.Provider, p.APIMode); err != nil {
 		return err
 	}
+	if err := validateProbeMode(p.ProbeMode); err != nil {
+		return err
+	}
 	if err := validateInterval(p.IntervalSeconds); err != nil {
 		return err
 	}
@@ -334,7 +339,7 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 	if err := validateEndpoint(p.Endpoint); err != nil {
 		return err
 	}
-	if strings.TrimSpace(p.APIKey) == "" {
+	if defaultProbeMode(p.ProbeMode) == MonitorProbeModeModelRequest && strings.TrimSpace(p.APIKey) == "" {
 		return ErrChannelMonitorMissingAPIKey
 	}
 	if normalizeMonitorPrimaryModel(p.Provider, p.PrimaryModel) == "" {
@@ -357,6 +362,9 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateProbeModeAPIKeyTransition(existing, p.ProbeMode, apiKeyUpdated); err != nil {
+		return nil, err
+	}
 
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return nil, fmt.Errorf("update channel monitor: %w", err)
@@ -374,6 +382,22 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 		s.scheduler.Schedule(existing)
 	}
 	return existing, nil
+}
+
+// validateProbeModeAPIKeyTransition prevents a credential-free connectivity
+// monitor from being switched to model requests without a usable stored key.
+func (s *ChannelMonitorService) validateProbeModeAPIKeyTransition(existing *ChannelMonitor, requestedMode *string, apiKeyUpdated bool) error {
+	if requestedMode == nil || defaultProbeMode(*requestedMode) != MonitorProbeModeModelRequest || apiKeyUpdated {
+		return nil
+	}
+	plain, err := s.encryptor.Decrypt(existing.APIKey)
+	if err != nil {
+		return ErrChannelMonitorAPIKeyDecryptFailed
+	}
+	if strings.TrimSpace(plain) == "" {
+		return ErrChannelMonitorMissingAPIKey
+	}
+	return nil
 }
 
 // applyAPIKeyUpdate 处理 Update 中的 APIKey 字段：
@@ -432,7 +456,7 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 	if err != nil {
 		return nil, err
 	}
-	if m.APIKeyDecryptFailed {
+	if m.APIKeyDecryptFailed && defaultProbeMode(m.ProbeMode) == MonitorProbeModeModelRequest {
 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
 	}
 	results := s.runChecksConcurrent(ctx, m)
@@ -469,6 +493,9 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 // errgroup 仅用于等待，不传播错误（每个 model 失败都已打包进 CheckResult）。
 func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *ChannelMonitor) []*CheckResult {
 	models := append([]string{m.PrimaryModel}, m.ExtraModels...)
+	if defaultProbeMode(m.ProbeMode) == MonitorProbeModeConnectivityOnly {
+		return runConnectivityChecks(ctx, m.Endpoint, models)
+	}
 	results := make([]*CheckResult, len(models))
 
 	// ping 共享一次，所有模型记录同一个 ping 延迟。
@@ -658,6 +685,12 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 		}
 		providerChanged = existing.Provider != *p.Provider
 		existing.Provider = *p.Provider
+	}
+	if p.ProbeMode != nil {
+		if err := validateProbeMode(*p.ProbeMode); err != nil {
+			return err
+		}
+		existing.ProbeMode = defaultProbeMode(*p.ProbeMode)
 	}
 	if p.Endpoint != nil {
 		if err := validateEndpoint(*p.Endpoint); err != nil {

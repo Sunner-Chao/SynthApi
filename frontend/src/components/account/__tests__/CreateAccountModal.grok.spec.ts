@@ -14,7 +14,18 @@ describe('CreateAccountModal Grok account types', () => {
     expect(source).toContain("newPlatform === 'grok'")
     expect(source).toContain("? 'https://api.x.ai/v1'")
     expect(source).toContain("form.platform === 'grok'")
-    expect(source).toContain("? 'xai-...'")
+    expect(source).toContain("'xai-...'")
+  })
+
+  it('supports the China Mobile Seedance media protocol for API-key accounts', () => {
+    expect(source).toContain('data-testid="grok-media-api-format"')
+    expect(source).toContain('<option value="cmcc_seedance">')
+    expect(source).toContain("credentials.media_api_format = 'cmcc_seedance'")
+    expect(source).toContain("{ from: 'seedance-2.0', to: 'doubao-seedance-2.0' }")
+    expect(source).toContain('https://zhenze-huhehaote.cmecloud.cn/api/v3')
+    expect(source).toContain('data-testid="cmcc-cny-per-usd"')
+    expect(source).toContain('const cmccCnyPerUsd = ref(7.2)')
+    expect(source).toContain('credentials.cmcc_cny_per_usd = cmccCnyPerUsd.value')
   })
 
   it('exposes custom upstream URL and header override for the OAuth create flow', () => {

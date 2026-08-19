@@ -1100,25 +1100,41 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+        <div v-if="form.platform === 'grok'">
+          <label class="input-label">{{ t('admin.accounts.grokMediaApiFormat.label') }}</label>
+          <select
+            v-model="grokMediaApiFormat"
+            class="input"
+            data-testid="grok-media-api-format"
+            @change="handleGrokMediaApiFormatChange"
+          >
+            <option value="xai">{{ t('admin.accounts.grokMediaApiFormat.xai') }}</option>
+            <option value="cmcc_seedance">{{ t('admin.accounts.grokMediaApiFormat.cmccSeedance') }}</option>
+          </select>
+          <p class="input-hint">{{ t(`admin.accounts.grokMediaApiFormat.${grokMediaApiFormat}Hint`) }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
+            data-testid="grok-api-key-base-url"
             :placeholder="
               form.platform === 'openai'
                 ? 'https://api.openai.com'
                 : form.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
                   : form.platform === 'grok'
-                    ? 'https://api.x.ai/v1'
+                    ? grokMediaApiFormat === 'cmcc_seedance'
+                      ? 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+                      : 'https://api.x.ai/v1'
                     : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
           <GrokBaseUrlPresets
-            v-if="form.platform === 'grok'"
+            v-if="form.platform === 'grok' && grokMediaApiFormat === 'xai'"
             class="mt-2"
             @select="apiKeyBaseUrl = $event"
           />
@@ -1136,11 +1152,26 @@
                 : form.platform === 'gemini'
                   ? 'AIza...'
                   : form.platform === 'grok'
-                    ? 'xai-...'
+                    ? grokMediaApiFormat === 'cmcc_seedance'
+                      ? t('admin.accounts.grokMediaApiFormat.apiKeyPlaceholder')
+                      : 'xai-...'
                     : 'sk-ant-...'
             "
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
+        </div>
+        <div v-if="form.platform === 'grok' && grokMediaApiFormat === 'cmcc_seedance'">
+          <label class="input-label">{{ t('admin.accounts.grokMediaApiFormat.cnyPerUsd') }}</label>
+          <input
+            v-model.number="cmccCnyPerUsd"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            class="input"
+            data-testid="cmcc-cny-per-usd"
+          />
+          <p class="input-hint">{{ t('admin.accounts.grokMediaApiFormat.cnyPerUsdHint') }}</p>
         </div>
 
         <div
@@ -3686,6 +3717,9 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+type GrokMediaApiFormat = 'xai' | 'cmcc_seedance'
+const grokMediaApiFormat = ref<GrokMediaApiFormat>('xai')
+const cmccCnyPerUsd = ref(7.2)
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 const syncPreviewCredentials = computed(() => {
@@ -3711,6 +3745,41 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+
+const handleGrokMediaApiFormatChange = () => {
+  if (grokMediaApiFormat.value === 'cmcc_seedance') {
+    try {
+      const hostname = new URL(apiKeyBaseUrl.value).hostname.toLowerCase()
+      if (hostname === 'api.x.ai' || hostname.endsWith('.api.x.ai') || hostname === 'cli-chat-proxy.grok.com') {
+        apiKeyBaseUrl.value = ''
+      }
+    } catch {
+      apiKeyBaseUrl.value = 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+    }
+    if (!apiKeyBaseUrl.value.trim()) {
+      apiKeyBaseUrl.value = 'https://zhenze-huhehaote.cmecloud.cn/api/v3'
+    }
+    modelRestrictionMode.value = 'mapping'
+    if (!modelMappings.value.some((mapping) => mapping.from.trim() === 'seedance-2.0')) {
+      modelMappings.value.push({ from: 'seedance-2.0', to: 'doubao-seedance-2.0' })
+    }
+    return
+  }
+  try {
+    const hostname = new URL(apiKeyBaseUrl.value).hostname.toLowerCase()
+    if (hostname === 'zhenze-huhehaote.cmecloud.cn') {
+      apiKeyBaseUrl.value = 'https://api.x.ai/v1'
+    }
+  } catch {
+    apiKeyBaseUrl.value = 'https://api.x.ai/v1'
+  }
+  modelMappings.value = modelMappings.value.filter(
+    (mapping) =>
+      mapping.from.trim() !== 'seedance-2.0' ||
+      mapping.to.trim() !== 'doubao-seedance-2.0'
+  )
+}
+
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4172,6 +4241,7 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
+    grokMediaApiFormat.value = 'xai'
     // Reset base URL based on platform
     apiKeyBaseUrl.value =
       (newPlatform === 'openai')
@@ -4623,6 +4693,8 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  grokMediaApiFormat.value = 'xai'
+  cmccCnyPerUsd.value = 7.2
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5048,6 +5120,22 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (
+    form.platform === 'grok' &&
+    grokMediaApiFormat.value === 'cmcc_seedance' &&
+    !apiKeyBaseUrl.value.trim()
+  ) {
+    appStore.showError(t('admin.accounts.grokMediaApiFormat.baseUrlRequired'))
+    return
+  }
+  if (
+    form.platform === 'grok' &&
+    grokMediaApiFormat.value === 'cmcc_seedance' &&
+    (!Number.isFinite(cmccCnyPerUsd.value) || cmccCnyPerUsd.value <= 0)
+  ) {
+    appStore.showError(t('admin.accounts.grokMediaApiFormat.cnyPerUsdRequired'))
+    return
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
@@ -5066,6 +5154,10 @@ const handleSubmit = async () => {
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
+  }
+  if (form.platform === 'grok' && grokMediaApiFormat.value === 'cmcc_seedance') {
+    credentials.media_api_format = 'cmcc_seedance'
+    credentials.cmcc_cny_per_usd = cmccCnyPerUsd.value
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）

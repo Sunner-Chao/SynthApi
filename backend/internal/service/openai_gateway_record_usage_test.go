@@ -2079,6 +2079,60 @@ func TestGrokVideoBillingUsesSeparateVideoRateMultiplier(t *testing.T) {
 	require.Equal(t, 1, *usageRepo.lastLog.VideoDurationSeconds)
 }
 
+func TestCMCCSeedanceBillingUsesOfficialTokenCostAndStableTaskID(t *testing.T) {
+	groupID := int64(127)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil,
+	)
+	result := &OpenAIForwardResult{
+		RequestID:       "status-http-request-1",
+		ResponseID:      "task-123",
+		Model:           "seedance-2.0",
+		BillingModel:    "seedance-2.0",
+		ImageCount:      1,
+		VideoCount:      1,
+		VideoResolution: VideoBillingResolution1080P,
+		Usage:           OpenAIUsage{OutputTokens: 1_000_000},
+		CMCCSeedanceBilling: &CMCCSeedanceBillingMetadata{
+			AccountID:       30127,
+			InputHasVideo:   true,
+			RequestedModel:  "seedance-2.0",
+			VideoResolution: VideoBillingResolution1080P,
+			CNYPerUSD:       7.2,
+		},
+	}
+	input := &OpenAIRecordUsageInput{
+		Result:           result,
+		BillingRequestID: "cmcc-seedance:task-123",
+		APIKey: &APIKey{
+			ID:      10127,
+			GroupID: i64p(groupID),
+			Group:   &Group{ID: groupID, Platform: PlatformGrok, RateMultiplier: 1.25},
+		},
+		User:    &User{ID: 20127},
+		Account: &Account{ID: 30127, Platform: PlatformGrok, Type: AccountTypeAPIKey},
+	}
+	require.NoError(t, svc.RecordUsage(context.Background(), input))
+
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, "cmcc-seedance:task-123", billingRepo.lastCmd.RequestID)
+	require.Equal(t, 1_000_000, billingRepo.lastCmd.OutputTokens)
+	require.InDelta(t, 62.0/7.2*1.25, billingRepo.lastCmd.BalanceCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "cmcc-seedance:task-123", usageRepo.lastLog.RequestID)
+	require.InDelta(t, 62.0/7.2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 62.0/7.2*1.25, usageRepo.lastLog.ActualCost, 1e-12)
+	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+
+	billingRepo.result = &UsageBillingApplyResult{Applied: false}
+	result.RequestID = "status-http-request-2"
+	require.NoError(t, svc.RecordUsage(context.Background(), input))
+	require.Equal(t, 2, billingRepo.calls)
+	require.Equal(t, "cmcc-seedance:task-123", billingRepo.lastCmd.RequestID)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_GrokVideoUsesDefaultRateCard(t *testing.T) {
 	groupID := int64(1261)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}

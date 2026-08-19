@@ -19,7 +19,13 @@
           <template #cell-name="{ row, value }">
             <div class="flex items-center gap-1.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
-              <HelpTooltip v-if="row.api_key_decrypt_failed" :content="t('admin.channelMonitor.apiKeyDecryptFailed')">
+              <span
+                v-if="row.probe_mode === 'connectivity_only'"
+                class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:text-emerald-300"
+              >
+                {{ t('admin.channelMonitor.connectivityOnlyBadge') }}
+              </span>
+              <HelpTooltip v-if="row.api_key_decrypt_failed && row.probe_mode !== 'connectivity_only'" :content="t('admin.channelMonitor.apiKeyDecryptFailed')">
                 <Icon name="exclamationTriangle" size="sm" class="text-red-500" />
               </HelpTooltip>
             </div>

@@ -182,13 +182,32 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	appendJSONImageURLs(gjson.GetBytes(body, "images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
 	info.MaskImageURL = grokMediaJSONImageURL(gjson.GetBytes(body, "mask"))
-}
 
-func grokMediaJSONImageURL(value gjson.Result) string {
-	if imageURL := strings.TrimSpace(value.Get("url").String()); imageURL != "" {
-		return imageURL
+	content := gjson.GetBytes(body, "content")
+	if !content.IsArray() {
+		return
 	}
-	return strings.TrimSpace(value.Get("image_url").String())
+	textParts := make([]string, 0, 2)
+	for _, part := range content.Array() {
+		switch strings.ToLower(strings.TrimSpace(part.Get("type").String())) {
+		case "text":
+			if text := strings.TrimSpace(part.Get("text").String()); text != "" {
+				textParts = append(textParts, text)
+			}
+		case "image_url":
+			if imageURL := strings.TrimSpace(part.Get("image_url.url").String()); imageURL != "" {
+				info.InputImageURLs = append(info.InputImageURLs, imageURL)
+			} else if imageURL := strings.TrimSpace(part.Get("image_url").String()); imageURL != "" {
+				info.InputImageURLs = append(info.InputImageURLs, imageURL)
+			}
+		}
+	}
+	if len(textParts) > 0 {
+		if info.Prompt != "" {
+			textParts = append([]string{info.Prompt}, textParts...)
+		}
+		info.Prompt = strings.Join(textParts, "\n")
+	}
 }
 
 func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokMediaRequestInfo) {
@@ -292,11 +311,56 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	if cacheKey == "" || accountID <= 0 {
 		return fmt.Errorf("grok video request binding is invalid")
 	}
+	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, s.grokMediaVideoRequestTTL())
+}
+
+func (s *OpenAIGatewayService) grokMediaVideoRequestTTL() time.Duration {
 	ttl := openaiStickySessionTTL
-	if s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
 		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
 	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, ttl)
+	return ttl
+}
+
+func (s *OpenAIGatewayService) BindCMCCSeedanceTaskMetadata(
+	ctx context.Context,
+	groupID *int64,
+	requestID string,
+	userID, apiKeyID int64,
+	metadata *CMCCSeedanceBillingMetadata,
+) error {
+	if s == nil || s.cache == nil {
+		return fmt.Errorf("cmcc seedance task metadata cache is unavailable")
+	}
+	store, ok := s.cache.(CMCCSeedanceTaskMetadataStore)
+	if !ok {
+		return fmt.Errorf("cmcc seedance task metadata store is unavailable")
+	}
+	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
+	if cacheKey == "" || metadata == nil || metadata.AccountID <= 0 {
+		return fmt.Errorf("cmcc seedance task metadata is invalid")
+	}
+	return store.SaveCMCCSeedanceTaskMetadata(ctx, derefGroupID(groupID), cacheKey, metadata, s.grokMediaVideoRequestTTL())
+}
+
+func (s *OpenAIGatewayService) ResolveCMCCSeedanceTaskMetadata(
+	ctx context.Context,
+	groupID *int64,
+	requestID string,
+	userID, apiKeyID int64,
+) (*CMCCSeedanceBillingMetadata, error) {
+	if s == nil || s.cache == nil {
+		return nil, fmt.Errorf("cmcc seedance task metadata cache is unavailable")
+	}
+	store, ok := s.cache.(CMCCSeedanceTaskMetadataStore)
+	if !ok {
+		return nil, fmt.Errorf("cmcc seedance task metadata store is unavailable")
+	}
+	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
+	if cacheKey == "" {
+		return nil, fmt.Errorf("cmcc seedance task metadata key is invalid")
+	}
+	return store.GetCMCCSeedanceTaskMetadata(ctx, derefGroupID(groupID), cacheKey)
 }
 
 func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
@@ -335,6 +399,9 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
 		return nil, err
+	}
+	if account.IsCMCCSeedanceMediaAPI() {
+		return s.forwardCMCCSeedanceMedia(ctx, c, account, endpoint, requestID, body, contentType, token, startTime)
 	}
 	if endpoint == GrokMediaEndpointVideoContent {
 		return s.forwardGrokMediaVideoContent(ctx, c, account, token, requestID, startTime)
@@ -863,7 +930,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		writeGrokMediaErrorResponse(c, resp.StatusCode, "invalid_request_error", clientMsg)
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 

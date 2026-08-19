@@ -482,6 +482,18 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      grokMediaApiFormat: {
+        label: 'Media API protocol',
+        xai: 'xAI Grok (default)',
+        cmccSeedance: 'China Mobile Cloud Seedance 2.0',
+        xaiHint: 'Use the xAI-compatible image and video APIs.',
+        cmcc_seedanceHint: 'Use the MoMA Seedance task API with AICC secure transport; defaults to the North China-Hohhot resource pool.',
+        apiKeyPlaceholder: 'China Mobile Cloud API Key',
+        baseUrlRequired: 'Enter the Seedance access-point Base URL assigned in the cloud console',
+        cnyPerUsd: 'CNY per USD',
+        cnyPerUsdHint: 'Converts official China Mobile Cloud CNY token charges into the SynthAPI USD balance; defaults to 7.2.',
+        cnyPerUsdRequired: 'Enter a valid CNY per USD exchange rate'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',

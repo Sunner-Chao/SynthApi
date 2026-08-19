@@ -7,7 +7,7 @@
  * `useChannelMonitorFormat`.
  */
 
-import type { APIMode, Provider, MonitorStatus } from '@/api/admin/channelMonitor'
+import type { APIMode, ProbeMode, Provider, MonitorStatus } from '@/api/admin/channelMonitor'
 
 export const PROVIDER_OPENAI: Provider = 'openai'
 export const PROVIDER_ANTHROPIC: Provider = 'anthropic'
@@ -19,6 +19,8 @@ export const DEFAULT_GROK_MODEL = 'grok-4.5'
 
 export const API_MODE_CHAT_COMPLETIONS: APIMode = 'chat_completions'
 export const API_MODE_RESPONSES: APIMode = 'responses'
+export const PROBE_MODE_MODEL_REQUEST: ProbeMode = 'model_request'
+export const PROBE_MODE_CONNECTIVITY_ONLY: ProbeMode = 'connectivity_only'
 
 export const PROVIDERS: readonly Provider[] = [
   PROVIDER_OPENAI,

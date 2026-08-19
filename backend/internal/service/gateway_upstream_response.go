@@ -303,6 +303,11 @@ func extractUpstreamErrorMessage(body []byte) string {
 		return d
 	}
 
+	// 部分兼容上游（如移动云 Seedance）使用顶层 PascalCase 字段。
+	if m := gjson.GetBytes(body, "ErrorMessage").String(); strings.TrimSpace(m) != "" {
+		return m
+	}
+
 	// 兜底：尝试顶层 message
 	return gjson.GetBytes(body, "message").String()
 }

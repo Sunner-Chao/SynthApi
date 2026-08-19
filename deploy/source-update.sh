@@ -3,6 +3,10 @@ set -Eeuo pipefail
 
 umask 027
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=source-update-git.sh
+source "$SCRIPT_DIR/source-update-git.sh"
+
 readonly OFFICIAL_REPOSITORY="Wei-Shaw/sub2api"
 readonly OFFICIAL_URL="https://github.com/${OFFICIAL_REPOSITORY}.git"
 
@@ -16,6 +20,9 @@ COMPOSE_LOCAL_FILE="${SYNTHAPI_COMPOSE_LOCAL_FILE:-${DEPLOY_DIR}/docker-compose.
 COMPOSE_OVERRIDE_FILE="${SYNTHAPI_COMPOSE_OVERRIDE_FILE:-${DEPLOY_DIR}/docker-compose.override.yml}"
 IMAGE_NAME="${SYNTHAPI_IMAGE_NAME:-synthapi:local}"
 HEALTH_TIMEOUT_SECONDS="${SYNTHAPI_HEALTH_TIMEOUT_SECONDS:-240}"
+GEO_AUDIT_URL="${SYNTHAPI_GEO_AUDIT_URL:-http://127.0.0.1:8080}"
+GEO_PUBLIC_ORIGIN="${SYNTHAPI_GEO_PUBLIC_ORIGIN:-https://synthapi.ecobim.club}"
+DIRTY_WORKTREE_POLICY="${SYNTHAPI_DIRTY_WORKTREE_POLICY:-fail}"
 
 OPERATION_ID=""
 CURRENT_VERSION=""
@@ -28,6 +35,8 @@ STATUS_FINALIZED=false
 WORKTREE_PARENT=""
 WORKTREE_DIR=""
 CANDIDATE_BRANCH=""
+SNAPSHOT_COMMIT=""
+MERGE_BASE=""
 
 verify_customization_guards() {
   local root=$1
@@ -40,6 +49,8 @@ verify_customization_guards() {
     return 1
   fi
   while IFS='|' read -r relative_path required_literal; do
+	# Git may check this manifest out with CRLF on Windows workstations.
+	required_literal=${required_literal%$'\r'}
     [[ -z "$relative_path" || "$relative_path" == \#* ]] && continue
     if [[ "$relative_path" = /* || "$relative_path" == *".."* || -z "$required_literal" ]]; then
       printf '%s\n' "Customization guard manifest contains an invalid entry"
@@ -158,6 +169,93 @@ handle_unexpected_error() {
   exit "$exit_code"
 }
 
+resolve_known_merge_conflicts() {
+  local conflict_path=""
+  local unresolved=()
+  mapfile -t conflict_paths < <(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U)
+
+  for conflict_path in "${conflict_paths[@]}"; do
+    case "$conflict_path" in
+      README.md)
+        # README is a deployment customization; official runtime code is unaffected.
+        git -C "$WORKTREE_DIR" checkout-index --force --stage=2 -- "$conflict_path"
+        git -C "$WORKTREE_DIR" add -- "$conflict_path"
+        ;;
+      backend/internal/repository/gateway_cache.go | \
+      backend/internal/handler/grok_media.go | \
+      frontend/src/views/auth/EmailVerifyView.vue | \
+      frontend/src/views/auth/RegisterView.vue)
+        # These paths are deterministically replayed after the merge.
+        git -C "$WORKTREE_DIR" checkout-index --force --stage=2 -- "$conflict_path"
+        git -C "$WORKTREE_DIR" add -- "$conflict_path"
+        ;;
+      *)
+        unresolved+=("$conflict_path")
+        ;;
+    esac
+  done
+
+  if (( ${#unresolved[@]} > 0 )); then
+    printf '%s\n' "Unresolved official merge conflicts: $(IFS=,; echo "${unresolved[*]}")"
+    return 1
+  fi
+  if [[ -n "$(git -C "$WORKTREE_DIR" ls-files --unmerged)" ]]; then
+    printf '%s\n' "Official merge still contains unresolved index entries"
+    return 1
+  fi
+
+  git -C "$WORKTREE_DIR" \
+    -c user.name="SynthAPI Source Updater" \
+    -c user.email="source-update@synthapi.local" \
+    -c commit.gpgsign=false \
+    -c core.hooksPath=/dev/null \
+    commit --no-edit -m "chore(update): merge official source with customizations" >/dev/null
+}
+
+replay_official_first_customizations() {
+  local relative_path=""
+  local base_file=""
+  local local_file=""
+  local official_file=""
+  local official_only_paths=(
+    "backend/internal/repository/gateway_cache.go"
+  )
+  local official_first_paths=(
+    "backend/internal/handler/grok_media.go"
+    "frontend/src/views/auth/EmailVerifyView.vue"
+    "frontend/src/views/auth/RegisterView.vue"
+  )
+
+  for relative_path in "${official_only_paths[@]}"; do
+    git -C "$REPO_DIR" show "$UPSTREAM_REF:$relative_path" > "$WORKTREE_DIR/$relative_path"
+    git -C "$WORKTREE_DIR" add -- "$relative_path"
+  done
+
+  for relative_path in "${official_first_paths[@]}"; do
+    base_file="$WORKTREE_PARENT/$(basename "$relative_path").base"
+    local_file="$WORKTREE_PARENT/$(basename "$relative_path").local"
+    official_file="$WORKTREE_PARENT/$(basename "$relative_path").official"
+    git -C "$REPO_DIR" show "$MERGE_BASE:$relative_path" > "$base_file"
+    git -C "$REPO_DIR" show "$BASE_COMMIT:$relative_path" > "$local_file"
+    git -C "$REPO_DIR" show "$UPSTREAM_REF:$relative_path" > "$official_file"
+    if ! git merge-file --theirs "$local_file" "$base_file" "$official_file"; then
+      printf '%s\n' "Could not three-way merge protected customization: $relative_path"
+      return 1
+    fi
+    install -m 644 "$local_file" "$WORKTREE_DIR/$relative_path"
+    git -C "$WORKTREE_DIR" add -- "$relative_path"
+  done
+
+  if ! git -C "$WORKTREE_DIR" diff --cached --quiet; then
+    git -C "$WORKTREE_DIR" \
+      -c user.name="SynthAPI Source Updater" \
+      -c user.email="source-update@synthapi.local" \
+      -c commit.gpgsign=false \
+      -c core.hooksPath=/dev/null \
+      commit -m "chore(update): replay official-first protected customizations" >/dev/null
+  fi
+}
+
 trap cleanup EXIT
 trap 'handle_unexpected_error $? $LINENO' ERR
 
@@ -212,7 +310,38 @@ if [[ "$REQUEST_REPOSITORY" != "$OFFICIAL_REPOSITORY" ]]; then
   finish_failed "failed" "Update repository is not the approved official source" "not_started"
 fi
 
-for command in git docker python3 flock grep sha256sum; do
+if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" && -z "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
+  STATUS_FINALIZED=true
+  CURRENT_PHASE="completed"
+  write_status "succeeded" "$CURRENT_PHASE" "v${TARGET_VERSION} is already deployed" "succeeded" "$STARTED_AT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  exit 0
+fi
+
+if [[ -f "$STATUS_FILE" ]]; then
+  existing_state=$(python3 - "$STATUS_FILE" "$OPERATION_ID" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        status = json.load(handle)
+except (FileNotFoundError, json.JSONDecodeError, OSError):
+    raise SystemExit(0)
+
+if status.get("operation_id") == sys.argv[2] and status.get("state") in {
+    "succeeded",
+    "failed",
+    "rolled_back",
+}:
+    print(status["state"])
+PY
+  )
+  if [[ -n "$existing_state" ]]; then
+    exit 0
+  fi
+fi
+
+for command in git docker python3 flock grep sha256sum timeout; do
   if ! command -v "$command" >/dev/null 2>&1; then
     finish_failed "failed" "Required command is unavailable: $command" "not_started"
   fi
@@ -226,15 +355,39 @@ fi
 if [[ "$(git -C "$REPO_DIR" branch --show-current)" != "main" ]]; then
   finish_failed "failed" "Production repository must be on main" "not_started"
 fi
-if [[ -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no)" ]]; then
-  finish_failed "failed" "Production repository has tracked local changes" "not_started"
+case "$DIRTY_WORKTREE_POLICY" in
+  fail | snapshot) ;;
+  *) finish_failed "failed" "Invalid dirty worktree policy" "not_started" ;;
+esac
+if [[ -n "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
+  if [[ "$DIRTY_WORKTREE_POLICY" != "snapshot" ]]; then
+    finish_failed "failed" "Production repository has local changes" "not_started"
+  fi
+
+  CURRENT_PHASE="snapshotting_customizations"
+  write_status "running" "$CURRENT_PHASE" "Saving local customizations before the official merge" "pending" "$STARTED_AT"
+  if ! SNAPSHOT_COMMIT=$(snapshot_production_changes "$REPO_DIR" "$TARGET_VERSION" "$OPERATION_ID"); then
+    finish_failed "failed" "Could not snapshot local customizations; resolve Git conflicts and retry" "not_started"
+  fi
+  if [[ -z "$SNAPSHOT_COMMIT" || -n "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
+    finish_failed "failed" "Local customization snapshot did not produce a clean repository" "not_started"
+  fi
+  write_status "running" "$CURRENT_PHASE" "Saved local customizations at ${SNAPSHOT_COMMIT:0:12}" "pending" "$STARTED_AT"
 fi
 
 CURRENT_PHASE="fetching_official"
 write_status "running" "$CURRENT_PHASE" "Fetching official v${TARGET_VERSION}" "pending" "$STARTED_AT"
 UPSTREAM_REF="refs/tags/upstream-v${TARGET_VERSION}"
-if ! git -C "$REPO_DIR" fetch --force --no-tags "$OFFICIAL_URL" \
-  "refs/tags/v${TARGET_VERSION}:${UPSTREAM_REF}"; then
+fetch_succeeded=false
+for attempt in 1 2 3; do
+  if timeout 120 git -C "$REPO_DIR" fetch --force --no-tags "$OFFICIAL_URL" \
+    "refs/tags/v${TARGET_VERSION}:${UPSTREAM_REF}"; then
+    fetch_succeeded=true
+    break
+  fi
+  sleep $((attempt * 3))
+done
+if [[ "$fetch_succeeded" != true ]]; then
   finish_failed "failed" "Failed to fetch the requested official tag" "not_started"
 fi
 UPSTREAM_COMMIT=$(git -C "$REPO_DIR" rev-parse "${UPSTREAM_REF}^{commit}")
@@ -244,15 +397,27 @@ CANDIDATE_BRANCH="synthapi-update/v${TARGET_VERSION}-${OPERATION_SUFFIX}"
 WORKTREE_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/synthapi-source-update.XXXXXX")
 WORKTREE_DIR="$WORKTREE_PARENT/worktree"
 BASE_COMMIT=$(git -C "$REPO_DIR" rev-parse main)
+MERGE_BASE=$(git -C "$REPO_DIR" merge-base "$BASE_COMMIT" "$UPSTREAM_REF")
+if [[ -z "$MERGE_BASE" ]]; then
+  finish_failed "failed" "Official source has no common history with production" "not_started"
+fi
 
 CURRENT_PHASE="merging_customizations"
 write_status "running" "$CURRENT_PHASE" "Merging official source with protected customizations" "pending" "$STARTED_AT"
 if ! git -C "$REPO_DIR" worktree add -b "$CANDIDATE_BRANCH" "$WORKTREE_DIR" "$BASE_COMMIT"; then
   finish_failed "failed" "Failed to create an isolated update worktree" "not_started"
 fi
-if ! git -C "$WORKTREE_DIR" merge --no-ff --no-edit "$UPSTREAM_REF"; then
-  conflicts=$(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U | paste -sd, -)
-  finish_failed "failed" "Official merge requires manual conflict resolution: ${conflicts:-unknown files}" "not_started"
+# Production customizations win only inside overlapping conflict hunks. Official
+# changes outside those hunks are still merged, then guards and a full image
+# build verify the candidate before it can replace the running deployment.
+if ! git -C "$WORKTREE_DIR" merge --no-ff --no-edit -X ours "$UPSTREAM_REF"; then
+  if ! resolve_known_merge_conflicts; then
+    conflicts=$(git -C "$WORKTREE_DIR" diff --name-only --diff-filter=U | paste -sd, -)
+    finish_failed "failed" "Official merge requires manual conflict resolution: ${conflicts:-unknown files}" "not_started"
+  fi
+fi
+if ! replay_official_first_customizations; then
+  finish_failed "failed" "Could not combine official updates with protected customizations" "not_started"
 fi
 CANDIDATE_COMMIT=$(git -C "$WORKTREE_DIR" rev-parse HEAD)
 if ! git -C "$WORKTREE_DIR" merge-base --is-ancestor "$UPSTREAM_COMMIT" "$CANDIDATE_COMMIT"; then
@@ -268,7 +433,7 @@ fi
 CURRENT_PHASE="building_image"
 write_status "running" "$CURRENT_PHASE" "Building candidate image for v${TARGET_VERSION}" "pending" "$STARTED_AT"
 CANDIDATE_IMAGE="synthapi:candidate-${TARGET_VERSION}-${OPERATION_SUFFIX}"
-if ! docker build --pull \
+if ! BUILDKIT_STEP_LOG_MAX_SIZE=1048576 BUILDKIT_STEP_LOG_MAX_SPEED=1048576 docker build --pull \
   --build-arg "VERSION=${TARGET_VERSION}" \
   --build-arg "COMMIT=${CANDIDATE_COMMIT}" \
   --label "club.ecobim.synthapi.official-version=${TARGET_VERSION}" \
@@ -332,6 +497,17 @@ if ! wait_for_healthy_version "$TARGET_VERSION"; then
   docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --force-recreate --pull never sub2api || true
   wait_for_healthy_version "$CURRENT_VERSION" || true
   finish_failed "rolled_back" "Candidate health verification failed; previous image restored" "not_started"
+fi
+
+CURRENT_PHASE="geo_audit"
+write_status "running" "$CURRENT_PHASE" "Verifying public GEO routes and machine-readable assets" "pending" "$STARTED_AT"
+if ! python3 "$WORKTREE_DIR/deploy/geo-audit.py" \
+  --base-url "$GEO_AUDIT_URL" \
+  --expected-origin "$GEO_PUBLIC_ORIGIN"; then
+  docker tag "$OLD_IMAGE_ID" "$IMAGE_NAME"
+  docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --force-recreate --pull never sub2api || true
+  wait_for_healthy_version "$CURRENT_VERSION" || true
+  finish_failed "rolled_back" "Candidate GEO verification failed; previous image restored" "not_started"
 fi
 
 CURRENT_PHASE="recording_deployment"

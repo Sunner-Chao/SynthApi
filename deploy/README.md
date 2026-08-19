@@ -28,6 +28,36 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `DATAMANAGEMENTD_CN.md` | datamanagementd 部署与联动说明（中文） |
 | `config.example.yaml` | Example configuration file |
 | `EDGE_SECURITY.md` | Reverse proxy, CDN/WAF, trusted proxy, and ingress hardening guide |
+| `geo-audit.py` | Read-only audit for public GEO metadata, machine-readable assets, and private-route indexing controls |
+
+---
+
+## SynthAPI GEO Release Gate
+
+Run the audit against a local candidate or the public domain without calling
+any model API:
+
+```bash
+python3 deploy/geo-audit.py \
+  --base-url http://127.0.0.1:8080 \
+  --expected-origin https://synthapi.ecobim.club
+
+python3 deploy/geo-audit.py \
+  --base-url https://synthapi.ecobim.club \
+  --expected-origin https://synthapi.ecobim.club \
+  --json
+```
+
+The source updater runs this gate after the candidate container reports the
+expected healthy version and before advancing `main` or pushing deployment
+tags. A failed GEO audit restores the previous image. Override the candidate
+request URL with `SYNTHAPI_GEO_AUDIT_URL`; public canonical URLs remain anchored
+to `SYNTHAPI_GEO_PUBLIC_ORIGIN`.
+
+The audit checks route-specific title, canonical, robots, JSON-LD and direct
+answer content for public pages; `noindex` behavior for private pages; and the
+HTTP content of `robots.txt`, `sitemap.xml`, `llms.txt` and the brand facts file.
+It never requests `/api`, `/v1`, or an upstream model.
 
 ---
 

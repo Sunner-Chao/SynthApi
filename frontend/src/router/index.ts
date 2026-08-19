@@ -185,6 +185,24 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'modelPlaza.title'
     }
   },
+  {
+    path: '/guide/:section?',
+    name: 'ProductGuide',
+    component: () => import('@/views/public/ProductGuideView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Product Guide'
+    }
+  },
+  {
+    path: '/about',
+    name: 'AboutSynthAPI',
+    component: () => import('@/views/public/AboutSynthAPIView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '产品与开源关系'
+    }
+  },
 
   // ==================== User Routes ====================
   {

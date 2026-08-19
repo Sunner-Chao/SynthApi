@@ -20,7 +20,11 @@ import (
 
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
-	Result             *OpenAIForwardResult
+	Result *OpenAIForwardResult
+	// BillingRequestID overrides the transport request ID for asynchronous
+	// settlement flows that are polled repeatedly. Empty preserves the normal
+	// request ID resolution behavior.
+	BillingRequestID   string
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
@@ -236,7 +240,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// Create usage log
 	durationMs := int(result.Duration.Milliseconds())
 	accountRateMultiplier := account.BillingRateMultiplier()
-	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
+	requestID := strings.TrimSpace(input.BillingRequestID)
+	if requestID == "" {
+		requestID = resolveUsageBillingRequestID(ctx, result.RequestID)
+	}
 	if result.OpenAIWSMode {
 		if upstreamRequestID := strings.TrimSpace(result.RequestID); upstreamRequestID != "" {
 			requestID = upstreamRequestID
@@ -406,6 +413,9 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	longContextBillingEnabled bool,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
+	if result != nil && result.CMCCSeedanceBilling != nil {
+		return calculateCMCCSeedanceUsageCost(result, multiplier)
+	}
 	if result != nil && result.WebSearchCalls > 0 {
 		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取
 		// 分组覆盖价（nil 时默认 0.01 = 官方 $10/1000 次），不参与渠道级模型定价。
@@ -453,8 +463,51 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
 }
 
+func calculateCMCCSeedanceUsageCost(result *OpenAIForwardResult, multiplier float64) (*CostBreakdown, error) {
+	if result == nil || result.CMCCSeedanceBilling == nil {
+		return nil, errors.New("cmcc seedance billing metadata is missing")
+	}
+	completionTokens := result.Usage.OutputTokens
+	if completionTokens <= 0 {
+		return nil, errors.New("cmcc seedance completion tokens are missing")
+	}
+	metadata := result.CMCCSeedanceBilling
+	cnyPerUSD := metadata.CNYPerUSD
+	if cnyPerUSD <= 0 {
+		return nil, errors.New("cmcc seedance CNY per USD exchange rate is invalid")
+	}
+	resolution := normalizeCMCCSeedanceStatusResolution(metadata.VideoResolution)
+	if resolution == "" {
+		return nil, fmt.Errorf("cmcc seedance billing resolution %q is invalid", metadata.VideoResolution)
+	}
+	priceCNYPerMillion := cmccSeedancePriceCNYPerMillion(metadata.InputHasVideo, resolution)
+	rawUSD := float64(completionTokens) * priceCNYPerMillion / 1_000_000 / cnyPerUSD
+	return &CostBreakdown{
+		OutputCost:  rawUSD,
+		TotalCost:   rawUSD,
+		ActualCost:  rawUSD * multiplier,
+		BillingMode: string(BillingModeToken),
+	}, nil
+}
+
+func cmccSeedancePriceCNYPerMillion(inputHasVideo bool, resolution string) float64 {
+	if normalizeCMCCSeedanceStatusResolution(resolution) == VideoBillingResolution1080P {
+		if inputHasVideo {
+			return 62
+		}
+		return 102
+	}
+	if inputHasVideo {
+		return 56
+	}
+	return 92
+}
+
 func isGrokVideoBillingModel(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "grok-imagine-video") ||
+		strings.HasPrefix(model, "seedance-") ||
+		strings.HasPrefix(model, "doubao-seedance-")
 }
 
 func isGrokVideoUsageResult(result *OpenAIForwardResult, billingModels []string) bool {

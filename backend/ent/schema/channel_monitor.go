@@ -40,6 +40,10 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Default("chat_completions").
 			MaxLen(32).
 			Comment("OpenAI request protocol: chat_completions or responses; non-OpenAI uses chat_completions"),
+		field.String("probe_mode").
+			Default("model_request").
+			MaxLen(32).
+			Comment("Probe behavior: model_request sends a challenge; connectivity_only only sends HEAD to the endpoint origin"),
 		field.String("endpoint").
 			NotEmpty().
 			MaxLen(500).

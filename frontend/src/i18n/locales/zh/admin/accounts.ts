@@ -549,6 +549,18 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      grokMediaApiFormat: {
+        label: '媒体接口协议',
+        xai: 'xAI Grok（默认）',
+        cmccSeedance: '中国移动云 Seedance 2.0',
+        xaiHint: '使用 xAI 兼容的图片与视频接口。',
+        cmcc_seedanceHint: '使用移动云 MoMA Seedance 任务接口与 AICC 安全传输；默认接入华北-呼和浩特资源池。',
+        apiKeyPlaceholder: '移动云 API Key',
+        baseUrlRequired: '请填写移动云控制台分配的 Seedance 接入点 Base URL',
+        cnyPerUsd: '人民币兑 1 美元',
+        cnyPerUsdHint: '用于将移动云官方人民币 token 费用换算为 SynthAPI 美元余额；默认 7.2。',
+        cnyPerUsdRequired: '请输入有效的人民币兑美元汇率'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',

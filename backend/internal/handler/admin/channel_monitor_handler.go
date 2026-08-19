@@ -41,8 +41,9 @@ type channelMonitorCreateRequest struct {
 	Name             string            `json:"name" binding:"required,max=100"`
 	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok"`
 	APIMode          string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
+	ProbeMode        string            `json:"probe_mode" binding:"omitempty,oneof=model_request connectivity_only"`
 	Endpoint         string            `json:"endpoint" binding:"required,max=500"`
-	APIKey           string            `json:"api_key" binding:"required,max=2000"`
+	APIKey           string            `json:"api_key" binding:"max=2000"`
 	PrimaryModel     string            `json:"primary_model" binding:"max=200"`
 	ExtraModels      []string          `json:"extra_models"`
 	GroupName        string            `json:"group_name" binding:"max=100"`
@@ -59,6 +60,7 @@ type channelMonitorUpdateRequest struct {
 	Name             *string            `json:"name" binding:"omitempty,max=100"`
 	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok"`
 	APIMode          *string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
+	ProbeMode        *string            `json:"probe_mode" binding:"omitempty,oneof=model_request connectivity_only"`
 	Endpoint         *string            `json:"endpoint" binding:"omitempty,max=500"`
 	APIKey           *string            `json:"api_key" binding:"omitempty,max=2000"`
 	PrimaryModel     *string            `json:"primary_model" binding:"omitempty,max=200"`
@@ -79,6 +81,7 @@ type channelMonitorResponse struct {
 	Name                string                               `json:"name"`
 	Provider            string                               `json:"provider"`
 	APIMode             string                               `json:"api_mode"`
+	ProbeMode           string                               `json:"probe_mode"`
 	Endpoint            string                               `json:"endpoint"`
 	APIKeyMasked        string                               `json:"api_key_masked"`
 	APIKeyDecryptFailed bool                                 `json:"api_key_decrypt_failed"`
@@ -124,6 +127,9 @@ type channelMonitorHistoryItemResponse struct {
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
 func maskAPIKey(plain string) string {
+	if plain == "" {
+		return ""
+	}
 	if len(plain) <= monitorAPIKeyMaskPrefix {
 		return monitorAPIKeyMaskSuffix
 	}
@@ -147,6 +153,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		Name:                m.Name,
 		Provider:            m.Provider,
 		APIMode:             m.APIMode,
+		ProbeMode:           m.ProbeMode,
 		Endpoint:            m.Endpoint,
 		APIKeyMasked:        maskAPIKey(m.APIKey),
 		APIKeyDecryptFailed: m.APIKeyDecryptFailed,
@@ -314,6 +321,7 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		Name:             req.Name,
 		Provider:         req.Provider,
 		APIMode:          req.APIMode,
+		ProbeMode:        req.ProbeMode,
 		Endpoint:         req.Endpoint,
 		APIKey:           req.APIKey,
 		PrimaryModel:     req.PrimaryModel,
@@ -408,6 +416,7 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 		Name:             req.Name,
 		Provider:         req.Provider,
 		APIMode:          req.APIMode,
+		ProbeMode:        req.ProbeMode,
 		Endpoint:         req.Endpoint,
 		APIKey:           req.APIKey,
 		PrimaryModel:     req.PrimaryModel,
