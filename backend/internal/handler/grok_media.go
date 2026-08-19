@@ -177,9 +177,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 	}
-	// Grok åª’ä½“ï¼ˆå›¾ç‰‡/è§†é¢‘ç”Ÿæˆä¸è§†é¢‘æŸ¥è¯¢ï¼‰æŒ‰åª’ä½“å€ç‡è®¡è´¹ï¼Œä¸åœ¨ token åˆ©æ¶¦é—¨
-	// èŒƒå›´å†…ï¼šæ˜¾å¼è±å…ï¼Œé˜²æ­¢ service å±‚é˜²å¾¡æ€§è£…é—¨æŒ‰æ–‡æœ¬ D è¯¯è¿‡æ»¤åª’ä½“è¯·æ±‚ï¼Œ
-	// ä¹Ÿé˜²æ­¢å·²è®¡è´¹çš„åœ¨é€”è§†é¢‘ä»»åŠ¡å› ç»‘å®šè´¦å·è¢«é—¨æ’é™¤è€ŒæŸ¥è¯¢è¿”å›ä¼ª 404ã€‚
+	// Grok Ã½Ìå£¨Í¼Æ¬/ÊÓÆµÉú³ÉÓëÊÓÆµ²éÑ¯£©°´Ã½Ìå±¶ÂÊ¼Æ·Ñ£¬²»ÔÚ token ÀûÈóÃÅ
+	// ·¶Î§ÄÚ£ºÏÔÊ½»íÃâ£¬·ÀÖ¹ service ²ã·ÀÓùĞÔ×°ÃÅ°´ÎÄ±¾ D Îó¹ıÂËÃ½ÌåÇëÇó£¬
+	// Ò²·ÀÖ¹ÒÑ¼Æ·ÑµÄÔÚÍ¾ÊÓÆµÈÎÎñÒò°ó¶¨ÕËºÅ±»ÃÅÅÅ³ı¶ø²éÑ¯·µ»ØÎ± 404¡£
 	requestCtx := service.WithOpenAIProfitControlSuppressed(c.Request.Context())
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
@@ -237,7 +237,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if endpoint.IsGenerationRequest() && errors.Is(err, service.ErrNoAvailableAccounts) &&
 				mediaEligibilityRejected && lastFailoverErr == nil {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "å½“å‰æ²¡æœ‰å¯ç”¨çš„åª’ä½“ç”Ÿæˆè´¦å·ï¼Œè¯·ç¨åé‡è¯•")
+				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "µ±Ç°Ã»ÓĞ¿ÉÓÃµÄÃ½ÌåÉú³ÉÕËºÅ£¬ÇëÉÔºóÖØÊÔ")
 				return
 			}
 			if lastFailoverErr != nil {
@@ -286,7 +286,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				)
 				if switchCount >= maxAccountSwitches {
 					markOpsRoutingCapacityLimited(c)
-					h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "å½“å‰æ²¡æœ‰å¯ç”¨çš„åª’ä½“ç”Ÿæˆè´¦å·ï¼Œè¯·ç¨åé‡è¯•")
+					h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "µ±Ç°Ã»ÓĞ¿ÉÓÃµÄÃ½ÌåÉú³ÉÕËºÅ£¬ÇëÉÔºóÖØÊÔ")
 					return
 				}
 				switchCount++
@@ -298,8 +298,8 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
-			// åª’ä½“è·¯å¾„å·²æ˜¾å¼è±å…åˆ©æ¶¦é—¨ï¼ˆsuppress æ ‡è®°ï¼‰ï¼Œæ­¤åˆ†æ”¯ä»…é˜²å¾¡æ€§å…œåº•ï¼Œ
-			// åŒæ ·å—å¦å†³ä¸Šé™çº¦æŸã€‚
+			// Ã½ÌåÂ·¾¶ÒÑÏÔÊ½»íÃâÀûÈóÃÅ£¨suppress ±ê¼Ç£©£¬´Ë·ÖÖ§½ö·ÀÓùĞÔ¶µµ×£¬
+			// Í¬ÑùÊÜ·ñ¾öÉÏÏŞÔ¼Êø¡£
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
 				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount)
 				return
@@ -425,7 +425,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				VideoResolution:      result.VideoResolution,
 				VideoDurationSeconds: result.VideoDurationSeconds,
 				OriginalModel:        clientRequestedModel(c, requestModel),
-				// Wall-clock start for usage duration_ms: create accepted â†’ first done discovery.
+				// Wall-clock start for usage duration_ms: create accepted ¡ú first done discovery.
 				CreatedAt: videoCreateStartedAt,
 			}
 			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err != nil {
@@ -445,9 +445,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				}
 			}
 		}
+		bindCMCCSeedanceTaskMetadata(requestCtx, h, reqLog, apiKey, subject, account, result)
 		// Status poll OR content download can observe official done+video.url.
 		// Both paths share the same claim key so the customer is charged once.
-		if endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent {
+		if handleCMCCSeedanceUsage(c, h, reqLog, apiKey, subject, subscription, account, result, endpoint, requestID) {
+			// CMCC Seedance completion billing is handled by the custom extension.
+		} else if endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent {
 			taskID := strings.TrimSpace(requestID)
 			if billResult := prepareGrokVideoCompletionBilling(requestCtx, h, reqLog, apiKey, subject, taskID, result); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, taskID)
@@ -496,11 +499,11 @@ func grokMediaScheduleModel(account *service.Account, routingModel string, resul
 
 func localizeGrokMediaNoAccountError(cls noAccountErrorClassification, displayModel string) noAccountErrorClassification {
 	if cls.ModelNotFound {
-		cls.Message = "å½“å‰åˆ†ç»„æœªé…ç½®æ¨¡å‹ \"" + strings.TrimSpace(displayModel) + "\"ï¼Œè¯·æ£€æŸ¥æ¨¡å‹åç§°æˆ–æ”¹ç”¨è¯¥åˆ†ç»„å·²æ”¯æŒçš„æ¨¡å‹"
+		cls.Message = "µ±Ç°·Ö×éÎ´ÅäÖÃÄ£ĞÍ \"" + strings.TrimSpace(displayModel) + "\"£¬Çë¼ì²éÄ£ĞÍÃû³Æ»ò¸ÄÓÃ¸Ã·Ö×éÒÑÖ§³ÖµÄÄ£ĞÍ"
 		return cls
 	}
 	cls.ErrType = "grok_media_no_eligible_account"
-	cls.Message = "å½“å‰æ²¡æœ‰å¯ç”¨çš„åª’ä½“ç”Ÿæˆè´¦å·ï¼Œè¯·ç¨åé‡è¯•"
+	cls.Message = "µ±Ç°Ã»ÓĞ¿ÉÓÃµÄÃ½ÌåÉú³ÉÕËºÅ£¬ÇëÉÔºóÖØÊÔ"
 	return cls
 }
 
@@ -516,7 +519,7 @@ func isGrokVideoCreateEndpoint(endpoint service.GrokMediaEndpoint) bool {
 }
 
 // shouldRecordGrokMediaUsage gates usage writes for immediate (image) generation.
-// Async video create never bills here â€” status polling does on official
+// Async video create never bills here ¡ª status polling does on official
 // status=done with video.url (docs.x.ai Video Generation).
 // Status/content polls, empty model, and failed generations with zero billable
 // image units never bill via this helper.
@@ -599,7 +602,7 @@ func prepareGrokVideoCompletionBilling(
 		if strings.TrimSpace(merged.UpstreamModel) == "" {
 			merged.UpstreamModel = pending.UpstreamModel
 		}
-		// Official status omits resolution â€” always prefer create request.
+		// Official status omits resolution ¡ª always prefer create request.
 		if strings.TrimSpace(pending.VideoResolution) != "" {
 			merged.VideoResolution = pending.VideoResolution
 		}
@@ -627,7 +630,7 @@ func prepareGrokVideoCompletionBilling(
 	merged.VideoResolution = service.NormalizeVideoBillingResolutionOrDefault(merged.VideoResolution)
 	// Official default duration is 8s when neither status nor create provided it.
 	merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationSecondsOrDefault(merged.VideoDurationSeconds)
-	// E2E latency for async video: create accept â†’ this discovery of done+url.
+	// E2E latency for async video: create accept ¡ú this discovery of done+url.
 	// Bill on discovery (status/content), not after further client polls; duration
 	// must not be only the single discovery hop (~hundreds of ms).
 	if pending != nil {
@@ -670,9 +673,9 @@ func recordGrokMediaUsage(
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
-	// OriginalModel è®°å½•å®¢æˆ·ç«¯è¯·æ±‚çš„æ¨¡å‹ï¼šcomposite åˆ†ç»„ä¸‹ body å·²è¢«æ”¹å†™ä¸ºå…·ä½“æ¨¡å‹ï¼Œ
-	// å…¬å¼€åˆ«åéœ€ä» context å–å›ï¼Œä¸å…¶ä»–ç«¯ç‚¹çš„ç”¨é‡å½’å› å£å¾„ä¸€è‡´ï¼ˆè®¡è´¹ä¸å—å½±å“ï¼š
-	// BillingModelSource ä¸ºç©ºä¸ä¼šè§¦å‘æ¥æºè¦†ç›–ï¼‰ã€‚
+	// OriginalModel ¼ÇÂ¼¿Í»§¶ËÇëÇóµÄÄ£ĞÍ£ºcomposite ·Ö×éÏÂ body ÒÑ±»¸ÄĞ´Îª¾ßÌåÄ£ĞÍ£¬
+	// ¹«¿ª±ğÃûĞè´Ó context È¡»Ø£¬ÓëÆäËû¶ËµãµÄÓÃÁ¿¹éÒò¿Ú¾¶Ò»ÖÂ£¨¼Æ·Ñ²»ÊÜÓ°Ïì£º
+	// BillingModelSource Îª¿Õ²»»á´¥·¢À´Ô´¸²¸Ç£©¡£
 	channelUsageFields := service.ChannelUsageFields{
 		OriginalModel:      clientRequestedModel(c, requestModel),
 		ChannelMappedModel: requestModel,

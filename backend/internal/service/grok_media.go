@@ -553,7 +553,7 @@ func StableGrokVideoBillingRequestID(taskRequestID string) string {
 //	{"status":"done","model":"grok-imagine-video-1.5","video":{"url":"...","duration":8,"respect_moderation":true}}
 //
 // Request may include resolution ("480p"|"720p"|"1080p"); completed status does not
-// document a resolution field â€” bill resolution from the create-time request snapshot.
+// document a resolution field ¡ª bill resolution from the create-time request snapshot.
 
 // IsGrokVideoStatusBillable matches official success: status == "done" AND non-empty video.url.
 // pending / expired / failed, or done without a video URL, are not billable.
@@ -576,7 +576,7 @@ func isOfficialGrokVideoStatusDone(statusBody []byte) bool {
 // Field priority (official docs):
 //   - duration: video.duration (seconds)
 //   - model: top-level model
-//   - resolution: not in status response â†’ create-time pending snapshot â†’ default 480p
+//   - resolution: not in status response ¡ú create-time pending snapshot ¡ú default 480p
 func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideoPendingBilling, requestID string) *OpenAIForwardResult {
 	if !IsGrokVideoStatusBillable(statusBody) {
 		return nil
@@ -609,7 +609,7 @@ func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideo
 		if upstreamModel == "" {
 			upstreamModel = pending.UpstreamModel
 		}
-		// Official status has no resolution â€” always take create request when available.
+		// Official status has no resolution ¡ª always take create request when available.
 		resolution = pending.VideoResolution
 		if durationSeconds <= 0 {
 			durationSeconds = pending.VideoDurationSeconds
@@ -622,7 +622,7 @@ func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideo
 	if billingModel == "" {
 		billingModel = model
 	}
-	// Resolution is request-only per docs; empty â†’ handler applies official default 480p.
+	// Resolution is request-only per docs; empty ¡ú handler applies official default 480p.
 	if resolution != "" {
 		resolution = NormalizeVideoBillingResolutionOrDefault(resolution)
 	}
@@ -724,7 +724,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		}
 		upstreamReq.Header.Set("Content-Type", contentType)
 	}
-	// è´¦å·çº§è¯·æ±‚å¤´è¦†å†™æœ€åŽåº”ç”¨ï¼Œé…ç½®å€¼ä¼˜å…ˆäºŽå†…ç½®é»˜è®¤å¤´ã€‚
+	// ÕËºÅ¼¶ÇëÇóÍ·¸²Ð´×îºóÓ¦ÓÃ£¬ÅäÖÃÖµÓÅÏÈÓÚÄÚÖÃÄ¬ÈÏÍ·¡£
 	account.ApplyHeaderOverrides(upstreamReq.Header)
 
 	proxyURL := ""

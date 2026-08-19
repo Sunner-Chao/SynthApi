@@ -14,28 +14,28 @@ import (
 
 const openAIResponsesNamespaceNamesContextKey = "openai_responses_namespace_names"
 
-// shouldFlattenOpenAIResponsesNamespaces åˆ¤å®šåŸç”Ÿ Responses è½¬å‘å‰æ˜¯å¦æ‘Šå¹³
-// Codex namespace å·¥å…·ã€‚
+// shouldFlattenOpenAIResponsesNamespaces ÅĞ¶¨Ô­Éú Responses ×ª·¢Ç°ÊÇ·ñÌ¯Æ½
+// Codex namespace ¹¤¾ß¡£
 //
-// é»˜è®¤ä¸æ‘Šå¹³ï¼šOAuth è´¦å·çš„ HTTP å‡ºå£æ’ä¸º chatgpt.com/backend-api/codex/responses
-// ï¼ˆbuildUpstreamRequest åªåœ¨ API Key åˆ†æ”¯è¯» base_urlï¼‰ï¼Œä¹Ÿå°±æ˜¯ namespace æ‰©å±•çš„
-// å®šä¹‰æ–¹æœ¬èº«ï¼›Codex å®¢æˆ·ç«¯å¯¹ WS ä¸ HTTP ä¸¤æ¡ä¼ è¾“å‘é€åŒä¸€ä»½ toolsï¼ˆcodex-rs
-// client.rs build_responses_request æ— ä¼ è¾“åˆ†æ”¯ï¼ŒWS å¤±è´¥åä¼š session çº§å›è½ HTTP
-// ç»§ç»­å‘åŒæ ·çš„å£°æ˜ï¼‰ã€‚æ‘Šå¹³åªæ”¹å†™å·¥å…·åï¼Œæ”¹ä¸æ‰å®¢æˆ·ç«¯åœ¨ tools æè¿°ä¸ developer
-// æ¶ˆæ¯é‡Œå†™æ­»çš„ `to=functions.<namespace>.<tool>` å¯»å€çº¦å®šï¼Œæ¨¡å‹æ®æ­¤å¯»å€å¿…ç„¶è½ç©º
-// ï¼ˆissue #4978ï¼‰ï¼›å‘½åç©ºé—´åè¿˜å¯ç”± features.multi_agent_v2.tool_namespace è‡ªå®šä¹‰ã€
-// æˆ–ç”± MCP/connector åŠ¨æ€ç”Ÿæˆï¼ˆmcp__codex_apps__gmailï¼‰ï¼Œä¿ç•™åå•æšä¸¾ä¸å®Œã€‚
+// Ä¬ÈÏ²»Ì¯Æ½£ºOAuth ÕËºÅµÄ HTTP ³ö¿ÚºãÎª chatgpt.com/backend-api/codex/responses
+// £¨buildUpstreamRequest Ö»ÔÚ API Key ·ÖÖ§¶Á base_url£©£¬Ò²¾ÍÊÇ namespace À©Õ¹µÄ
+// ¶¨Òå·½±¾Éí£»Codex ¿Í»§¶Ë¶Ô WS Óë HTTP Á½Ìõ´«Êä·¢ËÍÍ¬Ò»·İ tools£¨codex-rs
+// client.rs build_responses_request ÎŞ´«Êä·ÖÖ§£¬WS Ê§°Üºó»á session ¼¶»ØÂä HTTP
+// ¼ÌĞø·¢Í¬ÑùµÄÉùÃ÷£©¡£Ì¯Æ½Ö»¸ÄĞ´¹¤¾ßÃû£¬¸Ä²»µô¿Í»§¶ËÔÚ tools ÃèÊöÓë developer
+// ÏûÏ¢ÀïĞ´ËÀµÄ `to=functions.<namespace>.<tool>` Ñ°Ö·Ô¼¶¨£¬Ä£ĞÍ¾İ´ËÑ°Ö·±ØÈ»Âä¿Õ
+// £¨issue #4978£©£»ÃüÃû¿Õ¼äÃû»¹¿ÉÓÉ features.multi_agent_v2.tool_namespace ×Ô¶¨Òå¡¢
+// »òÓÉ MCP/connector ¶¯Ì¬Éú³É£¨mcp__codex_apps__gmail£©£¬±£ÁôÃûµ¥Ã¶¾Ù²»Íê¡£
 //
-// compact ç«¯ç‚¹ä¾‹å¤–ï¼šå·²çŸ¥å®ƒçš„ schema æ¯” /responses çª„ï¼ˆè¿ input[].namespace éƒ½ä¼šæŠ¥
-// Unknown parameterï¼Œè§ issue #4761ï¼‰ï¼Œè€Œæ˜¯å¦æ¥å— namespace å·¥å…·å£°æ˜æ²¡æœ‰ä»»ä½•å®æµ‹
-// è¯æ®ï¼›compact åªåšå†å²æ‘˜è¦ã€ä¸éœ€è¦æ¨¡å‹å¯»å€å·¥å…·ï¼Œå›ç¨‹ä¹Ÿæ²¡æœ‰å·¥å…·è°ƒç”¨å¯è¿˜åŸï¼Œå› æ­¤
-// ä¿æŒ 0.1.166 èµ·å°±åœ¨è·‘çš„æ‘Šå¹³è¡Œä¸ºï¼Œä¸éšæœ¬æ¬¡é»˜è®¤å€¼ç¿»è½¬æ‰©å¤§é£é™©é¢ã€‚
+// compact ¶ËµãÀıÍâ£ºÒÑÖªËüµÄ schema ±È /responses Õ­£¨Á¬ input[].namespace ¶¼»á±¨
+// Unknown parameter£¬¼û issue #4761£©£¬¶øÊÇ·ñ½ÓÊÜ namespace ¹¤¾ßÉùÃ÷Ã»ÓĞÈÎºÎÊµ²â
+// Ö¤¾İ£»compact Ö»×öÀúÊ·ÕªÒª¡¢²»ĞèÒªÄ£ĞÍÑ°Ö·¹¤¾ß£¬»Ø³ÌÒ²Ã»ÓĞ¹¤¾ßµ÷ÓÃ¿É»¹Ô­£¬Òò´Ë
+// ±£³Ö 0.1.166 Æğ¾ÍÔÚÅÜµÄÌ¯Æ½ĞĞÎª£¬²»Ëæ±¾´ÎÄ¬ÈÏÖµ·­×ªÀ©´ó·çÏÕÃæ¡£
 //
-// è´¦å·å¼€å…³ openai_responses_flatten_namespaces ä¸ºä¸è®¤è¯† namespace çš„å…¼å®¹ä¸Šæ¸¸ä¿ç•™
-// é€€è·¯ï¼Œæ‰“å¼€åæ¢å¤æ—§è¡Œä¸ºï¼šWSv2 ä¸Šæ¸¸åŸç”Ÿæ”¯æŒ namespaceï¼Œä¸” WS å‡ºå£
-// ï¼ˆopenai_ws_forwarder_v2ï¼‰åŸæ ·è½¬å‘ä¸Šæ¸¸äº‹ä»¶ã€ä¸ç» HTTP å›ç¨‹è¿˜åŸï¼Œæ‘Šå¹³åçš„å¹³å
-// æ— æ³•è¿˜åŸä¼šç ´åå®¢æˆ·ç«¯å·¥å…·åŒ¹é…ï¼Œå› æ­¤å®é™…èµ° WSv2 åˆ†æ”¯çš„è¯·æ±‚ä»ä¿æŒ namespace åŸæ ·ï¼›
-// é€ä¼ è´¦å·å…ˆäº WSv2 åˆ†æ”¯ç» HTTP è½¬å‘è¿”å›ï¼Œä»éœ€æ‘Šå¹³ã€‚
+// ÕËºÅ¿ª¹Ø openai_responses_flatten_namespaces Îª²»ÈÏÊ¶ namespace µÄ¼æÈİÉÏÓÎ±£Áô
+// ÍËÂ·£¬´ò¿ªºó»Ö¸´¾ÉĞĞÎª£ºWSv2 ÉÏÓÎÔ­ÉúÖ§³Ö namespace£¬ÇÒ WS ³ö¿Ú
+// £¨openai_ws_forwarder_v2£©Ô­Ñù×ª·¢ÉÏÓÎÊÂ¼ş¡¢²»¾­ HTTP »Ø³Ì»¹Ô­£¬Ì¯Æ½ºóµÄÆ½Ãû
+// ÎŞ·¨»¹Ô­»áÆÆ»µ¿Í»§¶Ë¹¤¾ßÆ¥Åä£¬Òò´ËÊµ¼Ê×ß WSv2 ·ÖÖ§µÄÇëÇóÈÔ±£³Ö namespace Ô­Ñù£»
+// Í¸´«ÕËºÅÏÈÓÚ WSv2 ·ÖÖ§¾­ HTTP ×ª·¢·µ»Ø£¬ÈÔĞèÌ¯Æ½¡£
 func shouldFlattenOpenAIResponsesNamespaces(
 	account *Account,
 	transport OpenAIUpstreamTransport,
@@ -67,20 +67,20 @@ func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenA
 	return true
 }
 
-// shouldKeepOpenAIResponsesToolCallNamespaces åˆ¤å®šæ¸…ç† input æ®‹ç•™ namespace æ—¶æ˜¯å¦
-// ä¿ç•™å·¥å…·è°ƒç”¨é¡¹ä¸Šçš„ namespaceã€‚
+// shouldKeepOpenAIResponsesToolCallNamespaces ÅĞ¶¨ÇåÀí input ²ĞÁô namespace Ê±ÊÇ·ñ
+// ±£Áô¹¤¾ßµ÷ÓÃÏîÉÏµÄ namespace¡£
 //
-// ä¸Šæ¸¸å¯¹è¿™ä¸ªå­—æ®µæœ‰ä¸¤å¥—äº’æ–¥è¦æ±‚ï¼Œåˆ¤å®šæŒ‰ã€Œå‡ºå£ + ç«¯ç‚¹ã€è€Œéå·¥å…·å£°æ˜å†…å®¹ï¼š
-//   - /backend-api/codex/responses ä¼šæŒ‰ namespace è§£æå†å²è°ƒç”¨ï¼Œç¼ºå­—æ®µç›´æ¥ 400
+// ÉÏÓÎ¶ÔÕâ¸ö×Ö¶ÎÓĞÁ½Ì×»¥³âÒªÇó£¬ÅĞ¶¨°´¡¸³ö¿Ú + ¶Ëµã¡¹¶ø·Ç¹¤¾ßÉùÃ÷ÄÚÈİ£º
+//   - /backend-api/codex/responses »á°´ namespace ½âÎöÀúÊ·µ÷ÓÃ£¬È±×Ö¶ÎÖ±½Ó 400
 //     `Missing namespace for function_call '...'. Round-trip the model's
-//     function_call item with its namespace field included.`ï¼ˆissue #4761 å›å¸–ï¼‰ï¼Œ
-//     æ•… OAuth é compact è¯·æ±‚å¿…é¡»ä¿ç•™ã€‚
-//   - compact ç«¯ç‚¹çš„ schema ä¸å«è¯¥å­—æ®µï¼Œæºå¸¦å³ 400 `Unknown parameter:
-//     input[N].namespace`ï¼ˆissue #4761 æ­£æ–‡ï¼‰ï¼Œæ•… compact ä¸€å¾‹æ¸…ç†ã€‚
-//   - API Key å‡ºå£æ˜¯æ ‡å‡† Responses APIï¼ˆapi.openai.com æˆ–è‡ªå®šä¹‰ base_urlï¼‰ï¼ŒåŒæ ·
-//     ä¸è®¤è¯†è¯¥å­—æ®µï¼Œç»´æŒå…¨é‡æ¸…ç†ï¼›å¦åˆ™åªèƒ½é€€åŒ–æˆ
-//     openai_responses_rejected_field_retry çš„é€é¡¹åˆ é™¤ï¼Œ6 æ¬¡ä¸Šé™æ ¹æœ¬ç›–ä¸ä½é•¿å†å²ã€‚
-//   - æ‘Šå¹³æ¨¡å¼ä¸‹è°ƒç”¨é¡¹å·²è¢«æ”¹å†™æˆå¹³åï¼Œæ®‹ç•™ namespace æŒ‡å‘çš„å£°æ˜å·²ä¸å­˜åœ¨ï¼Œä¸€å¾‹æ¸…ç†ã€‚
+//     function_call item with its namespace field included.`£¨issue #4761 »ØÌû£©£¬
+//     ¹Ê OAuth ·Ç compact ÇëÇó±ØĞë±£Áô¡£
+//   - compact ¶ËµãµÄ schema ²»º¬¸Ã×Ö¶Î£¬Ğ¯´ø¼´ 400 `Unknown parameter:
+//     input[N].namespace`£¨issue #4761 ÕıÎÄ£©£¬¹Ê compact Ò»ÂÉÇåÀí¡£
+//   - API Key ³ö¿ÚÊÇ±ê×¼ Responses API£¨api.openai.com »ò×Ô¶¨Òå base_url£©£¬Í¬Ñù
+//     ²»ÈÏÊ¶¸Ã×Ö¶Î£¬Î¬³ÖÈ«Á¿ÇåÀí£»·ñÔòÖ»ÄÜÍË»¯³É
+//     openai_responses_rejected_field_retry µÄÖğÏîÉ¾³ı£¬6 ´ÎÉÏÏŞ¸ù±¾¸Ç²»×¡³¤ÀúÊ·¡£
+//   - Ì¯Æ½Ä£Ê½ÏÂµ÷ÓÃÏîÒÑ±»¸ÄĞ´³ÉÆ½Ãû£¬²ĞÁô namespace Ö¸ÏòµÄÉùÃ÷ÒÑ²»´æÔÚ£¬Ò»ÂÉÇåÀí¡£
 func shouldKeepOpenAIResponsesToolCallNamespaces(
 	account *Account,
 	transport OpenAIUpstreamTransport,
@@ -96,10 +96,10 @@ func shouldKeepOpenAIResponsesToolCallNamespaces(
 	return !shouldFlattenOpenAIResponsesNamespaces(account, transport, passthroughEnabled, compactPath)
 }
 
-// openAIResponsesToolCallItemTypes æ˜¯æºå¸¦ namespace çš„è°ƒç”¨é¡¹ç±»å‹é›†åˆã€‚ä¸
-// removeOpenAIResponsesRejectedNamespaceAtIndex çš„ååº”å¼ç™½åå•ä¿æŒä¸€è‡´ï¼›codex-rs
-// protocol/src/models.rs ä¸­åªæœ‰ FunctionCall ä¸ CustomToolCall åºåˆ—åŒ– namespaceï¼Œ
-// å…¶ä½™ç±»å‹å¸¦è¯¥å­—æ®µä¸€å®šæ˜¯é Codex å®¢æˆ·ç«¯æˆ–å†å²æ®‹ç•™ï¼Œæ¸…æ‰æ‰å®‰å…¨ã€‚
+// openAIResponsesToolCallItemTypes ÊÇĞ¯´ø namespace µÄµ÷ÓÃÏîÀàĞÍ¼¯ºÏ¡£Óë
+// removeOpenAIResponsesRejectedNamespaceAtIndex µÄ·´Ó¦Ê½°×Ãûµ¥±£³ÖÒ»ÖÂ£»codex-rs
+// protocol/src/models.rs ÖĞÖ»ÓĞ FunctionCall Óë CustomToolCall ĞòÁĞ»¯ namespace£¬
+// ÆäÓàÀàĞÍ´ø¸Ã×Ö¶ÎÒ»¶¨ÊÇ·Ç Codex ¿Í»§¶Ë»òÀúÊ·²ĞÁô£¬Çåµô²Å°²È«¡£
 var openAIResponsesToolCallItemTypes = map[string]bool{
 	"function_call":    true,
 	"tool_call":        true,
@@ -139,9 +139,9 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 // untouched. Rebuilding the input array once keeps this linear for long
 // histories and avoids decoding JSON numbers through float64.
 //
-// keepToolCallNamespaces ä¿ç•™å·¥å…·è°ƒç”¨é¡¹ï¼ˆfunction_call / custom_tool_call ç­‰ï¼‰ä¸Šçš„
-// namespaceï¼Œè®© Codex è°ƒç”¨èƒ½æŒ‰ä¸Šæ¸¸è¦æ±‚åŸæ ·å›ä¼ ï¼›åˆ¤å®šè§
-// shouldKeepOpenAIResponsesToolCallNamespacesã€‚
+// keepToolCallNamespaces ±£Áô¹¤¾ßµ÷ÓÃÏî£¨function_call / custom_tool_call µÈ£©ÉÏµÄ
+// namespace£¬ÈÃ Codex µ÷ÓÃÄÜ°´ÉÏÓÎÒªÇóÔ­Ñù»Ø´«£»ÅĞ¶¨¼û
+// shouldKeepOpenAIResponsesToolCallNamespaces¡£
 func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces bool) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
@@ -163,8 +163,8 @@ func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces boo
 		}
 		first = false
 		itemBody := []byte(item.Raw)
-		// å…ˆåˆ¤å­˜åœ¨å†åˆ¤ç±»å‹ï¼šé•¿å†å²é‡Œç»å¤§å¤šæ•°æ˜¯ message/reasoning ç­‰ä¸å¸¦ namespace
-		// çš„é¡¹ï¼Œè¿™æ ·å®ƒä»¬æ— éœ€å†æ‰«ä¸€æ¬¡ typeã€‚
+		// ÏÈÅĞ´æÔÚÔÙÅĞÀàĞÍ£º³¤ÀúÊ·Àï¾ø´ó¶àÊıÊÇ message/reasoning µÈ²»´ø namespace
+		// µÄÏî£¬ÕâÑùËüÃÇÎŞĞèÔÙÉ¨Ò»´Î type¡£
 		if item.IsObject() && item.Get("namespace").Exists() &&
 			(!keepToolCallNamespaces || !isOpenAIResponsesToolCallItemType(item.Get("type").String())) {
 			itemBody, stripErr = sjson.DeleteBytes(itemBody, "namespace")
@@ -244,9 +244,9 @@ func setOpenAIResponsesNamespaceNames(c *gin.Context, names map[string]apicompat
 	}
 }
 
-// clearOpenAIResponsesNamespaceNames æ¸…é™¤ä¸Šä¸€æ¬¡å°è¯•ç™»è®°çš„æ‘Šå¹³åæ˜ å°„ã€‚handler çš„
-// failover ä¼šåœ¨åŒä¸€ä¸ª *gin.Context ä¸Šé‡è¯•ä¸‹ä¸€ä¸ªè´¦å·ï¼Œæ˜ å°„ä¸æ¸…ä¼šè®©ä¿ç•™ namespace çš„
-// è´¦å·æ‹¿ç€ä¸Šä¸€ä¸ªè´¦å·çš„æ‘Šå¹³ååšå›ç¨‹è¿˜åŸã€‚
+// clearOpenAIResponsesNamespaceNames Çå³ıÉÏÒ»´Î³¢ÊÔµÇ¼ÇµÄÌ¯Æ½ÃûÓ³Éä¡£handler µÄ
+// failover »áÔÚÍ¬Ò»¸ö *gin.Context ÉÏÖØÊÔÏÂÒ»¸öÕËºÅ£¬Ó³Éä²»Çå»áÈÃ±£Áô namespace µÄ
+// ÕËºÅÄÃ×ÅÉÏÒ»¸öÕËºÅµÄÌ¯Æ½Ãû×ö»Ø³Ì»¹Ô­¡£
 func clearOpenAIResponsesNamespaceNames(c *gin.Context) {
 	if c == nil {
 		return

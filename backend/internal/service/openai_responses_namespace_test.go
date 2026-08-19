@@ -12,7 +12,7 @@ func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 	grokOAuth := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
-	// è´¦å·çº§å…¼å®¹å¼€å…³ï¼šä¸ºä¸è®¤è¯† namespace çš„å…¼å®¹ä¸Šæ¸¸æ¢å¤æ—§çš„æ‘Šå¹³è¡Œä¸ºã€‚
+	// ÕËºÅ¼¶¼æÈİ¿ª¹Ø£ºÎª²»ÈÏÊ¶ namespace µÄ¼æÈİÉÏÓÎ»Ö¸´¾ÉµÄÌ¯Æ½ĞĞÎª¡£
 	flattenOAuth := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
@@ -32,22 +32,22 @@ func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 		compactPath        bool
 		want               bool
 	}{
-		// é»˜è®¤ä¿ç•™ï¼šOAuth å‡ºå£æ˜¯ namespace æ‰©å±•çš„å®šä¹‰æ–¹ï¼Œæ‘Šå¹³ä¼šè®©æ¨¡å‹æ— æ³•æŒ‰
-		// `to=functions.<namespace>.<tool>` å¯»å€ï¼ˆissue #4978ï¼‰ã€‚
+		// Ä¬ÈÏ±£Áô£ºOAuth ³ö¿ÚÊÇ namespace À©Õ¹µÄ¶¨Òå·½£¬Ì¯Æ½»áÈÃÄ£ĞÍÎŞ·¨°´
+		// `to=functions.<namespace>.<tool>` Ñ°Ö·£¨issue #4978£©¡£
 		{name: "oauth_http_default_preserves", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "oauth_http_passthrough_default_preserves", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, passthroughEnabled: true, want: false},
 		{name: "oauth_wsv2_default_preserves", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, want: false},
-		// compact ç«¯ç‚¹ schema æ›´çª„ä¸”æ— å®æµ‹è¯æ®ï¼Œä¿æŒæ—¢æœ‰æ‘Šå¹³è¡Œä¸ºã€‚
+		// compact ¶Ëµã schema ¸üÕ­ÇÒÎŞÊµ²âÖ¤¾İ£¬±£³Ö¼ÈÓĞÌ¯Æ½ĞĞÎª¡£
 		{name: "oauth_compact_flattens", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, want: true},
 		{name: "oauth_compact_wsv2_preserves", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, compactPath: true, want: false},
 		{name: "apikey_compact", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, want: false},
 		{name: "oauth_flatten_enabled_http", account: flattenOAuth, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
 		{name: "oauth_flatten_enabled_http_passthrough", account: flattenOAuth, transport: OpenAIUpstreamTransportHTTPSSE, passthroughEnabled: true, want: true},
-		// WSv2 å‡ºå£åŸæ ·è½¬å‘ä¸Šæ¸¸äº‹ä»¶ã€ä¸åšå›ç¨‹è¿˜åŸï¼Œæ‘Šå¹³ä¼šè®©å®¢æˆ·ç«¯æ”¶åˆ°æ— æ³•åŒ¹é…çš„å¹³åã€‚
+		// WSv2 ³ö¿ÚÔ­Ñù×ª·¢ÉÏÓÎÊÂ¼ş¡¢²»×ö»Ø³Ì»¹Ô­£¬Ì¯Æ½»áÈÃ¿Í»§¶ËÊÕµ½ÎŞ·¨Æ¥ÅäµÄÆ½Ãû¡£
 		{name: "oauth_flatten_enabled_wsv2", account: flattenOAuth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, want: false},
-		// é€ä¼ è´¦å·å…ˆäº WSv2 åˆ†æ”¯ç» HTTP è½¬å‘è¿”å›ï¼Œå¼€å…³æ‰“å¼€æ—¶ä»éœ€æ‘Šå¹³ã€‚
+		// Í¸´«ÕËºÅÏÈÓÚ WSv2 ·ÖÖ§¾­ HTTP ×ª·¢·µ»Ø£¬¿ª¹Ø´ò¿ªÊ±ÈÔĞèÌ¯Æ½¡£
 		{name: "oauth_flatten_enabled_wsv2_passthrough", account: flattenOAuth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, passthroughEnabled: true, want: true},
-		// å¼€å…³ä»…å¯¹ OAuth ç”Ÿæ•ˆï¼šAPI Key èµ° chat completions å›é€€æ¡¥æ—¶ç”±æ¡¥è‡ªè¡Œæ‘Šå¹³ã€‚
+		// ¿ª¹Ø½ö¶Ô OAuth ÉúĞ§£ºAPI Key ×ß chat completions »ØÍËÇÅÊ±ÓÉÇÅ×ÔĞĞÌ¯Æ½¡£
 		{name: "apikey_flatten_enabled_http", account: flattenAPIKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "apikey_http", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "grok_oauth_http", account: grokOAuth, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
@@ -80,19 +80,19 @@ func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 		compactPath        bool
 		want               bool
 	}{
-		// ä¸Šæ¸¸æŒ‰ namespace è§£æå†å²è°ƒç”¨ï¼Œç¼ºå­—æ®µä¼š 400 "Missing namespace for function_call"ã€‚
+		// ÉÏÓÎ°´ namespace ½âÎöÀúÊ·µ÷ÓÃ£¬È±×Ö¶Î»á 400 "Missing namespace for function_call"¡£
 		{name: "oauth_http_keeps", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
 		{name: "oauth_http_passthrough_keeps", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, passthroughEnabled: true, want: true},
-		// compact ç«¯ç‚¹ schema ä¸å«è¯¥å­—æ®µï¼Œæºå¸¦å³ 400 "Unknown parameter: input[N].namespace"ã€‚
+		// compact ¶Ëµã schema ²»º¬¸Ã×Ö¶Î£¬Ğ¯´ø¼´ 400 "Unknown parameter: input[N].namespace"¡£
 		{name: "oauth_compact_strips", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, want: false},
-		// æ‘Šå¹³åè°ƒç”¨é¡¹å·²æ˜¯å¹³åï¼Œæ®‹ç•™ namespace æŒ‡å‘çš„å£°æ˜ä¸å­˜åœ¨ã€‚
+		// Ì¯Æ½ºóµ÷ÓÃÏîÒÑÊÇÆ½Ãû£¬²ĞÁô namespace Ö¸ÏòµÄÉùÃ÷²»´æÔÚ¡£
 		{name: "oauth_flatten_enabled_strips", account: flattenOAuth, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
-		// WSv2 å®é™…ç”± shouldStrip æå‰çŸ­è·¯ï¼Œæ­¤å¤„åªé’‰ä½ç­–ç•¥æœ¬èº«çš„å–å€¼ã€‚
+		// WSv2 Êµ¼ÊÓÉ shouldStrip ÌáÇ°¶ÌÂ·£¬´Ë´¦Ö»¶¤×¡²ßÂÔ±¾ÉíµÄÈ¡Öµ¡£
 		{name: "oauth_wsv2_keeps", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, want: true},
-		// WSv2 + compact æ˜¯å”¯ä¸€ã€Œä¸æ‘Šå¹³ä½†ä»å¿…é¡»æ¸…ç†ã€çš„ç»„åˆï¼Œé’‰ä½ compact åˆ¤å®šæœ¬èº«ï¼Œ
-		// ä½¿å…¶ä¸ä¼šè¢«è¯¯å½“æˆå¯ç”± shouldFlatten æ¨å¯¼å‡ºçš„å†—ä½™åˆ†æ”¯ã€‚
+		// WSv2 + compact ÊÇÎ¨Ò»¡¸²»Ì¯Æ½µ«ÈÔ±ØĞëÇåÀí¡¹µÄ×éºÏ£¬¶¤×¡ compact ÅĞ¶¨±¾Éí£¬
+		// Ê¹Æä²»»á±»Îóµ±³É¿ÉÓÉ shouldFlatten ÍÆµ¼³öµÄÈßÓà·ÖÖ§¡£
 		{name: "oauth_compact_wsv2_strips", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, compactPath: true, want: false},
-		// API Key å‡ºå£æ˜¯æ ‡å‡† Responses APIï¼Œä¸è®¤è¯†è¯¥å­—æ®µã€‚
+		// API Key ³ö¿ÚÊÇ±ê×¼ Responses API£¬²»ÈÏÊ¶¸Ã×Ö¶Î¡£
 		{name: "apikey_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "setup_token_strips", account: setupToken, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "nil_account", account: nil, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
@@ -217,8 +217,8 @@ func TestStripOpenAIResponsesInputNamespacesLeavesOtherShapesByteExact(t *testin
 	}
 }
 
-// ä¿ç•™æ¨¡å¼ä¸‹åªæœ‰å·¥å…·è°ƒç”¨é¡¹ç•™ä½ namespaceï¼šä¸Šæ¸¸æŒ‰ namespace è§£æå†å²è°ƒç”¨ï¼Œ
-// è€Œ message / reasoning / è¾“å‡ºé¡¹å¸¦è¯¥å­—æ®µä¼šè¢« schema æ‹’ç»ã€‚
+// ±£ÁôÄ£Ê½ÏÂÖ»ÓĞ¹¤¾ßµ÷ÓÃÏîÁô×¡ namespace£ºÉÏÓÎ°´ namespace ½âÎöÀúÊ·µ÷ÓÃ£¬
+// ¶ø message / reasoning / Êä³öÏî´ø¸Ã×Ö¶Î»á±» schema ¾Ü¾ø¡£
 func TestStripOpenAIResponsesInputNamespacesKeepsToolCallNamespaces(t *testing.T) {
 	body := []byte(`{
 		"meta":9007199254740993,
@@ -244,23 +244,23 @@ func TestStripOpenAIResponsesInputNamespacesKeepsToolCallNamespaces(t *testing.T
 	for index := 4; index < 8; index++ {
 		require.False(t, gjson.GetBytes(stripped, "input."+strconv.Itoa(index)+".namespace").Exists())
 	}
-	// å¤§æ•´æ•°ä¸å¾—ç» float64 å¾€è¿”ã€‚
+	// ´óÕûÊı²»µÃ¾­ float64 Íù·µ¡£
 	require.Equal(t, gjson.GetBytes(body, "meta").Raw, gjson.GetBytes(stripped, "meta").Raw)
 	require.Equal(t, gjson.GetBytes(body, "input.0.large").Raw, gjson.GetBytes(stripped, "input.0.large").Raw)
 
-	// ç±»å‹æ¯”å¯¹ä¸åŒºåˆ†å¤§å°å†™ä¸é¦–å°¾ç©ºç™½ã€‚
+	// ÀàĞÍ±È¶Ô²»Çø·Ö´óĞ¡Ğ´ÓëÊ×Î²¿Õ°×¡£
 	mixedCase := []byte(`{"input":[{"type":" Function_Call ","namespace":"collaboration","name":"spawn_agent"}]}`)
 	keptMixedCase, err := stripOpenAIResponsesInputNamespaces(mixedCase, true)
 	require.NoError(t, err)
 	require.Equal(t, mixedCase, keptMixedCase)
 
-	// å…¨éƒ¨ä¸ºè°ƒç”¨é¡¹æ—¶æ— æ”¹åŠ¨ï¼Œåº”åŸæ ·è¿”å›ã€‚
+	// È«²¿Îªµ÷ÓÃÏîÊ±ÎŞ¸Ä¶¯£¬Ó¦Ô­Ñù·µ»Ø¡£
 	callsOnly := []byte(`{"input":[{"type":"function_call","namespace":"collaboration","name":"spawn_agent"}]}`)
 	unchanged, err := stripOpenAIResponsesInputNamespaces(callsOnly, true)
 	require.NoError(t, err)
 	require.Equal(t, callsOnly, unchanged)
 
-	// å…³é—­ä¿ç•™æ—¶å›åˆ°å…¨é‡æ¸…ç†ã€‚
+	// ¹Ø±Õ±£ÁôÊ±»Øµ½È«Á¿ÇåÀí¡£
 	strippedAll, err := stripOpenAIResponsesInputNamespaces(body, false)
 	require.NoError(t, err)
 	for index := 0; index < 8; index++ {

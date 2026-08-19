@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestIsGrokContentPolicyRejection(t *testing.T) {
@@ -238,6 +239,49 @@ func TestGrokContentPolicy403MediaResponseBypassesCustomErrorCodes(t *testing.T)
 	require.Zero(t, repo.tempUnschedCalls)
 	require.Zero(t, repo.rateLimitedCalls)
 	require.Zero(t, repo.updateCalls)
+}
+
+func TestCMCCSeedancePrivacyRejectionReturnsChinese400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := `{"ErrorCode":"InputImageSensitiveContentDetected.PrivacyInformation","ErrorMessage":"The request failed because the input image 'content[1]' may contain real person."}`
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{
+		ID:          4722,
+		Name:        "cmcc-seedance",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"media_api_format":           CMCCSeedanceMediaAPIFormat,
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(http.StatusBadRequest)},
+		},
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	_, err := svc.handleGrokMediaErrorResponse(context.Background(), resp, c, account, "request-id", "seedance-2.0")
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Equal(t, "invalid_request_error", gjson.Get(recorder.Body.String(), "error.type").String())
+	require.Contains(t, gjson.Get(recorder.Body.String(), "error.message").String(), "真人或隐私信息")
+	require.Contains(t, gjson.Get(recorder.Body.String(), "error.message").String(), "更换")
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+}
+
+func TestExtractUpstreamErrorMessageSupportsCMCCPascalCase(t *testing.T) {
+	body := []byte(`{"ErrorCode":"BadRequest","ErrorMessage":"CMCC detail"}`)
+	require.Equal(t, "CMCC detail", ExtractUpstreamErrorMessage(body))
 }
 
 func TestGrokContentPolicySSEErrorDoesNotMutateOrFailover(t *testing.T) {
