@@ -194,6 +194,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
 		stageTrace.addSince(&stageTrace.preConsume, stageStart)
 		if newAPIError != nil {
+			markAutoRouteBillingFailure(c, relayInfo, newAPIError)
 			return
 		}
 	}
@@ -283,6 +284,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if billingErr := refreshBillingForSelectedGroup(c, relayInfo, tokens, meta); billingErr != nil {
 			stageTrace.addSince(&stageTrace.refreshBilling, stageStart)
 			newAPIError = billingErr
+			markAutoRouteBillingFailure(c, relayInfo, billingErr)
 			endActiveUse()
 			break
 		}
@@ -486,6 +488,23 @@ func refreshBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon.Relay
 		return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 	}
 	return nil
+}
+
+func markAutoRouteBillingFailure(c *gin.Context, relayInfo *relaycommon.RelayInfo, err *types.NewAPIError) {
+	if relayInfo == nil || relayInfo.TokenGroup != "auto" || !service.ShouldMarkAutoRouteFailure(err) {
+		return
+	}
+	failedGroup := strings.TrimSpace(relayInfo.UsingGroup)
+	if failedGroup == "" {
+		failedGroup = common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	}
+	if failedGroup == "" || failedGroup == "auto" {
+		return
+	}
+	if service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, failedGroup) {
+		service.ClearChannelAffinityCacheForContext(c)
+		logger.LogInfo(c, fmt.Sprintf("Auto billing failure recorded; next client retry will rotate away from group=%s", failedGroup))
+	}
 }
 
 func prepareSmartGroupFailover(c *gin.Context, relayInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, primaryGroup string, lastErr *types.NewAPIError) bool {

@@ -30,6 +30,15 @@ func ShouldMarkAutoRouteFailure(err *types.NewAPIError) bool {
 		return true
 	}
 	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	// A positive wallet balance can still be below the estimated cost of the
+	// selected (usually higher-priced) Auto group. Allow the next client retry
+	// to try a cheaper group. Do not classify the plain "user quota insufficient"
+	// error this way: when the balance is zero, changing upstream groups cannot
+	// make the request affordable.
+	if err.GetErrorCode() == types.ErrorCodeInsufficientUserQuota &&
+		(strings.Contains(message, "预扣费额度失败") || strings.Contains(message, "pre-consume quota failed")) {
+		return true
+	}
 	for _, marker := range []string{
 		"not supported by any configured account in this group",
 		"no available channel",

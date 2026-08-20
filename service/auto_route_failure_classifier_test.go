@@ -20,6 +20,15 @@ func TestShouldMarkAutoRouteFailureForGroupScopedErrors(t *testing.T) {
 	}
 }
 
+func TestShouldMarkAutoRouteFailureForHigherPricedAutoGroup(t *testing.T) {
+	err := types.NewErrorWithStatusCode(
+		errors.New("预扣费额度失败, 用户剩余额度: ¥0.000206, 需要预扣费额度: ¥0.010224"),
+		types.ErrorCodeInsufficientUserQuota,
+		http.StatusForbidden,
+	)
+	require.True(t, ShouldMarkAutoRouteFailure(err))
+}
+
 func TestShouldMarkAutoRouteFailureDoesNotMarkLocalOrOrdinaryErrors(t *testing.T) {
 	for _, test := range []struct {
 		name string
