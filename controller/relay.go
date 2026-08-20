@@ -232,6 +232,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
+			if primaryGroup == "auto" && service.ShouldMarkAutoRouteFailure(channelErr) {
+				failedGroup := relayInfo.UsingGroup
+				if failedGroup == "" {
+					failedGroup = common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+				}
+				if failedGroup != "" && failedGroup != "auto" {
+					service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, failedGroup)
+					service.ClearChannelAffinityCacheForContext(c)
+				}
+			}
 			if channelErr.GetErrorCode() == types.ErrorCodeConcurrencyLimit {
 				c.Header("Retry-After", "1")
 			}
@@ -846,6 +856,16 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
+				if relayInfo.TokenGroup == "auto" && service.ShouldMarkAutoRouteFailure(channelErr) {
+					failedGroup := relayInfo.UsingGroup
+					if failedGroup == "" {
+						failedGroup = common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+					}
+					if failedGroup != "" && failedGroup != "auto" {
+						service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, failedGroup)
+						service.ClearChannelAffinityCacheForContext(c)
+					}
+				}
 				statusCode := http.StatusInternalServerError
 				if channelErr.GetErrorCode() == types.ErrorCodeConcurrencyLimit {
 					statusCode = http.StatusTooManyRequests

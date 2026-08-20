@@ -277,6 +277,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 
 		for i := startGroupIndex; i < len(autoGroups); i++ {
 			autoGroup := autoGroups[i]
+			// Keep the candidate group visible to the caller even when no channel
+			// can be selected. This lets Auto cool down the actual failed group
+			// instead of leaving UsingGroup as the literal "auto" value.
+			selectGroup = autoGroup
+			common.SetContextKey(param.Ctx, constant.ContextKeyUsingGroup, autoGroup)
 			// Calculate priorityRetry for current group
 			// 计算当前分组的 priorityRetry
 			priorityRetry := param.GetRetry()

@@ -2,12 +2,14 @@ package service
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,6 +17,41 @@ import (
 // next retry away from the failed Auto group without permanently disabling a
 // channel for a transient upstream outage.
 const autoRouteFailureTTL = 90 * time.Second
+
+// ShouldMarkAutoRouteFailure identifies errors that mean the selected Auto
+// group is temporarily unusable. It is intentionally narrow for channel
+// selection errors so ordinary 404s and local user quota errors are not
+// allowed to cool down a healthy group.
+func ShouldMarkAutoRouteFailure(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if err.GetErrorCode() == types.ErrorCodeConcurrencyLimit {
+		return true
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	for _, marker := range []string{
+		"not supported by any configured account in this group",
+		"no available channel",
+		"no available account",
+		"no available key",
+		"all eligible channels are at concurrency capacity",
+		"all channels at capacity",
+		"selected model is at capacity",
+		"insufficient account balance",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	switch err.StatusCode {
+	case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return err.GetErrorCode() == types.ErrorCodeGetChannelFailed || types.IsChannelError(err)
+	default:
+		return false
+	}
+}
 
 type autoRouteFailureKey struct {
 	scope string

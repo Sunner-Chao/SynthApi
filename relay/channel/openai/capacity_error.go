@@ -12,6 +12,8 @@ import (
 )
 
 const modelAtCapacityErrorMarker = "selected model is at capacity"
+const unsupportedModelInGroupErrorMarker = "not supported by any configured account in this group"
+const insufficientAccountBalanceErrorMarker = "insufficient account balance"
 
 var autoRouteStreamFailureMarkers = []string{
 	"stream disconnected before completion",
@@ -26,6 +28,14 @@ func newAutoRouteFailureFromText(message string, statusCode int) *types.NewAPIEr
 	}
 	lowerMessage := strings.ToLower(message)
 	for _, marker := range autoRouteStreamFailureMarkers {
+		if strings.Contains(lowerMessage, marker) {
+			if statusCode < http.StatusBadRequest || statusCode > 599 {
+				statusCode = http.StatusBadGateway
+			}
+			return types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponse, statusCode)
+		}
+	}
+	for _, marker := range []string{unsupportedModelInGroupErrorMarker, insufficientAccountBalanceErrorMarker} {
 		if strings.Contains(lowerMessage, marker) {
 			if statusCode < http.StatusBadRequest || statusCode > 599 {
 				statusCode = http.StatusBadGateway
