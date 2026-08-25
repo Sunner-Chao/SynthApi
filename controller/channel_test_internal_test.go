@@ -178,3 +178,25 @@ func TestCodexResponsesChannelTestRequestUsesForcedStream(t *testing.T) {
 	require.NotNil(t, responseReq.Stream)
 	require.True(t, *responseReq.Stream)
 }
+
+func TestAPIMartGPTImage2ChannelTestRequestUsesImageDefaults(t *testing.T) {
+	baseURL := "https://api.apimart.ai"
+	channel := &model.Channel{BaseURL: &baseURL}
+
+	request, ok := buildTestRequest("gpt-image-2", "", channel, false).(*dto.ImageRequest)
+
+	require.True(t, ok)
+	require.Equal(t, "a cute cat", request.Prompt)
+	require.Equal(t, "1024x1024", request.Size)
+	require.Equal(t, "1k", request.GetResolution())
+}
+
+func TestNonAPIMartImageChannelTestRequestDoesNotSetResolution(t *testing.T) {
+	baseURL := "https://api.openai.com"
+	channel := &model.Channel{BaseURL: &baseURL}
+
+	request, ok := buildTestRequest("gpt-image-2", "", channel, false).(*dto.ImageRequest)
+
+	require.True(t, ok)
+	require.Empty(t, request.GetResolution())
+}

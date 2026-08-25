@@ -706,16 +706,46 @@ type TaskRelayInfo struct {
 }
 
 type TaskSubmitReq struct {
-	Prompt         string                 `json:"prompt"`
-	Model          string                 `json:"model,omitempty"`
-	Mode           string                 `json:"mode,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	Images         []string               `json:"images,omitempty"`
-	Size           string                 `json:"size,omitempty"`
-	Duration       int                    `json:"duration,omitempty"`
-	Seconds        string                 `json:"seconds,omitempty"`
-	InputReference string                 `json:"input_reference,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Prompt          string                   `json:"prompt"`
+	Model           string                   `json:"model,omitempty"`
+	Mode            string                   `json:"mode,omitempty"`
+	Image           string                   `json:"image,omitempty"`
+	Images          []string                 `json:"images,omitempty"`
+	Video           string                   `json:"video,omitempty"`
+	Videos          []string                 `json:"videos,omitempty"`
+	Audio           string                   `json:"audio,omitempty"`
+	Audios          []string                 `json:"audios,omitempty"`
+	FirstFrame      string                   `json:"first_frame,omitempty"`
+	FirstFrameImage string                   `json:"first_frame_image,omitempty"`
+	FirstFrameURL   string                   `json:"first_frame_url,omitempty"`
+	LastFrame       string                   `json:"last_frame,omitempty"`
+	LastFrameImage  string                   `json:"last_frame_image,omitempty"`
+	LastFrameURL    string                   `json:"last_frame_url,omitempty"`
+	Size            string                   `json:"size,omitempty"`
+	Duration        int                      `json:"duration,omitempty"`
+	Seconds         string                   `json:"seconds,omitempty"`
+	InputReference  string                   `json:"input_reference,omitempty"`
+	Metadata        map[string]interface{}   `json:"metadata,omitempty"`
+	Resolution      string                   `json:"resolution,omitempty"`
+	Ratio           string                   `json:"ratio,omitempty"`
+	GenerateAudio   *bool                    `json:"generate_audio,omitempty"`
+	ReturnLastFrame *bool                    `json:"return_last_frame,omitempty"`
+	ExpiresAfter    *int                     `json:"execution_expires_after,omitempty"`
+	Frames          *int                     `json:"frames,omitempty"`
+	FramesPerSecond *int                     `json:"framespersecond,omitempty"`
+	Seed            *int                     `json:"seed,omitempty"`
+	Watermark       *bool                    `json:"watermark,omitempty"`
+	ReferenceImages []string                 `json:"reference_images,omitempty"`
+	ReferenceVideo  string                   `json:"reference_video,omitempty"`
+	ReferenceVideos []string                 `json:"reference_videos,omitempty"`
+	ReferenceAudio  string                   `json:"reference_audio,omitempty"`
+	ReferenceAudios []string                 `json:"reference_audios,omitempty"`
+	Content         []map[string]interface{} `json:"content,omitempty"`
+	CallbackURL     string                   `json:"callback_url,omitempty"`
+	SafetyID        json.RawMessage          `json:"safety_identifier,omitempty"`
+	Tools           json.RawMessage          `json:"tools,omitempty"`
+	ServiceTier     json.RawMessage          `json:"service_tier,omitempty"`
+	AspectRatio     string                   `json:"aspect_ratio,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {
@@ -729,8 +759,25 @@ func (t *TaskSubmitReq) HasImage() bool {
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 	type Alias TaskSubmitReq
 	aux := &struct {
-		Metadata json.RawMessage `json:"metadata,omitempty"`
-		Duration json.RawMessage `json:"duration,omitempty"`
+		Metadata        json.RawMessage `json:"metadata,omitempty"`
+		Duration        json.RawMessage `json:"duration,omitempty"`
+		Image           json.RawMessage `json:"image,omitempty"`
+		Images          json.RawMessage `json:"images,omitempty"`
+		Video           json.RawMessage `json:"video,omitempty"`
+		Videos          json.RawMessage `json:"videos,omitempty"`
+		Audio           json.RawMessage `json:"audio,omitempty"`
+		Audios          json.RawMessage `json:"audios,omitempty"`
+		FirstFrame      json.RawMessage `json:"first_frame,omitempty"`
+		FirstFrameImage json.RawMessage `json:"first_frame_image,omitempty"`
+		FirstFrameURL   json.RawMessage `json:"first_frame_url,omitempty"`
+		LastFrame       json.RawMessage `json:"last_frame,omitempty"`
+		LastFrameImage  json.RawMessage `json:"last_frame_image,omitempty"`
+		LastFrameURL    json.RawMessage `json:"last_frame_url,omitempty"`
+		ReferenceImages json.RawMessage `json:"reference_images,omitempty"`
+		ReferenceVideo  json.RawMessage `json:"reference_video,omitempty"`
+		ReferenceVideos json.RawMessage `json:"reference_videos,omitempty"`
+		ReferenceAudio  json.RawMessage `json:"reference_audio,omitempty"`
+		ReferenceAudios json.RawMessage `json:"reference_audios,omitempty"`
 		*Alias
 	}{
 		Alias: (*Alias)(t),
@@ -754,6 +801,51 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	mediaFields := []struct {
+		name string
+		raw  json.RawMessage
+		dest *string
+	}{
+		{name: "image", raw: aux.Image, dest: &t.Image},
+		{name: "video", raw: aux.Video, dest: &t.Video},
+		{name: "audio", raw: aux.Audio, dest: &t.Audio},
+		{name: "first_frame", raw: aux.FirstFrame, dest: &t.FirstFrame},
+		{name: "first_frame_image", raw: aux.FirstFrameImage, dest: &t.FirstFrameImage},
+		{name: "first_frame_url", raw: aux.FirstFrameURL, dest: &t.FirstFrameURL},
+		{name: "last_frame", raw: aux.LastFrame, dest: &t.LastFrame},
+		{name: "last_frame_image", raw: aux.LastFrameImage, dest: &t.LastFrameImage},
+		{name: "last_frame_url", raw: aux.LastFrameURL, dest: &t.LastFrameURL},
+		{name: "reference_video", raw: aux.ReferenceVideo, dest: &t.ReferenceVideo},
+		{name: "reference_audio", raw: aux.ReferenceAudio, dest: &t.ReferenceAudio},
+	}
+	for _, field := range mediaFields {
+		value, err := decodeTaskMediaURL(field.raw)
+		if err != nil {
+			return fmt.Errorf("decode %s: %w", field.name, err)
+		}
+		*field.dest = value
+	}
+
+	mediaListFields := []struct {
+		name string
+		raw  json.RawMessage
+		dest *[]string
+	}{
+		{name: "images", raw: aux.Images, dest: &t.Images},
+		{name: "videos", raw: aux.Videos, dest: &t.Videos},
+		{name: "audios", raw: aux.Audios, dest: &t.Audios},
+		{name: "reference_images", raw: aux.ReferenceImages, dest: &t.ReferenceImages},
+		{name: "reference_videos", raw: aux.ReferenceVideos, dest: &t.ReferenceVideos},
+		{name: "reference_audios", raw: aux.ReferenceAudios, dest: &t.ReferenceAudios},
+	}
+	for _, field := range mediaListFields {
+		values, err := decodeTaskMediaURLs(field.raw)
+		if err != nil {
+			return fmt.Errorf("decode %s: %w", field.name, err)
+		}
+		*field.dest = values
+	}
+
 	if len(aux.Metadata) > 0 {
 		var metadataStr string
 		if err := common.Unmarshal(aux.Metadata, &metadataStr); err == nil && metadataStr != "" {
@@ -772,6 +864,58 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+func decodeTaskMediaURL(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 || strings.TrimSpace(string(raw)) == "null" {
+		return "", nil
+	}
+	var value string
+	if err := common.Unmarshal(raw, &value); err == nil {
+		return value, nil
+	}
+	var media map[string]json.RawMessage
+	if err := common.Unmarshal(raw, &media); err != nil {
+		return "", errors.New("must be a URL string or an object containing url")
+	}
+	for _, key := range []string{"url", "image_url", "video_url", "audio_url"} {
+		if nested, ok := media[key]; ok {
+			value, err := decodeTaskMediaURL(nested)
+			if err == nil && strings.TrimSpace(value) != "" {
+				return value, nil
+			}
+		}
+	}
+	return "", errors.New("url is required")
+}
+
+func decodeTaskMediaURLs(raw json.RawMessage) ([]string, error) {
+	if len(raw) == 0 || strings.TrimSpace(string(raw)) == "null" {
+		return nil, nil
+	}
+	var items []json.RawMessage
+	if err := common.Unmarshal(raw, &items); err != nil {
+		value, valueErr := decodeTaskMediaURL(raw)
+		if valueErr != nil {
+			return nil, errors.New("must be a URL, a URL object, or a list of them")
+		}
+		if value == "" {
+			return nil, nil
+		}
+		return []string{value}, nil
+	}
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		value, err := decodeTaskMediaURL(item)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(value) != "" {
+			values = append(values, value)
+		}
+	}
+	return values, nil
+}
+
 func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 	metadata := t.Metadata
 	if metadata != nil {

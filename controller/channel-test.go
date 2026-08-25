@@ -83,6 +83,7 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 		constant.ChannelTypeKling,
 		constant.ChannelTypeJimeng,
 		constant.ChannelTypeDoubaoVideo,
+		constant.ChannelTypeCMCCSeedance,
 		constant.ChannelTypeVidu,
 	}
 	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
@@ -120,6 +121,9 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 		}
 	} else {
 		// 如果没有指定端点类型，使用原有的自动检测逻辑
+		if common.IsImageGenerationModel(testModel) {
+			requestPath = "/v1/images/generations"
+		}
 
 		if strings.Contains(strings.ToLower(testModel), "rerank") {
 			requestPath = "/v1/rerank"
@@ -796,12 +800,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			}
 		case constant.EndpointTypeImageGeneration:
 			// 返回 ImageRequest
-			return &dto.ImageRequest{
-				Model:  model,
-				Prompt: "a cute cat",
-				N:      lo.ToPtr(uint(1)),
-				Size:   "1024x1024",
-			}
+			return buildImageChannelTestRequest(model, channel)
 		case constant.EndpointTypeJinaRerank:
 			// 返回 RerankRequest
 			return &dto.RerankRequest{
@@ -848,6 +847,10 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	}
 
 	// 自动检测逻辑（保持原有行为）
+	if common.IsImageGenerationModel(model) {
+		return buildImageChannelTestRequest(model, channel)
+	}
+
 	if strings.Contains(strings.ToLower(model), "rerank") {
 		return &dto.RerankRequest{
 			Model:     model,
@@ -913,6 +916,20 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	}
 
 	return testRequest
+}
+
+func buildImageChannelTestRequest(modelName string, channel *model.Channel) *dto.ImageRequest {
+	request := &dto.ImageRequest{
+		Model:  modelName,
+		Prompt: "a cute cat",
+		N:      lo.ToPtr(uint(1)),
+		Size:   "1024x1024",
+	}
+	// APIMart's GPT Image 2 endpoint expects its resolution tier explicitly.
+	if channel != nil && common.IsAPIMartAPIBaseURL(channel.GetBaseURL()) && request.IsAPIMartGPTImage2() {
+		request.Resolution = json.RawMessage(`"1k"`)
+	}
+	return request
 }
 
 func TestChannel(c *gin.Context) {

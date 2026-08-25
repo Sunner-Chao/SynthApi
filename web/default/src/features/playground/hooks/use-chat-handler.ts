@@ -95,11 +95,18 @@ export function useChatHandler({
     return err?.response?.data?.error?.code || undefined
   }
 
+  const normalizeImageData = (
+    data: ImageGenerationResponse['data']
+  ): ImageGenerationData[] => {
+    if (!data) return []
+    return Array.isArray(data) ? data : [data]
+  }
+
   const pickImageData = (response: ImageGenerationResponse) =>
-    response.data?.find((item) => item.url || item.b64_json)
+    normalizeImageData(response.data).find((item) => item.url || item.b64_json)
 
   const pickTaskId = (response: ImageGenerationResponse) =>
-    response.data?.find((item) => item.task_id)?.task_id ||
+    normalizeImageData(response.data).find((item) => item.task_id)?.task_id ||
     response.task_id ||
     response.id ||
     ''

@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
 	"github.com/QuantumNous/new-api/relay/channel/minimax"
 	"github.com/QuantumNous/new-api/relay/channel/moonshot"
+	taskcmccseedance "github.com/QuantumNous/new-api/relay/channel/task/cmccseedance"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -88,12 +89,21 @@ func init() {
 			OwnedBy: "midjourney",
 		})
 	}
+	for _, modelName := range taskcmccseedance.ModelList {
+		openAIModels = append(openAIModels, dto.OpenAIModels{
+			Id: modelName, Object: "model", Created: 1626777600, OwnedBy: taskcmccseedance.ChannelName,
+		})
+	}
 	openAIModelsMap = make(map[string]dto.OpenAIModels)
 	for _, aiModel := range openAIModels {
 		openAIModelsMap[aiModel.Id] = aiModel
 	}
 	channelId2Models = make(map[int][]string)
 	for i := 1; i <= constant.ChannelTypeDummy; i++ {
+		if i == constant.ChannelTypeCMCCSeedance {
+			channelId2Models[i] = taskcmccseedance.ModelList
+			continue
+		}
 		apiType, success := common.ChannelType2APIType(i)
 		if !success || apiType == constant.APITypeAIProxyLibrary {
 			continue
@@ -111,6 +121,9 @@ func init() {
 }
 
 func channelOwnerName(channelType int) string {
+	if channelType == constant.ChannelTypeCMCCSeedance {
+		return "cmcc-seedance"
+	}
 	apiType, success := common.ChannelType2APIType(channelType)
 	if !success {
 		return strings.ToLower(constant.GetChannelTypeName(channelType))

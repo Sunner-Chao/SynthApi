@@ -134,6 +134,17 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       baseUrl: 'Default: https://api.replicate.com',
     },
   },
+  58: {
+    id: 58,
+    name: CHANNEL_TYPES[58],
+    icon: 'doubao',
+    defaultBaseUrl: 'https://zhenze-huhehaote.cmecloud.cn/api/v3',
+    hints: {
+      baseUrl: 'Mobile Cloud Seedance endpoint, usually ending in /api/v3',
+      key: 'Mobile Cloud API Key',
+      models: 'seedance-2.0',
+    },
+  },
 }
 
 /**

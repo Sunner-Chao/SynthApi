@@ -388,6 +388,7 @@ func shouldSkipGroupSelectorChannelProbe(channel *model.Channel) bool {
 		constant.ChannelTypeJimeng,
 		constant.ChannelTypeVidu,
 		constant.ChannelTypeDoubaoVideo,
+		constant.ChannelTypeCMCCSeedance,
 		constant.ChannelTypeSora,
 		constant.ChannelTypeReplicate:
 		return true

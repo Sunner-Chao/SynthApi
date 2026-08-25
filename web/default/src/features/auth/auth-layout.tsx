@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
+import { ChartNoAxesCombined, KeyRound, Network, ServerCog } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -30,31 +31,69 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   const { systemName, logo, loading } = useSystemConfig()
 
   return (
-    <div className='relative grid h-svh max-w-none'>
-      <Link
-        to='/'
-        className='absolute top-4 left-4 z-10 flex items-center gap-2 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
-      >
-        <div className='relative h-8 w-8'>
-          {loading ? (
-            <Skeleton className='absolute inset-0 rounded-full' />
-          ) : (
-            <img
-              src={logo}
-              alt={t('Logo')}
-              className='h-8 w-8 rounded-full object-cover'
-            />
-          )}
-        </div>
-        {loading ? (
-          <Skeleton className='h-6 w-24' />
-        ) : (
-          <h1 className='text-xl font-medium'>{systemName}</h1>
-        )}
-      </Link>
-      <div className='container flex items-center pt-16 sm:pt-0'>
-        <div className='mx-auto flex w-full flex-col justify-center space-y-2 px-4 py-8 sm:w-[480px] sm:p-8'>
-          {children}
+    <div data-slot='auth-layout' className='relative grid h-svh max-w-none'>
+      <div data-slot='auth-stage' className='flex items-center px-4 py-5'>
+        <div
+          data-slot='auth-shell'
+          className='mx-auto flex w-full overflow-hidden'
+        >
+          <section data-slot='auth-showcase' aria-hidden='true'>
+            <div data-slot='auth-showcase-brand'>
+              {loading ? (
+                <Skeleton className='size-8 rounded-md' />
+              ) : (
+                <img src={logo} alt='' className='size-8 object-cover' />
+              )}
+              <span>{loading ? 'SynthAPI' : systemName}</span>
+            </div>
+            <div data-slot='auth-showcase-visual'>
+              <span data-node='network'>
+                <Network />
+              </span>
+              <span data-node='key'>
+                <KeyRound />
+              </span>
+              <span data-node='core'>
+                {loading ? (
+                  <ServerCog />
+                ) : (
+                  <img src={logo} alt='' className='size-full object-cover' />
+                )}
+              </span>
+              <span data-node='server'>
+                <ServerCog />
+              </span>
+              <span data-node='chart'>
+                <ChartNoAxesCombined />
+              </span>
+            </div>
+          </section>
+
+          <div data-slot='auth-panel' className='flex w-full flex-col'>
+            <Link
+              to='/'
+              data-slot='auth-brand'
+              className='flex items-center gap-2 transition-opacity hover:opacity-80'
+            >
+              <div className='relative size-8 shrink-0'>
+                {loading ? (
+                  <Skeleton className='absolute inset-0 rounded-md' />
+                ) : (
+                  <img
+                    src={logo}
+                    alt={t('Logo')}
+                    className='size-8 rounded-md object-cover'
+                  />
+                )}
+              </div>
+              {loading ? (
+                <Skeleton className='h-6 w-24' />
+              ) : (
+                <h1 className='truncate text-xl font-semibold'>{systemName}</h1>
+              )}
+            </Link>
+            <div data-slot='auth-form-content'>{children}</div>
+          </div>
         </div>
       </div>
     </div>

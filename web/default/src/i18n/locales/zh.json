@@ -1432,6 +1432,9 @@
     "Doubao Coding Plan": "豆包 Coding Plan",
     "Doubao custom API address editing unlocked": "已解锁豆包自定义 API 地址编辑",
     "DoubaoVideo": "DoubaoVideo",
+    "CMCCSeedance": "中国移动云 Seedance",
+    "Mobile Cloud Seedance API Key": "移动云 Seedance API Key",
+    "Mobile Cloud Seedance endpoint; keep the /api/v3 suffix.": "移动云 Seedance 接入点，请保留 /api/v3 后缀。",
     "Double check the configuration below. Your system will be locked until initialization is complete.": "仔细检查以下配置。您的系统将在初始化完成前保持锁定状态。",
     "Download": "下载",
     "Draw": "绘图",
@@ -5146,7 +5149,6 @@
     "Unlocked": "已解锁",
     "No reward data available": "暂无奖励数据",
     "Reward Programs": "福利活动管理",
-    "Click to view reward details": "点击查看奖励详情",
-    "Click for details": "点击查看详情"
+    "Click to view reward details": "点击查看奖励详情"
   }
 }

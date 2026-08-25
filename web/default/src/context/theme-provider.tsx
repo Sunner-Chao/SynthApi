@@ -29,7 +29,10 @@ import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
 type Theme = 'dark' | 'light' | 'system'
 type ResolvedTheme = Exclude<Theme, 'system'>
 
-const DEFAULT_THEME = 'system'
+// SynthPay's reference merchant/admin workbench uses a dark glass surface.
+// Keep the first visit aligned with that product language while retaining the
+// existing light-mode switch for users who explicitly choose it.
+const DEFAULT_THEME = 'dark'
 const THEME_COOKIE_NAME = 'vite-ui-theme'
 const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 const THEMES = new Set<Theme>(['dark', 'light', 'system'])

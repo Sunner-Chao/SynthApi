@@ -219,7 +219,7 @@ function SetupGuideBackdrop(props: { compact?: boolean }) {
       />
       <div
         className={cn(
-          'text-foreground/5 pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden font-mono sm:block dark:text-foreground/8',
+          'text-foreground/5 dark:text-foreground/8 pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden font-mono sm:block',
           props.compact ? 'w-1/2 opacity-45' : 'w-[58%] opacity-75'
         )}
         aria-hidden='true'
@@ -523,7 +523,10 @@ function getSubscriptionRemainingQuota(record: UserSubscriptionRecord | null) {
   return Math.max(0, total - used)
 }
 
-function formatSubscriptionTimeLeft(endTime: number, t: (key: string, opts?: Record<string, unknown>) => string) {
+function formatSubscriptionTimeLeft(
+  endTime: number,
+  t: (key: string, opts?: Record<string, unknown>) => string
+) {
   const secondsLeft = Math.max(0, Number(endTime || 0) - Date.now() / 1000)
   const days = Math.floor(secondsLeft / 86400)
   const hours = Math.floor((secondsLeft % 86400) / 3600)
@@ -615,7 +618,9 @@ function SubscriptionOverviewCard(props: {
             {!props.embedded && (
               <p className='text-muted-foreground mt-0.5 text-xs'>
                 {hasActive
-                  ? t('Your subscription benefits are currently applied to API usage.')
+                  ? t(
+                      'Your subscription benefits are currently applied to API usage.'
+                    )
                   : t('Subscribe to a plan for model access')}
               </p>
             )}
@@ -674,10 +679,7 @@ function SubscriptionOverviewCard(props: {
       </div>
 
       <div
-        className={cn(
-          'grid gap-2 text-sm',
-          props.embedded && 'grid-cols-1'
-        )}
+        className={cn('grid gap-2 text-sm', props.embedded && 'grid-cols-1')}
       >
         <div
           className={cn(
@@ -763,7 +765,7 @@ function SubscriptionOverviewCard(props: {
         className={cn(
           'bg-card overflow-hidden rounded-2xl border shadow-xs',
           hasActive &&
-            'border-primary/25 bg-linear-to-br from-primary/8 via-card to-success/8'
+            'border-primary/25 from-primary/8 via-card to-success/8 bg-linear-to-br'
         )}
       >
         {content}
@@ -927,7 +929,9 @@ export function OverviewDashboard() {
       model,
       keyName,
       keyId: preferredKey?.id,
-      displayKey: preferredKey ? formatDisplayKey(`sk-${preferredKey.key}`) : 'sk-...',
+      displayKey: preferredKey
+        ? formatDisplayKey(`sk-${preferredKey.key}`)
+        : 'sk-...',
       ready,
     }
   }, [apiInfoItems, modelsQuery.data, preferredKey, t])
@@ -965,7 +969,9 @@ export function OverviewDashboard() {
       planTitle,
       remainingQuota: getSubscriptionRemainingQuota(current),
       usagePercent: getSubscriptionUsagePercent(current),
-      discountLabel: current ? formatSubscriptionDiscountPercent(discount) : '-',
+      discountLabel: current
+        ? formatSubscriptionDiscountPercent(discount)
+        : '-',
       discountGroup: current?.subscription?.billing_discount_group || '',
     }
   }, [publicPlansQuery.data, subscriptionsQuery.data, t])
@@ -998,7 +1004,7 @@ export function OverviewDashboard() {
   }
 
   return (
-    <div className='flex flex-col gap-4'>
+    <div data-slot='dashboard-overview' className='flex flex-col gap-4'>
       {setupGuideExpanded ? (
         <CardStaggerContainer className='grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>
           <CardStaggerItem className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>

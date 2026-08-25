@@ -75,6 +75,10 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeReplicate
 	case constant.ChannelTypeCodex:
 		apiType = constant.APITypeCodex
+	case constant.ChannelTypeCMCCSeedance:
+		// The channel uses the task relay path; map it to the closest API
+		// family so generic channel metadata and proxy settings remain valid.
+		apiType = constant.APITypeVolcEngine
 	}
 	if apiType == -1 {
 		return constant.APITypeOpenAI, false

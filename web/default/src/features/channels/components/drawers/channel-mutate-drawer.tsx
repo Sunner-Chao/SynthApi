@@ -616,6 +616,19 @@ export function ChannelMutateDrawer({
       }
     }
 
+    if (currentType === 58) {
+      const currentBaseUrlValue = form.getValues('base_url')
+      if (!currentBaseUrlValue || currentBaseUrlValue === '') {
+        form.setValue('base_url', 'https://zhenze-huhehaote.cmecloud.cn/api/v3')
+      }
+      if (!form.getValues('models')?.trim()) {
+        form.setValue('models', 'seedance-2.0')
+      }
+      if (!form.getValues('model_mapping')?.trim()) {
+        form.setValue('model_mapping', '{"seedance-2.0":"doubao-seedance-2.0"}')
+      }
+    }
+
     // Type 18 (Xunfei) - set default other (version)
     if (currentType === 18) {
       const currentOther = form.getValues('other')
@@ -1775,7 +1788,7 @@ export function ChannelMutateDrawer({
                     )}
 
                     {/* General base_url for other types */}
-                    {![3, 8, 22, 36, 45].includes(currentType) && (
+                    {![3, 8, 22, 36, 45, 58].includes(currentType) && (
                       <FormField
                         control={form.control}
                         name='base_url'
@@ -1791,6 +1804,30 @@ export function ChannelMutateDrawer({
                             <FormDescription>
                               {t(
                                 'Custom API base URL. For official channels, New API has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {currentType === 58 && (
+                      <FormField
+                        control={form.control}
+                        name='base_url'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('API Base URL *')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder='https://zhenze-huhehaote.cmecloud.cn/api/v3'
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Mobile Cloud Seedance endpoint; keep the /api/v3 suffix.'
                               )}
                             </FormDescription>
                             <FormMessage />

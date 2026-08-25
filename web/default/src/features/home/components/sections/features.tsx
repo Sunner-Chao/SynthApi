@@ -179,13 +179,13 @@ export function Features(_props: FeaturesProps) {
   ]
 
   return (
-    <section className='relative z-10 px-6 py-24 md:py-32'>
-      <div className='mx-auto max-w-6xl'>
-        <AnimateInView className='mb-16 max-w-lg'>
-          <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
+    <section className='synthpay-home-section synthpay-feature-section'>
+      <div className='synthpay-home-container'>
+        <AnimateInView className='synthpay-section-head'>
+          <p>
             {t('Core Features')}
           </p>
-          <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-3xl'>
+          <h2>
             {t('Built for developers,')}
             <br />
             {t('designed for scale')}
@@ -193,21 +193,21 @@ export function Features(_props: FeaturesProps) {
         </AnimateInView>
 
         {/* Bento grid */}
-        <div className='border-border/40 bg-border/40 grid gap-px overflow-hidden rounded-xl border md:grid-cols-3'>
+        <div className='synthpay-bento-grid'>
           {features.map((f, i) => (
             <AnimateInView
               key={f.id}
               delay={i * 100}
               animation='scale-in'
-              className={`bg-background group hover:bg-muted/20 p-7 transition-colors duration-300 md:p-8 ${f.span}`}
+              className={`synthpay-bento-card ${f.span}`}
             >
-              <div className='mb-3 flex items-center gap-3'>
-                <span className='border-border/40 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums'>
+              <div className='synthpay-bento-title'>
+                <span className='synthpay-bento-number'>
                   {f.num}
                 </span>
-                <h3 className='text-sm font-semibold'>{f.title}</h3>
+                <h3>{f.title}</h3>
               </div>
-              <p className='text-muted-foreground text-sm leading-relaxed'>
+              <p>
                 {f.desc}
               </p>
               {f.visual}
@@ -216,19 +216,19 @@ export function Features(_props: FeaturesProps) {
         </div>
 
         {/* Additional features row */}
-        <div className='mt-12 grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12'>
+        <div className='synthpay-feature-strip'>
           {additionalFeatures.map((f, i) => (
             <AnimateInView
               key={f.title}
               delay={i * 100}
               animation='fade-up'
-              className='flex flex-col items-center text-center'
+              className='synthpay-feature-strip-item'
             >
-              <div className='text-muted-foreground border-border/50 bg-muted/30 group-hover:text-foreground mb-3 flex size-12 items-center justify-center rounded-xl border transition-colors'>
+              <div className='synthpay-feature-icon'>
                 {f.icon}
               </div>
-              <h3 className='mb-1.5 text-sm font-semibold'>{f.title}</h3>
-              <p className='text-muted-foreground max-w-[200px] text-xs leading-relaxed'>
+              <h3>{f.title}</h3>
+              <p>
                 {f.desc}
               </p>
             </AnimateInView>
