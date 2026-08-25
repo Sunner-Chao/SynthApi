@@ -54,7 +54,9 @@ export function getSystemName() {
 
 export function getLogo() {
   let logo = localStorage.getItem('logo');
-  if (!logo) return '/logo.png';
+  if (!logo) return '/logo-mark.png';
+  const [path, query] = logo.split('?');
+  if (path === '/logo.png') return query ? `/logo-mark.png?${query}` : '/logo-mark.png';
   return logo;
 }
 

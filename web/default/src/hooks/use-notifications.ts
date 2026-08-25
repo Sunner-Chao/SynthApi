@@ -23,6 +23,7 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { getNotice } from '@/lib/api'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import { useStatus } from '@/hooks/use-status'
+import { getLogoMark } from '@/lib/constants'
 
 export type DesktopNotificationPermission =
   | NotificationPermission
@@ -302,7 +303,7 @@ export function useNotifications() {
     try {
       const notification = new window.Notification(title, {
         body: getAnnouncementPlainText(latest),
-        icon: String(status?.logo || '/favicon.ico'),
+        icon: getLogoMark(String(status?.logo || '/logo.png')),
         badge: '/favicon.ico',
         tag: 'synthapi-system-announcements',
         requireInteraction: true,

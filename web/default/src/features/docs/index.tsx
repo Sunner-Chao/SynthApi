@@ -214,7 +214,7 @@ const pageSections: Record<string, string[]> = {
 function Mark() {
   return (
     <span className='guide-mark'>
-      <img src='/logo.png?v=20260817' alt='' />
+      <img src='/logo-mark.png?v=20260825' alt='' />
     </span>
   )
 }

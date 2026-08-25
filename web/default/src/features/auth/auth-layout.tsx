@@ -21,6 +21,7 @@ import { ChartNoAxesCombined, KeyRound, Network, ServerCog } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getLogoMark } from '@/lib/constants'
 
 type AuthLayoutProps = {
   children: React.ReactNode
@@ -42,7 +43,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
               {loading ? (
                 <Skeleton className='size-8 rounded-md' />
               ) : (
-                <img src={logo} alt='' className='size-8 object-cover' />
+                <img src={getLogoMark(logo)} alt='' className='size-8 object-cover' />
               )}
               <span>{loading ? 'SynthAPI' : systemName}</span>
             </div>
@@ -57,7 +58,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
                 {loading ? (
                   <ServerCog />
                 ) : (
-                  <img src={logo} alt='' className='size-full object-cover' />
+                  <img src={getLogoMark(logo)} alt='' className='size-full object-cover' />
                 )}
               </span>
               <span data-node='server'>
@@ -80,7 +81,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
                   <Skeleton className='absolute inset-0 rounded-md' />
                 ) : (
                   <img
-                    src={logo}
+                    src={getLogoMark(logo)}
                     alt={t('Logo')}
                     className='size-8 rounded-md object-cover'
                   />

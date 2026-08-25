@@ -23,6 +23,15 @@ For commercial licensing, please contact support@quantumnous.com
 // System Configuration Defaults
 export const DEFAULT_SYSTEM_NAME = 'New API'
 export const DEFAULT_LOGO = '/logo.png'
+export const DEFAULT_LOGO_MARK = '/logo-mark.png'
+
+export function getLogoMark(logo: string): string {
+  const [path, query] = logo.split('?')
+  if (path === DEFAULT_LOGO) {
+    return query ? `${DEFAULT_LOGO_MARK}?${query}` : DEFAULT_LOGO_MARK
+  }
+  return logo
+}
 
 // LocalStorage Keys
 export const STORAGE_KEYS = {

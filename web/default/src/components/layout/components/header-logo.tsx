@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { cn } from '@/lib/utils'
+import { getLogoMark } from '@/lib/constants'
 
 interface HeaderLogoProps {
   src: string
@@ -39,7 +40,7 @@ export function HeaderLogo({
 }: HeaderLogoProps) {
   return (
     <img
-      src={src}
+      src={getLogoMark(src)}
       alt={alt}
       className={cn(
         'h-6 w-6 rounded-full transition-opacity duration-200',
