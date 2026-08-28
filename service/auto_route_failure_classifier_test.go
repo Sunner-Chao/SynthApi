@@ -29,6 +29,15 @@ func TestShouldMarkAutoRouteFailureForHigherPricedAutoGroup(t *testing.T) {
 	require.True(t, ShouldMarkAutoRouteFailure(err))
 }
 
+func TestShouldMarkAutoRouteFailureForWrapped429(t *testing.T) {
+	err := types.NewErrorWithStatusCode(
+		errors.New("exceeded retry limit, last status: 429 Too Many Requests"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusTooManyRequests,
+	)
+	require.True(t, ShouldMarkAutoRouteFailure(err))
+}
+
 func TestShouldMarkAutoRouteFailureDoesNotMarkLocalOrOrdinaryErrors(t *testing.T) {
 	for _, test := range []struct {
 		name string

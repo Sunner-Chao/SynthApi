@@ -26,6 +26,14 @@ func ShouldMarkAutoRouteFailure(err *types.NewAPIError) bool {
 	if err == nil {
 		return false
 	}
+	// An upstream 429 is route-scoped even when it was wrapped by a relay
+	// adaptor as a generic bad-response error (for example, bodies containing
+	// "exceeded retry limit, last status: 429"). Do not require a channel error
+	// code here: Auto must be able to move to its next group for every upstream
+	// rate-limit response.
+	if err.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
 	if err.GetErrorCode() == types.ErrorCodeConcurrencyLimit {
 		return true
 	}
@@ -40,6 +48,9 @@ func ShouldMarkAutoRouteFailure(err *types.NewAPIError) bool {
 		return true
 	}
 	for _, marker := range []string{
+		"exceeded retry limit",
+		"last status: 429",
+		"too many requests",
 		"not supported by any configured account in this group",
 		"no available channel",
 		"no available account",

@@ -56,3 +56,21 @@ func TestRelayAttemptBudgetCannotBeResetOrMadeUnbounded(t *testing.T) {
 	budget = newRelayAttemptBudget(-1)
 	require.Equal(t, 1, budget.max)
 }
+
+func TestAutoRouteFailoverRecognizesWrapped429(t *testing.T) {
+	err := types.NewErrorWithStatusCode(
+		errors.New("exceeded retry limit, last status: 429 Too Many Requests"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusTooManyRequests,
+	)
+	require.True(t, shouldAutoRouteFailover(err))
+}
+
+func TestAutoRouteFailoverKeepsDeterministicErrorsLocal(t *testing.T) {
+	err := types.NewErrorWithStatusCode(
+		errors.New("invalid request: model is required"),
+		types.ErrorCodeInvalidRequest,
+		http.StatusBadRequest,
+	)
+	require.False(t, shouldAutoRouteFailover(err))
+}

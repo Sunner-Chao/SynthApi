@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -214,9 +215,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if primaryGroup == "" {
 		primaryGroup = relayInfo.UsingGroup
 	}
-	// The downstream client owns retries. Keep this relay to one upstream
-	// attempt so a failed request is never submitted twice by the gateway.
-	attemptBudget := newRelayAttemptBudget(0)
+	// Ordinary groups keep the single-attempt behavior. Auto is different: a
+	// route-scoped upstream failure (including a 429) cools the current group
+	// and immediately gets one bounded attempt in the next configured group.
+	attemptBudget := newRelayAttemptBudgetForRequest(c, relayInfo, primaryGroup)
 	retryParam := &service.RetryParam{
 		Ctx:        c,
 		TokenGroup: primaryGroup,
@@ -233,15 +235,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
-			if primaryGroup == "auto" && service.ShouldMarkAutoRouteFailure(channelErr) {
-				failedGroup := relayInfo.UsingGroup
-				if failedGroup == "" {
-					failedGroup = common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-				}
-				if failedGroup != "" && failedGroup != "auto" {
-					service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, failedGroup)
-					service.ClearChannelAffinityCacheForContext(c)
-				}
+			if primaryGroup == "auto" && shouldAutoRouteFailover(channelErr) &&
+				continueAutoRouteAfterFailure(c, relayInfo, retryParam, &attemptBudget, false) {
+				continue
 			}
 			if channelErr.GetErrorCode() == types.ErrorCodeConcurrencyLimit {
 				c.Header("Retry-After", "1")
@@ -269,6 +265,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			logger.LogWarn(c, fmt.Sprintf("channel #%d concurrency limit reached: limited_by=%s active=%d/%d user_active=%d/%d",
 				channel.Id, capacity.LimitedBy, capacity.Active, capacity.TotalLimit, capacity.UserActive, capacity.PerUserLimit))
 			newAPIError = channelCapacityError(channel.Id, capacity)
+			if primaryGroup == "auto" && shouldAutoRouteFailover(newAPIError) &&
+				continueAutoRouteAfterFailure(c, relayInfo, retryParam, &attemptBudget, false) {
+				continue
+			}
 			if _, specific := c.Get("specific_channel_id"); specific {
 				c.Header("Retry-After", "1")
 				break
@@ -285,6 +285,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			stageTrace.addSince(&stageTrace.refreshBilling, stageStart)
 			newAPIError = billingErr
 			markAutoRouteBillingFailure(c, relayInfo, billingErr)
+			if primaryGroup == "auto" && shouldAutoRouteFailover(billingErr) &&
+				continueAutoRouteAfterFailure(c, relayInfo, retryParam, &attemptBudget, false) {
+				endActiveUse()
+				continue
+			}
 			endActiveUse()
 			break
 		}
@@ -350,11 +355,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		processChannelError(c, relayInfo, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-		if primaryGroup == "auto" {
-			service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, relayInfo.UsingGroup)
-			service.ClearChannelAffinityCacheForContext(c)
-			logger.LogInfo(c, fmt.Sprintf("Auto upstream failure recorded; server retry disabled, next client retry will rotate away from group=%s channel=%d", relayInfo.UsingGroup, channel.Id))
-		} else {
+		if primaryGroup == "auto" && shouldAutoRouteFailover(newAPIError) &&
+			continueAutoRouteAfterFailure(c, relayInfo, retryParam, &attemptBudget, true) {
+			continue
+		} else if primaryGroup != "auto" {
 			logger.LogInfo(c, "upstream error returned to client immediately; server retry disabled")
 		}
 		break
@@ -745,6 +749,17 @@ func RelayTaskFetch(c *gin.Context) {
 }
 
 func FetchImageGenerationTask(c *gin.Context) {
+	fetchImageGenerationTask(c, false)
+}
+
+// FetchAPIMartImageTask exposes the task path documented by APIMart while
+// serving the locally persisted task. This keeps polling authenticated and
+// preserves task history even after the upstream image URL expires.
+func FetchAPIMartImageTask(c *gin.Context) {
+	fetchImageGenerationTask(c, true)
+}
+
+func fetchImageGenerationTask(c *gin.Context, apimartCompatible bool) {
 	taskID := c.Param("task_id")
 	userID := c.GetInt("id")
 	if taskID == "" {
@@ -777,6 +792,11 @@ func FetchImageGenerationTask(c *gin.Context) {
 				"code":    "task_not_found",
 			},
 		})
+		return
+	}
+
+	if apimartCompatible {
+		c.JSON(http.StatusOK, buildAPIMartImageTaskResponse(task))
 		return
 	}
 
@@ -826,6 +846,115 @@ func FetchImageGenerationTask(c *gin.Context) {
 	}
 }
 
+func buildAPIMartImageTaskResponse(task *model.Task) gin.H {
+	data := storedAPIMartImageTaskData(task.Data)
+	data["id"] = task.TaskID
+	data["task_id"] = task.TaskID
+	data["status"] = imageTaskStatus(task.Status)
+	data["progress"] = imageTaskProgress(task.Progress, task.Status)
+	if task.SubmitTime > 0 {
+		data["created"] = task.SubmitTime
+	} else if task.CreatedAt > 0 {
+		data["created"] = task.CreatedAt
+	}
+
+	switch task.Status {
+	case model.TaskStatusSuccess:
+		if task.FinishTime > 0 {
+			data["completed"] = task.FinishTime
+		}
+		if !hasAPIMartImageResult(data) {
+			if imageURL := strings.TrimSpace(task.GetResultURL()); imageURL != "" {
+				data["result"] = map[string]any{
+					"images": []map[string]any{{"url": []string{imageURL}}},
+				}
+			}
+		}
+	case model.TaskStatusFailure:
+		message := strings.TrimSpace(task.FailReason)
+		if message == "" {
+			message = "image generation failed"
+		}
+		data["error"] = gin.H{
+			"message": message,
+			"type":    "image_generation_error",
+			"code":    "task_failed",
+		}
+	}
+
+	return gin.H{
+		"code": 200,
+		"data": data,
+	}
+}
+
+func storedAPIMartImageTaskData(raw []byte) map[string]any {
+	result := make(map[string]any)
+	if len(raw) == 0 {
+		return result
+	}
+	var payload map[string]any
+	if err := common.Unmarshal(raw, &payload); err != nil {
+		return result
+	}
+	if data, ok := payload["data"].(map[string]any); ok {
+		for key, value := range data {
+			result[key] = value
+		}
+		return result
+	}
+	if data, ok := payload["data"].([]any); ok && len(data) > 0 {
+		if first, ok := data[0].(map[string]any); ok {
+			for key, value := range first {
+				result[key] = value
+			}
+			return result
+		}
+	}
+	for key, value := range payload {
+		switch key {
+		case "code", "message":
+			continue
+		default:
+			result[key] = value
+		}
+	}
+	return result
+}
+
+func hasAPIMartImageResult(data map[string]any) bool {
+	result, ok := data["result"].(map[string]any)
+	if !ok {
+		return false
+	}
+	images, ok := result["images"].([]any)
+	return ok && len(images) > 0
+}
+
+func imageTaskStatus(status model.TaskStatus) string {
+	switch status {
+	case model.TaskStatusSuccess:
+		return "completed"
+	case model.TaskStatusFailure:
+		return "failed"
+	case model.TaskStatusInProgress:
+		return "processing"
+	default:
+		return "submitted"
+	}
+}
+
+func imageTaskProgress(progress string, status model.TaskStatus) int {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(progress), "%")
+	if value, err := strconv.Atoi(trimmed); err == nil && value >= 0 && value <= 100 {
+		return value
+	}
+	if status == model.TaskStatusSuccess || status == model.TaskStatusFailure {
+		return 100
+	}
+	return 0
+}
+
 func RelayTask(c *gin.Context) {
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
@@ -850,8 +979,9 @@ func RelayTask(c *gin.Context) {
 		}
 	}()
 
-	// Channel discovery may inspect alternatives, but the request gets exactly one upstream attempt.
-	attemptBudget := newRelayAttemptBudget(0)
+	// Auto task submissions may fail over once per configured group. Ordinary
+	// groups and remix requests locked to an origin channel remain single-shot.
+	attemptBudget := newRelayAttemptBudgetForRequest(c, relayInfo, relayInfo.TokenGroup)
 	retryParam := &service.RetryParam{
 		Ctx:        c,
 		TokenGroup: relayInfo.TokenGroup,
@@ -875,15 +1005,9 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				if relayInfo.TokenGroup == "auto" && service.ShouldMarkAutoRouteFailure(channelErr) {
-					failedGroup := relayInfo.UsingGroup
-					if failedGroup == "" {
-						failedGroup = common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-					}
-					if failedGroup != "" && failedGroup != "auto" {
-						service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, failedGroup)
-						service.ClearChannelAffinityCacheForContext(c)
-					}
+				if relayInfo.TokenGroup == "auto" && relayInfo.LockedChannel == nil && shouldAutoRouteFailover(channelErr) &&
+					continueAutoRouteAfterFailure(c, relayInfo, retryParam, &attemptBudget, false) {
+					continue
 				}
 				statusCode := http.StatusInternalServerError
 				if channelErr.GetErrorCode() == types.ErrorCodeConcurrencyLimit {
@@ -902,6 +1026,10 @@ func RelayTask(c *gin.Context) {
 		recordChannelConcurrencySnapshot(c, capacity)
 		if !capacity.Allowed {
 			service.MarkChannelCapacityExcluded(c, channel.Id)
+			if relayInfo.TokenGroup == "auto" && relayInfo.LockedChannel == nil &&
+				continueAutoRouteAfterFailure(c, relayInfo, retryParam, &attemptBudget, false) {
+				continue
+			}
 			if _, locked := relayInfo.LockedChannel.(*model.Channel); locked {
 				c.Header("Retry-After", "1")
 				taskErr = service.TaskErrorWrapperLocal(channelCapacityError(channel.Id, capacity), "concurrency_limit", http.StatusTooManyRequests)
@@ -920,6 +1048,11 @@ func RelayTask(c *gin.Context) {
 			} else {
 				taskErr = service.TaskErrorWrapperLocal(bodyErr, "read_request_body_failed", http.StatusBadRequest)
 			}
+			endActiveUse()
+			break
+		}
+		if _, seekErr := bodyStorage.Seek(0, io.SeekStart); seekErr != nil {
+			taskErr = service.TaskErrorWrapperLocal(seekErr, "read_request_body_failed", http.StatusBadRequest)
 			endActiveUse()
 			break
 		}
@@ -943,11 +1076,10 @@ func RelayTask(c *gin.Context) {
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 		}
-		if relayInfo.TokenGroup == "auto" {
-			service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, relayInfo.UsingGroup)
-			service.ClearChannelAffinityCacheForContext(c)
-			logger.LogInfo(c, fmt.Sprintf("Auto task failure recorded; server retry disabled, next client retry will rotate away from group=%s channel=%d", relayInfo.UsingGroup, channel.Id))
-		} else {
+		if relayInfo.TokenGroup == "auto" && relayInfo.LockedChannel == nil && shouldAutoTaskFailover(taskErr) &&
+			continueAutoRouteAfterFailure(c, relayInfo, retryParam, &attemptBudget, true) {
+			continue
+		} else if relayInfo.TokenGroup != "auto" {
 			logger.LogInfo(c, "upstream task error returned to client immediately; server retry disabled")
 		}
 		break
@@ -1000,6 +1132,94 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	c.JSON(taskErr.StatusCode, taskErr)
 }
 
+// shouldAutoRouteFailover keeps route failover focused on upstream failures.
+// Local validation and billing errors must still be returned immediately;
+// transport failures, 429s, and recognized provider route errors can move on.
+func shouldAutoRouteFailover(err *types.NewAPIError) bool {
+	if err == nil || types.IsDeterministicRequestError(err) {
+		return false
+	}
+	if service.ShouldMarkAutoRouteFailure(err) {
+		return true
+	}
+	if types.IsSkipRetryError(err) {
+		return false
+	}
+	if err.StatusCode >= http.StatusInternalServerError {
+		return true
+	}
+	return err.GetErrorCode() == types.ErrorCodeDoRequestFailed ||
+		err.GetErrorCode() == types.ErrorCodeBadResponse ||
+		err.GetErrorCode() == types.ErrorCodeBadResponseBody ||
+		err.GetErrorCode() == types.ErrorCodeEmptyResponse
+}
+
+func shouldAutoTaskFailover(taskErr *dto.TaskError) bool {
+	if taskErr == nil || taskErr.LocalError {
+		return false
+	}
+	if taskErr.StatusCode == http.StatusTooManyRequests || taskErr.StatusCode >= http.StatusInternalServerError {
+		return true
+	}
+	message := strings.ToLower(strings.TrimSpace(taskErr.Message))
+	if taskErr.Error != nil {
+		message += " " + strings.ToLower(taskErr.Error.Error())
+	}
+	for _, marker := range []string{
+		"exceeded retry limit",
+		"too many requests",
+		"not supported",
+		"no available",
+		"insufficient account balance",
+		"upstream",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// continueAutoRouteAfterFailure records a failed concrete group and prepares
+// the next loop iteration. It is deliberately bounded by the request budget,
+// resets to priority 0, and refuses to retry after a streaming response has
+// already committed bytes to the client.
+func continueAutoRouteAfterFailure(c *gin.Context, relayInfo *relaycommon.RelayInfo, retryParam *service.RetryParam, budget *relayAttemptBudget, attemptAlreadyCounted bool) bool {
+	if c == nil || relayInfo == nil || retryParam == nil || budget == nil || relayInfo.TokenGroup != "auto" {
+		return false
+	}
+	failedGroup := strings.TrimSpace(relayInfo.UsingGroup)
+	if failedGroup == "" {
+		failedGroup = strings.TrimSpace(common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+	}
+	if failedGroup == "" || failedGroup == "auto" || !service.MarkAutoRouteFailure(c, relayInfo.OriginModelName, failedGroup) {
+		return false
+	}
+	service.ClearChannelAffinityCacheForContext(c)
+
+	if !attemptAlreadyCounted {
+		// A selection/capacity failure did not reach an upstream handler, but it
+		// still consumes one route attempt so a broken route cannot spin.
+		if !budget.acquire() {
+			return false
+		}
+	}
+	if budget.remainingRetries() <= 0 || c.Request == nil || c.Request.Context().Err() != nil ||
+		(c.Writer != nil && c.Writer.Written()) {
+		return false
+	}
+
+	// The failed group is filtered from the next Auto selection. Restarting the
+	// index ensures a newly recovered/high-priority group is considered first
+	// and avoids stale indexes after cooling groups are removed.
+	common.SetContextKey(c, constant.ContextKeyAutoGroupIndex, 0)
+	common.SetContextKey(c, constant.ContextKeyAutoGroupRetryIndex, 0)
+	retryParam.SetRetry(0)
+	retryParam.ResetRetryNextTry()
+	logger.LogInfo(c, fmt.Sprintf("Auto route failover: group=%s, remaining_attempts=%d", failedGroup, budget.remainingRetries()))
+	return true
+}
+
 const maxRelayRetryTimes = 10
 
 type relayAttemptBudget struct {
@@ -1015,6 +1235,21 @@ func newRelayAttemptBudget(retryTimes int) relayAttemptBudget {
 		retryTimes = maxRelayRetryTimes
 	}
 	return relayAttemptBudget{max: retryTimes + 1}
+}
+
+func newRelayAttemptBudgetForRequest(c *gin.Context, relayInfo *relaycommon.RelayInfo, group string) relayAttemptBudget {
+	if relayInfo == nil || group != "auto" {
+		return newRelayAttemptBudget(0)
+	}
+	groups := service.GetRequestAutoGroups(c, common.GetContextKeyString(c, constant.ContextKeyUserGroup))
+	attempts := len(groups)
+	if attempts <= 1 {
+		return newRelayAttemptBudget(0)
+	}
+	if attempts > maxRelayRetryTimes+1 {
+		attempts = maxRelayRetryTimes + 1
+	}
+	return newRelayAttemptBudget(attempts - 1)
 }
 
 func (b *relayAttemptBudget) acquire() bool {
