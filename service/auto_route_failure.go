@@ -59,6 +59,10 @@ func ShouldMarkAutoRouteFailure(err *types.NewAPIError) bool {
 		"all channels at capacity",
 		"selected model is at capacity",
 		"insufficient account balance",
+		"insufficient balance",
+		"balance is insufficient",
+		"insufficient funds",
+		"余额不足",
 	} {
 		if strings.Contains(message, marker) {
 			return true

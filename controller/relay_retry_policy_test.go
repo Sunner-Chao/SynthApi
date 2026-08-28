@@ -66,6 +66,15 @@ func TestAutoRouteFailoverRecognizesWrapped429(t *testing.T) {
 	require.True(t, shouldAutoRouteFailover(err))
 }
 
+func TestAutoRouteFailoverRecognizesUpstreamInsufficientBalance(t *testing.T) {
+	err := types.NewErrorWithStatusCode(
+		errors.New("unexpected status 403 Forbidden: insufficient balance"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusForbidden,
+	)
+	require.True(t, shouldAutoRouteFailover(err))
+}
+
 func TestAutoRouteFailoverKeepsDeterministicErrorsLocal(t *testing.T) {
 	err := types.NewErrorWithStatusCode(
 		errors.New("invalid request: model is required"),

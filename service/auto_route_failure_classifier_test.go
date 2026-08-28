@@ -14,10 +14,22 @@ func TestShouldMarkAutoRouteFailureForGroupScopedErrors(t *testing.T) {
 		`获取分组 auto 下模型 gpt-5.6-sol 的可用渠道失败（retry）: Model "gpt-5.6-sol" is not supported by any configured account in this group`,
 		"no available channel for this model",
 		"Insufficient account balance",
+		"insufficient balance",
+		"balance is insufficient",
+		"insufficient funds",
 	} {
 		err := types.NewErrorWithStatusCode(errors.New(message), types.ErrorCodeGetChannelFailed, http.StatusNotFound)
 		require.True(t, ShouldMarkAutoRouteFailure(err), message)
 	}
+}
+
+func TestShouldMarkAutoRouteFailureForUpstreamInsufficientBalance(t *testing.T) {
+	err := types.NewErrorWithStatusCode(
+		errors.New("unexpected status 403 Forbidden: insufficient balance"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusForbidden,
+	)
+	require.True(t, ShouldMarkAutoRouteFailure(err))
 }
 
 func TestShouldMarkAutoRouteFailureForHigherPricedAutoGroup(t *testing.T) {
