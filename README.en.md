@@ -1,5 +1,7 @@
 <div align="center">
 
+> Project fact note (2026-08): this is a translation or version-specific README for the same codebase. Verify features, versions and commands against the current branch; unverified capabilities are not promises. Complete security, compatibility and compliance review before production use.
+
 ![new-api](/web/default/public/logo.png)
 
 # New API
