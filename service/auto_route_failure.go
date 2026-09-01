@@ -51,7 +51,9 @@ func ShouldMarkAutoRouteFailure(err *types.NewAPIError) bool {
 		"exceeded retry limit",
 		"last status: 429",
 		"too many requests",
+		"unknown provider for model",
 		"not supported by any configured account in this group",
+		"not supported by any currently configured upstream account",
 		"no available channel",
 		"no available account",
 		"no available key",
@@ -63,6 +65,10 @@ func ShouldMarkAutoRouteFailure(err *types.NewAPIError) bool {
 		"balance is insufficient",
 		"insufficient funds",
 		"余额不足",
+		"encrypted function output content could not be decrypted or decoded",
+		"transport error",
+		"network error",
+		"error decoding response body",
 	} {
 		if strings.Contains(message, marker) {
 			return true

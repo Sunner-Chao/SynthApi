@@ -12,11 +12,15 @@ import (
 func TestShouldMarkAutoRouteFailureForGroupScopedErrors(t *testing.T) {
 	for _, message := range []string{
 		`获取分组 auto 下模型 gpt-5.6-sol 的可用渠道失败（retry）: Model "gpt-5.6-sol" is not supported by any configured account in this group`,
+		`unknown provider for model gpt-5.6-sol`,
+		`The requested model is not supported by any currently configured upstream account.`,
 		"no available channel for this model",
 		"Insufficient account balance",
 		"insufficient balance",
 		"balance is insufficient",
 		"insufficient funds",
+		"Encrypted function output content could not be decrypted or decoded",
+		"stream disconnected before completion: Transport error: network error: error decoding response body",
 	} {
 		err := types.NewErrorWithStatusCode(errors.New(message), types.ErrorCodeGetChannelFailed, http.StatusNotFound)
 		require.True(t, ShouldMarkAutoRouteFailure(err), message)

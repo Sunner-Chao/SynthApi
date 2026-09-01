@@ -19,6 +19,10 @@ var autoRouteStreamFailureMarkers = []string{
 	"stream disconnected before completion",
 	"upstream request failed",
 	"error sending request for url",
+	"encrypted function output content could not be decrypted or decoded",
+	"transport error",
+	"network error",
+	"error decoding response body",
 }
 
 func newAutoRouteFailureFromText(message string, statusCode int) *types.NewAPIError {
@@ -35,7 +39,12 @@ func newAutoRouteFailureFromText(message string, statusCode int) *types.NewAPIEr
 			return types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponse, statusCode)
 		}
 	}
-	for _, marker := range []string{unsupportedModelInGroupErrorMarker, insufficientAccountBalanceErrorMarker} {
+	for _, marker := range []string{
+		unsupportedModelInGroupErrorMarker,
+		"not supported by any currently configured upstream account",
+		"unknown provider for model",
+		insufficientAccountBalanceErrorMarker,
+	} {
 		if strings.Contains(lowerMessage, marker) {
 			if statusCode < http.StatusBadRequest || statusCode > 599 {
 				statusCode = http.StatusBadGateway

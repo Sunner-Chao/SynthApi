@@ -1168,9 +1168,15 @@ func shouldAutoTaskFailover(taskErr *dto.TaskError) bool {
 	for _, marker := range []string{
 		"exceeded retry limit",
 		"too many requests",
+		"unknown provider for model",
 		"not supported",
+		"currently configured upstream account",
 		"no available",
 		"insufficient account balance",
+		"encrypted function output content could not be decrypted or decoded",
+		"transport error",
+		"network error",
+		"error decoding response body",
 		"upstream",
 	} {
 		if strings.Contains(message, marker) {
@@ -1188,6 +1194,10 @@ func continueAutoRouteAfterFailure(c *gin.Context, relayInfo *relaycommon.RelayI
 	if c == nil || relayInfo == nil || retryParam == nil || budget == nil || relayInfo.TokenGroup != "auto" {
 		return false
 	}
+	// A channel may be attached to several Auto groups. Exclude the failed
+	// channel for the remainder of this request so changing group cannot select
+	// the same broken upstream again under another group name.
+	service.MarkChannelSelectionExcluded(c, c.GetInt("channel_id"))
 	failedGroup := strings.TrimSpace(relayInfo.UsingGroup)
 	if failedGroup == "" {
 		failedGroup = strings.TrimSpace(common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
