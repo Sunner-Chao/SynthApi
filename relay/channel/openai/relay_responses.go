@@ -93,34 +93,63 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var streamErr *types.NewAPIError
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-
-		// 检查当前数据是否包含 completed 状态和 usage 信息
-		var streamResponse dto.ResponsesStreamResponse
-		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
-			sr.Error(err)
+		// Decode the envelope first.  Responses is an extensible event stream and
+		// providers may add fields (or use a non-string delta) that are not yet in
+		// our DTO.  A valid event must still be forwarded byte-for-byte instead of
+		// being turned into a scanner/handler failure merely because its optional
+		// shape is newer than this gateway.
+		var envelope struct {
+			Type  string `json:"type"`
+			Error any    `json:"error,omitempty"`
+		}
+		if err := common.UnmarshalJsonStr(data, &envelope); err != nil {
+			sr.Stop(err)
 			return
 		}
-		if capacityErr := newRecognizedAutoRouteError(streamResponse.Error, http.StatusServiceUnavailable); capacityErr != nil {
+		eventType := strings.TrimSpace(envelope.Type)
+
+		// Decode the known fields for billing/tool accounting when possible.  If
+		// a provider adds a field with an incompatible type, retain the raw event
+		// and continue; completion detection below is based on the envelope type.
+		var streamResponse dto.ResponsesStreamResponse
+		decoded := common.UnmarshalJsonStr(data, &streamResponse) == nil
+		if !decoded {
+			streamResponse.Type = eventType
+		}
+		if capacityErr := newRecognizedAutoRouteError(envelope.Error, http.StatusServiceUnavailable); capacityErr != nil {
 			streamErr = capacityErr
 			sr.Stop(streamErr)
 			return
 		}
-		if streamResponse.Response != nil {
+		if decoded && streamResponse.Response != nil {
 			if capacityErr := newRecognizedAutoRouteError(streamResponse.Response.Error, http.StatusServiceUnavailable); capacityErr != nil {
 				streamErr = capacityErr
 				sr.Stop(streamErr)
 				return
+			}
+		} else if !decoded {
+			// Preserve Auto failover for an error event whose optional response
+			// fields have a newer shape than the DTO.  Decode only a generic map;
+			// this path never changes the bytes sent to the client.
+			var generic map[string]any
+			if err := common.UnmarshalJsonStr(data, &generic); err == nil {
+				if response, ok := generic["response"].(map[string]any); ok {
+					if capacityErr := newRecognizedAutoRouteError(response["error"], http.StatusServiceUnavailable); capacityErr != nil {
+						streamErr = capacityErr
+						sr.Stop(streamErr)
+						return
+					}
+				}
 			}
 		}
 		if err := sendResponsesStreamData(c, streamResponse, data); err != nil {
 			sr.Stop(err)
 			return
 		}
-		switch streamResponse.Type {
+		switch eventType {
 		case "response.completed":
 			streamCompleted = true
-			if streamResponse.Response != nil {
+			if decoded && streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
 						usage.PromptTokens = streamResponse.Response.Usage.InputTokens
@@ -170,6 +199,12 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, streamErr
 	}
 	if !streamCompleted {
+		if info != nil && info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone {
+			return nil, newAutoRouteFailureFromText(
+				"stream disconnected before completion: upstream sent [DONE] before response.completed",
+				http.StatusBadGateway,
+			)
+		}
 		if streamFailure := newUpstreamStreamFailure(info); streamFailure != nil {
 			return nil, streamFailure
 		}

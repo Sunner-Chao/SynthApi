@@ -99,8 +99,12 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if isCompact {
 		return request, nil
 	}
-	// codex: store must be false
-	request.Store = json.RawMessage("false")
+	// Preserve the client's response-storage choice.  In particular, forcing
+	// store=false makes a subsequent request that references
+	// previous_response_id impossible because the upstream has no stored
+	// response to resolve.  When the field is omitted we leave it omitted so
+	// the Codex backend can apply its own default.  An explicit false
+	// remains a privacy-preserving opt-out and is not silently overridden.
 	// rm max_output_tokens
 	request.MaxOutputTokens = nil
 	request.Temperature = nil

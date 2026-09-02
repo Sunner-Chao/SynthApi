@@ -257,17 +257,24 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			}
 
 			ticker.Reset(streamingTimeout)
-			data := scanner.Text()
-			logger.LogDebug(c, "stream scanner data: %s", data)
+			rawLine := scanner.Text()
+			logger.LogDebug(c, "stream scanner data: %s", rawLine)
 
-			if len(data) < 6 {
+			// Accept both the standard `data: [DONE]` frame and providers that
+			// emit a bare `[DONE]` line.  The previous implementation sliced every
+			// accepted line at offset five, turning a bare marker into `]` and
+			// forwarding it as a fake data event.
+			data := ""
+			switch {
+			case strings.HasPrefix(rawLine, "data:"):
+				data = strings.TrimSpace(rawLine[len("data:"):])
+			case strings.TrimSpace(rawLine) == "[DONE]":
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+				logger.LogDebug(c, "received bare [DONE], stopping scanner")
+				return
+			default:
 				continue
 			}
-			if data[:5] != "data:" && data[:6] != "[DONE]" {
-				continue
-			}
-			data = data[5:]
-			data = strings.TrimSpace(data)
 			if data == "" {
 				continue
 			}
