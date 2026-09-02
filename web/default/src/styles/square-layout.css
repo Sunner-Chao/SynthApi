@@ -1,0 +1,326 @@
+/**
+ * Square UI Layout System
+ *
+ * 基于 https://github.lenguapedia.com/ln-dev7/square-ui 的布局模式
+ * 重构 SynthAPI 的页面布局，使其区别于官方 NewAPI 默认布局
+ *
+ * 核心改进：
+ * 1. 网格优先布局系统（grid-first, not flex-only）
+ * 2. 容器边框包裹（bordered containers）
+ * 3. 固定宽度侧边栏布局（sidebar layout with fixed width）
+ * 4. 统一的间距和圆角系统（consistent spacing & radius）
+ * 5. 响应式卡片网格（responsive card grids）
+ */
+
+/* ========================================
+   Core Layout Containers
+   ======================================== */
+
+/* 主容器边框样式 - Square UI 特征 */
+@utility dashboard-container-bordered {
+  @apply bg-card rounded-2xl border shadow-xs;
+}
+
+/* 内容区域统一内边距 */
+@utility dashboard-section-padded {
+  @apply p-4 sm:p-5;
+}
+
+/* 页面级间距 */
+@utility space-y-section {
+  @apply space-y-4;
+}
+
+/* ========================================
+   Grid Layout Systems
+   ======================================== */
+
+/* 侧边栏网格布局 - 主内容 + 固定宽度侧边栏 */
+@utility dashboard-grid-sidebar {
+  @apply grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem];
+}
+
+/* 2:1 网格布局 - 适用于主副内容分离 */
+@utility grid-layout-2-1 {
+  @apply grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem];
+}
+
+/* 三栏网格 - 适用于卡片展示 */
+@utility dashboard-grid-thirds {
+  @apply grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3;
+}
+
+/* 四栏统计卡片网格 - Square UI 经典布局 */
+@utility stats-grid-4 {
+  @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4;
+}
+
+/* 响应式卡片网格 - 自动适配 */
+@utility responsive-card-grid {
+  @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-3;
+}
+
+/* ========================================
+   Welcome Section Styles
+   ======================================== */
+
+@utility welcome-section {
+  @apply flex flex-wrap items-center justify-between gap-3;
+}
+
+@utility welcome-section-header {
+  @apply flex max-w-2xl flex-col gap-1;
+}
+
+@utility welcome-section-title {
+  @apply text-xl font-semibold tracking-tight sm:text-2xl;
+}
+
+@utility welcome-section-subtitle {
+  @apply text-muted-foreground text-sm leading-relaxed;
+}
+
+@utility welcome-section-actions {
+  @apply flex items-center gap-2;
+}
+
+/* ========================================
+   Panel & Card Styles
+   ======================================== */
+
+/* 面板头部标题 */
+@utility panel-header-title {
+  @apply text-muted-foreground;
+}
+
+/* 信息卡片容器 */
+@utility info-card-container {
+  @apply bg-card rounded-xl border p-4 shadow-xs;
+}
+
+/* 统计卡片 */
+@utility stat-card {
+  @apply bg-card flex flex-col gap-2 rounded-xl border p-4 shadow-xs;
+}
+
+@utility stat-card-label {
+  @apply text-muted-foreground text-xs font-medium uppercase tracking-wider;
+}
+
+@utility stat-card-value {
+  @apply text-2xl font-bold tracking-tight;
+}
+
+@utility stat-card-change {
+  @apply text-xs font-medium;
+}
+
+/* ========================================
+   Table Container Styles
+   ======================================== */
+
+/* 表格容器 - 添加边框包裹 */
+@utility table-container-bordered {
+  @apply dashboard-container-bordered overflow-hidden;
+}
+
+/* 表格内容区域 */
+@utility table-content-wrapper {
+  @apply overflow-x-auto;
+}
+
+/* ========================================
+   Form Layout Styles
+   ======================================== */
+
+/* 表单容器 */
+@utility form-container {
+  @apply dashboard-container-bordered dashboard-section-padded max-w-3xl;
+}
+
+/* 表单网格布局 */
+@utility form-grid-2 {
+  @apply grid gap-4 sm:grid-cols-2;
+}
+
+/* 表单字段组 */
+@utility form-field-group {
+  @apply space-y-4;
+}
+
+/* ========================================
+   Sidebar & Navigation
+   ======================================== */
+
+/* 固定宽度侧边栏 */
+@utility sidebar-fixed-width {
+  @apply w-full lg:w-80;
+}
+
+/* 侧边栏内容容器 */
+@utility sidebar-content {
+  @apply dashboard-container-bordered dashboard-section-padded space-y-4;
+}
+
+/* ========================================
+   Spacing Utilities
+   ======================================== */
+
+/* 内容间距变量 */
+:root {
+  --content-gap: 1rem; /* 16px */
+  --section-gap: 1.5rem; /* 24px */
+  --page-gap: 2rem; /* 32px */
+}
+
+/* 统一的内容间距 */
+@utility content-gap {
+  gap: var(--content-gap);
+}
+
+@utility section-gap {
+  gap: var(--section-gap);
+}
+
+@utility page-gap {
+  gap: var(--page-gap);
+}
+
+/* ========================================
+   Responsive Breakpoints
+   ======================================== */
+
+/* 小屏幕：单列布局 */
+@media (max-width: 640px) {
+  .dashboard-grid-sidebar,
+  .grid-layout-2-1,
+  .dashboard-grid-thirds {
+    @apply grid-cols-1;
+  }
+
+  .dashboard-section-padded {
+    @apply p-3;
+  }
+}
+
+/* 中屏幕：两列布局 */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .dashboard-grid-thirds {
+    @apply grid-cols-2;
+  }
+
+  .stats-grid-4 {
+    @apply grid-cols-2;
+  }
+}
+
+/* ========================================
+   Animation & Transitions
+   ======================================== */
+
+/* 平滑过渡 */
+@utility smooth-transition {
+  @apply transition-all duration-200 ease-out;
+}
+
+/* 悬停提升效果 */
+@utility hover-lift {
+  @apply smooth-transition hover:-translate-y-0.5 hover:shadow-md;
+}
+
+/* ========================================
+   Utility Classes
+   ======================================== */
+
+/* 截断文本 */
+@utility text-truncate-2 {
+  @apply line-clamp-2;
+}
+
+@utility text-truncate-3 {
+  @apply line-clamp-3;
+}
+
+/* 滚动容器 */
+.scroll-container {
+  @apply overflow-y-auto;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+.scroll-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-container::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+}
+
+.scroll-container::-webkit-scrollbar-thumb:hover {
+  @apply bg-border/80;
+}
+
+/* ========================================
+   Page-Specific Layouts
+   ======================================== */
+
+/* 仪表盘页面容器 */
+@utility dashboard-page {
+  @apply space-y-section;
+}
+
+/* 列表页面容器 */
+@utility list-page {
+  @apply space-y-section;
+}
+
+/* 详情页面布局 */
+@utility detail-page {
+  @apply dashboard-grid-sidebar;
+}
+
+/* 设置页面布局 */
+@utility settings-page {
+  @apply grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)];
+}
+
+/* ========================================
+   Header & Footer
+   ======================================== */
+
+/* 页面头部容器 */
+@utility page-header {
+  @apply dashboard-container-bordered dashboard-section-padded;
+}
+
+@utility page-header-title {
+  @apply text-2xl font-bold tracking-tight;
+}
+
+@utility page-header-description {
+  @apply text-muted-foreground mt-1 text-sm;
+}
+
+/* 页面操作栏 */
+@utility page-actions {
+  @apply flex flex-wrap items-center gap-2;
+}
+
+/* ========================================
+   Modal & Dialog Layouts
+   ======================================== */
+
+/* 对话框内容区域 */
+@utility dialog-content-grid {
+  @apply grid gap-4;
+}
+
+/* 对话框操作栏 */
+@utility dialog-actions {
+  @apply flex justify-end gap-2 pt-4;
+}

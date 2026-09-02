@@ -1004,30 +1004,30 @@ export function OverviewDashboard() {
   }
 
   return (
-    <div data-slot='dashboard-overview' className='flex flex-col gap-4'>
+    <div data-slot='dashboard-overview' className='dashboard-page'>
       {setupGuideExpanded ? (
-        <CardStaggerContainer className='grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>
-          <CardStaggerItem className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
-            <div className='relative h-full overflow-hidden p-4 sm:p-5'>
+        <CardStaggerContainer className='dashboard-grid-sidebar'>
+          <CardStaggerItem className='dashboard-container-bordered dashboard-section-padded'>
+            <div className='relative h-full overflow-hidden'>
               <SetupGuideBackdrop />
-              <div className='relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]'>
+              <div className='relative grid-layout-2-1'>
                 <div className='flex min-w-0 flex-col gap-5'>
-                  <div className='flex flex-wrap items-start justify-between gap-3'>
-                    <div className='flex max-w-2xl flex-col gap-1'>
+                  <div className='welcome-section'>
+                    <div className='welcome-section-header'>
                       <div className='text-muted-foreground flex items-center gap-2 text-xs font-medium tracking-wider uppercase'>
                         <ListChecks className='size-3.5' aria-hidden='true' />
                         {t('Get started')}
                       </div>
-                      <h3 className='text-xl font-semibold tracking-tight sm:text-2xl'>
+                      <h3 className='welcome-section-title'>
                         {t('Build on your API gateway in minutes')}
                       </h3>
-                      <p className='text-muted-foreground max-w-xl text-sm leading-relaxed'>
+                      <p className='welcome-section-subtitle max-w-xl'>
                         {t(
                           'A focused home for keys, balance, routing, and service health.'
                         )}
                       </p>
                     </div>
-                    <div className='flex flex-wrap items-center gap-2'>
+                    <div className='welcome-section-actions'>
                       <Button
                         variant='outline'
                         size='sm'
@@ -1043,7 +1043,8 @@ export function OverviewDashboard() {
                     </div>
                   </div>
 
-                  <ol className='bg-background/45 rounded-2xl border p-2 backdrop-blur'>
+                  <div className='dashboard-container-bordered bg-background/45 backdrop-blur'>
+                    <ol className='p-2'>
                     {startSteps.map((step, index) => (
                       <StartStepItem
                         key={step.title}
@@ -1054,6 +1055,7 @@ export function OverviewDashboard() {
                     ))}
                   </ol>
                 </div>
+                </div>
 
                 <RequestPreview
                   example={requestExample}
@@ -1063,37 +1065,35 @@ export function OverviewDashboard() {
             </div>
           </CardStaggerItem>
 
-          <CardStaggerItem className='bg-card h-full rounded-2xl border p-4 shadow-xs sm:p-5'>
-            <div className='flex h-full flex-col gap-4'>
-              <div className='flex flex-col gap-1'>
-                <div className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                  {t('Recommended actions')}
-                </div>
-                <h3 className='text-lg font-semibold tracking-tight'>
-                  {t('Keep the platform ready')}
-                </h3>
+          <CardStaggerItem className='sidebar-content'>
+            <div className='flex flex-col gap-1'>
+              <div className='panel-header-title text-xs font-medium tracking-wider uppercase'>
+                {t('Recommended actions')}
               </div>
-              <div className='grid gap-2'>
-                {visibleQuickActions.map((action) => (
-                  <QuickActionItem key={action.title} action={action} />
-                ))}
-              </div>
+              <h3 className='text-lg font-semibold tracking-tight'>
+                {t('Keep the platform ready')}
+              </h3>
+            </div>
+            <div className='responsive-card-grid grid gap-2'>
+              {visibleQuickActions.map((action) => (
+                <QuickActionItem key={action.title} action={action} />
+              ))}
             </div>
           </CardStaggerItem>
         </CardStaggerContainer>
       ) : (
         <CardStaggerContainer>
-          <CardStaggerItem className='bg-card overflow-hidden rounded-2xl border shadow-xs'>
-            <div className='relative overflow-hidden px-4 py-3 sm:px-5'>
+          <CardStaggerItem className='dashboard-container-bordered dashboard-section-padded'>
+            <div className='relative overflow-hidden'>
               <SetupGuideBackdrop compact />
-              <div className='relative flex flex-wrap items-center justify-between gap-3'>
+              <div className='relative welcome-section'>
                 <div className='flex min-w-0 items-center gap-3'>
                   <span className='bg-background/70 flex size-9 shrink-0 items-center justify-center rounded-xl border shadow-xs'>
                     <Check className='text-success size-4' aria-hidden='true' />
                   </span>
-                  <div className='min-w-0'>
+                  <div className='welcome-section-header min-w-0'>
                     <div className='flex items-center gap-2'>
-                      <h3 className='truncate text-sm font-semibold'>
+                      <h3 className='welcome-section-title truncate text-sm font-semibold'>
                         {setupComplete
                           ? t('Setup guide complete')
                           : t('Setup guide')}
@@ -1105,7 +1105,7 @@ export function OverviewDashboard() {
                         })}
                       </span>
                     </div>
-                    <p className='text-muted-foreground line-clamp-1 text-xs'>
+                    <p className='welcome-section-subtitle line-clamp-1 text-xs'>
                       {setupComplete
                         ? t(
                             'Your setup guide is collapsed so usage stays in focus.'
@@ -1115,7 +1115,7 @@ export function OverviewDashboard() {
                   </div>
                 </div>
 
-                <div className='flex flex-wrap items-center gap-2'>
+                <div className='welcome-section-actions flex-wrap'>
                   {visibleQuickActions.map((action) => (
                     <CompactQuickAction key={action.title} action={action} />
                   ))}
@@ -1141,33 +1141,38 @@ export function OverviewDashboard() {
       />
 
       {showContentPanels && (
-        <CardStaggerContainer className='grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2'>
-          {isAdmin && (
-            <CardStaggerItem className='lg:col-span-2'>
-              <PerformanceHealthPanel />
-            </CardStaggerItem>
-          )}
-          {showApiInfoPanel && (
-            <CardStaggerItem>
-              <ApiInfoPanel />
-            </CardStaggerItem>
-          )}
-          {showAnnouncementsPanel && (
-            <CardStaggerItem>
-              <AnnouncementsPanel />
-            </CardStaggerItem>
-          )}
-          {showFAQPanel && (
-            <CardStaggerItem>
-              <FAQPanel />
-            </CardStaggerItem>
-          )}
-          {showUptimePanel && (
-            <CardStaggerItem>
-              <UptimePanel />
-            </CardStaggerItem>
-          )}
-        </CardStaggerContainer>
+        <div className='dashboard-grid-sidebar'>
+          <CardStaggerContainer className='grid gap-4'>
+            {isAdmin && (
+              <CardStaggerItem>
+                <PerformanceHealthPanel />
+              </CardStaggerItem>
+            )}
+            {showApiInfoPanel && (
+              <CardStaggerItem>
+                <ApiInfoPanel />
+              </CardStaggerItem>
+            )}
+          </CardStaggerContainer>
+
+          <CardStaggerContainer className='grid gap-4'>
+            {showAnnouncementsPanel && (
+              <CardStaggerItem>
+                <AnnouncementsPanel />
+              </CardStaggerItem>
+            )}
+            {showFAQPanel && (
+              <CardStaggerItem>
+                <FAQPanel />
+              </CardStaggerItem>
+            )}
+            {showUptimePanel && (
+              <CardStaggerItem>
+                <UptimePanel />
+              </CardStaggerItem>
+            )}
+          </CardStaggerContainer>
+        </div>
       )}
     </div>
   )
