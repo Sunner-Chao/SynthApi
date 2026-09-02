@@ -1,0 +1,90 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+Square UI Layout System
+Global styles for grid-based dashboard layouts
+*/
+
+/* ============================================
+   LAYOUT CONTAINERS
+   ============================================ */
+
+.square-ui-app-container {
+  @apply min-h-screen flex flex-col bg-background;
+}
+
+.square-ui-content-container {
+  @apply flex-1 flex flex-col overflow-hidden;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.square-ui-header {
+  @apply flex items-center justify-between px-4 sm:px-6 lg:px-8 py-4 border-b border-border/50 bg-card/30 backdrop-blur-sm;
+}
+
+/* ============================================
+   GRID SYSTEMS
+   ============================================ */
+
+/* 4-column stats grid */
+.square-ui-grid-4 {
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4;
+}
+
+/* 3-column grid with sidebar support */
+.square-ui-grid-3 {
+  @apply grid grid-cols-1 lg:grid-cols-3 gap-6;
+}
+
+/* 2-column equal grid */
+.square-ui-grid-2 {
+  @apply grid grid-cols-1 md:grid-cols-2 gap-6;
+}
+
+/* ============================================
+   SECTIONS
+   ============================================ */
+
+.square-ui-section {
+  @apply space-y-6;
+}
+
+.square-ui-section-title {
+  @apply text-lg font-semibold text-foreground;
+}
+
+.square-ui-section-subtitle {
+  @apply text-sm text-muted-foreground mt-1;
+}
+
+/* ============================================
+   RESPONSIVE UTILITIES
+   ============================================ */
+
+@media (max-width: 1023px) {
+  .square-ui-grid-3 > :last-child {
+    @apply lg:col-span-1;
+  }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.square-ui-animate-fade-in-up {
+  animation: fade-in-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
