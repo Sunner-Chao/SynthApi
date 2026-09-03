@@ -871,6 +871,132 @@ func firstImageURL(value any) string {
 	return ""
 }
 
+type openAIImageTaskDetails struct {
+	TaskID string
+	Status string
+	URL    string
+	B64    string
+}
+
+// parseOpenAIImageTaskResponse accepts both the OpenAI-compatible data[] shape
+// and APIMart's {code,data:{...}} wrapper.
+func parseOpenAIImageTaskResponse(responseBody []byte) (openAIImageTaskDetails, bool) {
+	var payload map[string]any
+	if err := common.Unmarshal(responseBody, &payload); err != nil || payload == nil {
+		return openAIImageTaskDetails{}, false
+	}
+
+	item := firstImageObject(payload["data"])
+	taskID := firstString(item, "task_id", "id")
+	if taskID == "" {
+		taskID = firstString(payload, "task_id", "id")
+	}
+
+	status := firstString(item, "status")
+	if status == "" {
+		status = firstString(payload, "status")
+	}
+
+	url := firstStringValue(item["url"])
+	if url == "" {
+		url = firstImageURL(item["result"])
+	}
+	if url == "" {
+		url = firstStringValue(payload["url"])
+	}
+	if url == "" {
+		url = firstImageURL(payload["result"])
+	}
+
+	b64 := firstString(item, "b64_json", "base64")
+	if b64 == "" {
+		b64 = firstString(payload, "b64_json", "base64")
+	}
+
+	if taskID == "" || (status == "" && url == "" && b64 == "") {
+		return openAIImageTaskDetails{}, false
+	}
+	if status == "" && (url != "" || b64 != "") {
+		status = "succeeded"
+	}
+
+	return openAIImageTaskDetails{
+		TaskID: strings.TrimSpace(taskID),
+		Status: strings.TrimSpace(status),
+		URL:    strings.TrimSpace(url),
+		B64:    strings.TrimSpace(b64),
+	}, true
+}
+
+func firstImageObject(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed
+	case []any:
+		for _, item := range typed {
+			if object, ok := item.(map[string]any); ok {
+				return object
+			}
+		}
+	}
+	return map[string]any{}
+}
+
+func firstString(object map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := object[key]; ok {
+			if result := firstStringValue(value); result != "" {
+				return result
+			}
+		}
+	}
+	return ""
+}
+
+func firstStringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case []any:
+		for _, item := range typed {
+			if result := firstStringValue(item); result != "" {
+				return result
+			}
+		}
+	case []string:
+		for _, item := range typed {
+			if result := strings.TrimSpace(item); result != "" {
+				return result
+			}
+		}
+	}
+	return ""
+}
+
+func firstImageURL(value any) string {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return ""
+	}
+	images, ok := object["images"]
+	if !ok {
+		return ""
+	}
+	switch typed := images.(type) {
+	case []any:
+		for _, image := range typed {
+			if imageObject, ok := image.(map[string]any); ok {
+				if result := firstStringValue(imageObject["url"]); result != "" {
+					return result
+				}
+			}
+		}
+	case map[string]any:
+		return firstStringValue(typed["url"])
+	}
+	return ""
+}
+
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {
 	if info == nil || usage == nil {
 		return
