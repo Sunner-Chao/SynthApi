@@ -45,14 +45,18 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     enabled: true,
     detail: true,
     group_monitor: true,
+    intelligence_radar: true,
     token: true,
     log: true,
     midjourney: true,
     task: true,
+    image_workbench: true,
+    video_workbench: true,
   },
   personal: {
     enabled: true,
     topup: true,
+    rewards: true,
     personal: true,
   },
   admin: {
@@ -106,12 +110,21 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/usage-logs/common': { section: 'console', module: 'log' },
   '/usage-logs/drawing': { section: 'console', module: 'midjourney' },
   '/usage-logs/task': { section: 'console', module: 'task' },
+  '/image-workbench': { section: 'console', module: 'image_workbench' },
+  '/video-workbench': { section: 'console', module: 'video_workbench' },
   '/wallet': { section: 'personal', module: 'topup' },
   '/topup-orders': { section: 'personal', module: 'topup' },
+  '/rewards/referral': { section: 'personal', module: 'rewards' },
+  '/rewards/recharge': { section: 'personal', module: 'rewards' },
+  '/rewards/admin': { section: 'admin', module: 'setting' },
   '/profile': { section: 'personal', module: 'personal' },
   '/accounts': { section: 'admin', module: 'account' },
   '/channels': { section: 'admin', module: 'channel' },
   '/channel-monitor': { section: 'console', module: 'group_monitor' },
+  '/intelligence-radar': {
+    section: 'console',
+    module: 'intelligence_radar',
+  },
   '/models': { section: 'admin', module: 'models' },
   '/models/metadata': { section: 'admin', module: 'models' },
   '/models/deployments': { section: 'admin', module: 'models' },
@@ -305,10 +318,33 @@ export function useSidebarConfig(navGroups: NavGroup[]): NavGroup[] {
       navGroups
         .map((group) => ({
           ...group,
-          items: filterNavItems(group.items, adminConfig, userConfig),
+          items: filterNavItems(group.items, adminConfig, userConfig).filter(
+            (item) => {
+              if (!('url' in item)) return true
+              if (
+                item.configUrls?.some(
+                  (url) => String(url) === '/rewards/referral'
+                )
+              ) {
+                const affiliateEnabled =
+                  status?.affiliate_milestone_reward_enabled !== false
+                const rechargeEnabled =
+                  status?.recharge_benefit_enabled !== false
+                if (!affiliateEnabled && !rechargeEnabled) return false
+                return true
+              }
+              return true
+            }
+          ),
         }))
         .filter((group) => group.items.length > 0), // Only show navigation groups with visible items
-    [navGroups, adminConfig, userConfig]
+    [
+      navGroups,
+      adminConfig,
+      userConfig,
+      status?.affiliate_milestone_reward_enabled,
+      status?.recharge_benefit_enabled,
+    ]
   )
 
   return filteredNavGroups

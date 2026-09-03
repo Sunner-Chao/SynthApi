@@ -55,6 +55,16 @@ export const api = axios.create({
 // Prevents multiple identical requests from being sent simultaneously
 const inFlightGet = new Map<string, Promise<unknown>>()
 const originalGet = api.get.bind(api)
+const recentErrorToasts = new Map<string, number>()
+const ERROR_TOAST_COOLDOWN_MS = 60_000
+
+function shouldShowErrorToast(key: string): boolean {
+  const now = Date.now()
+  const previous = recentErrorToasts.get(key) ?? 0
+  if (now - previous < ERROR_TOAST_COOLDOWN_MS) return false
+  recentErrorToasts.set(key, now)
+  return true
+}
 
 api.get = ((url: string, config: ApiRequestConfig = {}) => {
   const disableDuplicate = config.disableDuplicate
@@ -112,9 +122,15 @@ api.interceptors.response.use(
       }
     } else if (!skip) {
       // Other errors: show error message from response or default
+      const method = String(error?.config?.method || 'GET').toUpperCase()
+      const url = String(error?.config?.url || 'unknown')
+      const key = `${status || 'network'}:${method}:${url}`
       const msg =
-        error?.response?.data?.message || error?.message || t('Request failed')
-      toast.error(msg)
+        error?.response?.data?.message ||
+        (status === 404
+          ? `${t('Request failed')} (404: ${method} ${url})`
+          : error?.message || t('Request failed'))
+      if (shouldShowErrorToast(key)) toast.error(msg)
     }
     return Promise.reject(error)
   }
@@ -181,6 +197,9 @@ export async function getSelf() {
   const res = await api.get('/api/user/self', {
     // Avoid global 401 toast during guards/preloads
     skipErrorHandler: true,
+    // Route guards must never wait indefinitely when the tunnel or session
+    // store is unhealthy. Callers handle the bounded failure explicitly.
+    timeout: 8000,
   })
   return res.data
 }
@@ -218,8 +237,14 @@ export async function getUserGroups(): Promise<{
 // ----------------------------------------------------------------------------
 
 // Get system status
-export async function getStatus() {
-  const res = await api.get('/api/status')
+export async function getStatus(config: ApiRequestConfig = {}) {
+  const res = await api.get('/api/status', {
+    // Status is used on the public login screen. A stalled tunnel must not
+    // leave the screen waiting forever or trigger the global 500 redirect.
+    timeout: 6000,
+    skipErrorHandler: true,
+    ...config,
+  })
   return res.data?.data as Record<string, unknown>
 }
 

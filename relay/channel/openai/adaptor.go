@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -424,6 +425,26 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	// APIMart GPT-Image-2 uses the generation endpoint for both text-to-image
+	// and image-to-image. Older clients still send multipart requests to the
+	// OpenAI-compatible /images/edits endpoint, so normalize those requests
+	// before the upstream request is built. Other providers (including Grok)
+	// retain their native edits behavior.
+	if isAPIMartGPTImage2(info, request) {
+		if info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c) {
+			if err := addMultipartReferenceImages(c, &request); err != nil {
+				return nil, err
+			}
+		}
+		if len(request.ImageURLs) == 0 {
+			request.ImageURLs = imageURLsFromImagesField(request.Images)
+		}
+		info.RelayMode = relayconstant.RelayModeImagesGenerations
+		info.RequestURLPath = "/v1/images/generations"
+		c.Request.Header.Set("Content-Type", "application/json")
+		return request, nil
+	}
+
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesEdits:
 		if isJSONRequest(c) {
@@ -552,6 +573,92 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	default:
 		return request, nil
 	}
+}
+
+func isAPIMartGPTImage2(info *relaycommon.RelayInfo, request dto.ImageRequest) bool {
+	if info == nil || info.ChannelMeta == nil || !request.IsAPIMartGPTImage2() {
+		return false
+	}
+	host := strings.ToLower(info.ChannelBaseUrl)
+	return strings.Contains(host, "apimart.ai")
+}
+
+func addMultipartReferenceImages(c *gin.Context, request *dto.ImageRequest) error {
+	if c == nil || c.Request == nil {
+		return errors.New("missing multipart image request")
+	}
+	mf := c.Request.MultipartForm
+	if mf == nil {
+		var err error
+		mf, err = c.MultipartForm()
+		if err != nil {
+			return fmt.Errorf("failed to parse image edit form: %w", err)
+		}
+	}
+	for _, field := range []string{"image_urls", "image_urls[]"} {
+		for _, value := range mf.Value[field] {
+			if value = strings.TrimSpace(value); value != "" {
+				request.ImageURLs = append(request.ImageURLs, value)
+			}
+		}
+	}
+	if request.GetResolution() == "" {
+		values := mf.Value["resolution"]
+		if len(values) > 0 {
+			value := strings.TrimSpace(values[0])
+			if value != "" {
+				request.Resolution, _ = common.Marshal(value)
+			}
+		}
+	}
+	switch request.GetResolution() {
+	case "", "1k", "2k", "4k":
+	default:
+		return errors.New("resolution must be one of 1k, 2k, or 4k for gpt-image-2")
+	}
+
+	var headers []*multipart.FileHeader
+	for _, field := range []string{"image", "image[]", "images", "images[]"} {
+		headers = append(headers, mf.File[field]...)
+	}
+	if len(headers) == 0 && len(request.ImageURLs) == 0 {
+		return errors.New("image is required")
+	}
+	if len(headers)+len(request.ImageURLs) > 16 {
+		return errors.New("image_urls exceeds max 16")
+	}
+	for _, header := range headers {
+		if header.Size > 20*1024*1024 {
+			return errors.New("reference image exceeds max 20 MiB")
+		}
+		file, err := header.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open reference image: %w", err)
+		}
+		data, readErr := io.ReadAll(file)
+		_ = file.Close()
+		if readErr != nil {
+			return fmt.Errorf("failed to read reference image: %w", readErr)
+		}
+		mimeType := header.Header.Get("Content-Type")
+		if !strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+			mimeType = detectImageMimeType(header.Filename)
+		}
+		request.ImageURLs = append(request.ImageURLs,
+			"data:"+mimeType+";base64,"+base64.StdEncoding.EncodeToString(data))
+	}
+	return nil
+}
+
+func imageURLsFromImagesField(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var values []string
+	if err := common.Unmarshal(raw, &values); err != nil {
+		return nil
+	}
+	return values
 }
 
 func isJSONRequest(c *gin.Context) bool {

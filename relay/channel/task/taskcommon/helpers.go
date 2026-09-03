@@ -66,6 +66,12 @@ func BuildProxyURL(taskID string) string {
 	return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, taskID)
 }
 
+// BuildImageProxyURL constructs the image content proxy URL using the public
+// task ID. It is used when an upstream returns base64 image data.
+func BuildImageProxyURL(taskID string) string {
+	return fmt.Sprintf("%s/v1/images/generations/%s/content", system_setting.ServerAddress, taskID)
+}
+
 // Status-to-progress mapping constants for polling updates.
 const (
 	ProgressSubmitted  = "10%"

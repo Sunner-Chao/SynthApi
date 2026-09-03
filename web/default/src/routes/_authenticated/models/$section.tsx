@@ -43,7 +43,10 @@ export const Route = createFileRoute('/_authenticated/models/$section')({
   beforeLoad: ({ params }) => {
     const { auth } = useAuthStore.getState()
 
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    const canManageModels =
+      Number(auth.user?.role) >= ROLE.ADMIN ||
+      auth.user?.permissions?.model_management === true
+    if (!auth.user || !canManageModels) {
       throw redirect({
         to: '/403',
       })

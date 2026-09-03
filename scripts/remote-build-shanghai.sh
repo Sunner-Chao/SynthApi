@@ -9,10 +9,25 @@ REMOTE_DIR="${SYNTHAPI_BUILD_DIR:-/home/ubuntu/demo/SynthApi}"
 REMOTE_OUTPUT_ROOT="${SYNTHAPI_BUILD_OUTPUT_DIR:-/home/ubuntu/demo/SynthApi-build-output}"
 BUILD_ID="${SYNTHAPI_BUILD_ID:-$(date +%Y%m%d-%H%M%S)}"
 INSTALL_DEPS="${SYNTHAPI_INSTALL_DEPS:-1}"
+# Keep compilation below half of the four-core Shanghai builder and below the
+# host's OOM-pressure threshold. These limits are deliberately conservative:
+# the build host must remain reachable even when a bundler regresses.
+BUILD_CPU_QUOTA="${SYNTHAPI_BUILD_CPU_QUOTA:-200%}"
+BUILD_MEMORY_HIGH="${SYNTHAPI_BUILD_MEMORY_HIGH:-1200M}"
+BUILD_MEMORY_MAX="${SYNTHAPI_BUILD_MEMORY_MAX:-1500M}"
+GO_BUILD_PARALLELISM="${SYNTHAPI_GO_BUILD_PARALLELISM:-2}"
+BUILD_USER="${SYNTHAPI_BUILD_USER:-ubuntu}"
+BUILD_VERSION="${SYNTHAPI_BUILD_VERSION:-$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)}"
+BUILD_VERSION="$(printf '%s' "$BUILD_VERSION" | tr -cs 'A-Za-z0-9._+-' '-')"
 
 RSYNC_EXCLUDES=(
   '--exclude=/.git/'
   '--exclude=/.env'
+  # Shanghai keeps its own runtime environment and must never receive the
+  # production checkout's delete pass.
+  '--exclude=/.env.shanghai'
+  '--exclude=/.env.from-production'
+  '--exclude=/.env.shanghai.before-node-slave'
   '--exclude=/.env.postgres'
   '--exclude=/.env.sqlite.backup'
   '--exclude=*.db'
@@ -21,6 +36,7 @@ RSYNC_EXCLUDES=(
   '--exclude=*.sqlite3'
   '--exclude=*.log'
   '--exclude=logs/'
+  '--exclude=deploy-backups/'
   '--exclude=upload/'
   '--exclude=data/'
   '--exclude=**/__pycache__/'
@@ -57,6 +73,12 @@ Environment:
   SYNTHAPI_BUILD_OUTPUT_DIR  Shanghai artifact directory
   SYNTHAPI_BUILD_ID          Artifact suffix (default: current timestamp)
   SYNTHAPI_INSTALL_DEPS=0    Skip bun install --frozen-lockfile before building
+  SYNTHAPI_BUILD_CPU_QUOTA   systemd CPUQuota on Shanghai (default: 200%)
+  SYNTHAPI_BUILD_MEMORY_HIGH systemd MemoryHigh on Shanghai (default: 1200M)
+  SYNTHAPI_BUILD_MEMORY_MAX  systemd MemoryMax on Shanghai (default: 1500M)
+  SYNTHAPI_GO_BUILD_PARALLELISM Go build -p value (default: 2)
+  SYNTHAPI_BUILD_USER        User owning remote build artifacts (default: ubuntu)
+  SYNTHAPI_BUILD_VERSION     Version embedded in the Go binary (default: local git describe)
 EOF
 }
 
@@ -112,18 +134,28 @@ build_remote() {
   local remote_artifact="$remote_output_dir/$artifact_name"
   local local_archive="$PROJECT_ROOT/$artifact_name.gz"
 
-  ssh "$REMOTE_HOST" bash -s -- \
-    "$REMOTE_DIR" "$remote_output_dir" "$artifact_name" "$INSTALL_DEPS" <<'REMOTE_BUILD'
+  # Run below system.slice rather than the SSH user's app.slice. systemd-oomd
+  # monitors that user slice aggressively; this cgroup has its own strict cap
+  # and keeps SSH available if a bundler reaches the limit.
+  ssh "$REMOTE_HOST" \
+    sudo -n systemd-run --scope --quiet \
+    -p "CPUQuota=$BUILD_CPU_QUOTA" \
+    -p "MemoryHigh=$BUILD_MEMORY_HIGH" \
+    -p "MemoryMax=$BUILD_MEMORY_MAX" \
+    sudo -u "$BUILD_USER" -H bash -s -- \
+    "$REMOTE_DIR" "$remote_output_dir" "$artifact_name" "$INSTALL_DEPS" "$GO_BUILD_PARALLELISM" "$BUILD_VERSION" <<'REMOTE_BUILD'
 set -euo pipefail
 
 project_root="$1"
 output_dir="$2"
 artifact_name="$3"
 install_deps="$4"
+go_build_parallelism="$5"
+build_version="$6"
 
 export PATH="$HOME/.bun/bin:/usr/local/go/bin:$PATH"
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=3072}"
-export GOMAXPROCS="${GOMAXPROCS:-4}"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1024}"
+export GOMAXPROCS="${GOMAXPROCS:-2}"
 
 mkdir -p "$output_dir"
 
@@ -139,7 +171,9 @@ cd "$project_root/web/classic"
 bun run build
 
 cd "$project_root"
-go build -trimpath -ldflags="-s -w" -o "$output_dir/$artifact_name" .
+go build -p "$go_build_parallelism" -trimpath \
+  -ldflags="-s -w -X github.com/QuantumNous/new-api/common.Version=$build_version" \
+  -o "$output_dir/$artifact_name" .
 gzip -1 -kf "$output_dir/$artifact_name"
 sha256sum "$output_dir/$artifact_name" "$output_dir/$artifact_name.gz"
 REMOTE_BUILD

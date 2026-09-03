@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 import { Separator } from '@/components/ui/separator'
+import { LogoFull } from '@/components/layout/components/logo-mark'
 import { getGatewayFeatures } from '../constants'
 
 interface GatewayCardProps {
@@ -43,14 +44,7 @@ export function GatewayCard({ logo, systemName }: GatewayCardProps) {
       <div className='relative'>
         {/* Gateway Header */}
         <div className='mb-8 flex items-center justify-center gap-3'>
-          <img
-            src={logo}
-            alt={systemName}
-            className='h-12 w-12 rounded-lg object-cover'
-          />
-          <h3 className='from-foreground to-foreground/70 bg-gradient-to-r bg-clip-text text-2xl font-bold text-transparent'>
-            {systemName}
-          </h3>
+          <LogoFull src={logo} alt={systemName} className='h-12 w-[14rem]' />
         </div>
 
         {/* Features Grid */}

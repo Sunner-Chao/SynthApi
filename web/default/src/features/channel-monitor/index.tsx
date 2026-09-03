@@ -36,14 +36,6 @@ import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -64,12 +56,11 @@ import {
   type StatusFilter,
 } from './components/monitor-filters'
 import {
-  SuccessRateStrip,
+  RecentRequestStrip,
   formatSuccessRate,
 } from './components/success-rate-strip'
 import {
   getAvailabilityRate,
-  getUsageSuccessRate,
   hasUsageMetrics,
 } from './lib/metrics'
 
@@ -78,7 +69,6 @@ const CHANNEL_STATUS = {
   MANUAL_DISABLED: 2,
   AUTO_DISABLED: 3,
 } as const
-const DEFAULT_MONITOR_MODEL = 'gpt-5.5'
 const MONITOR_REFRESH_INTERVAL_MS = 60 * 1000
 
 function formatLatency(ms: number): string {
@@ -155,15 +145,15 @@ export function ChannelMonitor() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MONITOR_MODEL)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [nextRefreshAt, setNextRefreshAt] = useState(
     () => Date.now() + MONITOR_REFRESH_INTERVAL_MS
   )
 
   const monitorQuery = useQuery({
-    queryKey: ['channel-monitor', 'page', selectedModel],
-    queryFn: () => getChannelMonitor({ limit: 200, model: selectedModel }),
+    // An empty model asks the API for a group-level aggregate across models.
+    queryKey: ['channel-monitor', 'page'],
+    queryFn: () => getChannelMonitor({ limit: 200 }),
     staleTime: 30 * 1000,
     refetchInterval: MONITOR_REFRESH_INTERVAL_MS,
     retry: false,
@@ -184,22 +174,6 @@ export function ChannelMonitor() {
   const allItems = monitorQuery.data?.data?.items ?? []
   const loading = monitorQuery.isLoading
   const showError = monitorQuery.isError && allItems.length === 0 && !loading
-  const modelOptions = useMemo(() => {
-    const models = new Set<string>([
-      DEFAULT_MONITOR_MODEL,
-      selectedModel,
-      ...(monitorQuery.data?.data?.models ?? []),
-    ])
-    return Array.from(models)
-      .map((model) => model.trim())
-      .filter(Boolean)
-      .sort((a, b) => {
-        if (a === DEFAULT_MONITOR_MODEL) return -1
-        if (b === DEFAULT_MONITOR_MODEL) return 1
-        return a.localeCompare(b)
-      })
-  }, [monitorQuery.data?.data?.models, selectedModel])
-
   const filteredItems = useMemo(
     () => filterItems(allItems, search, statusFilter),
     [allItems, search, statusFilter]
@@ -229,40 +203,11 @@ export function ChannelMonitor() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Group Monitor')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <div className='flex items-center gap-2'>
-          <span className='text-muted-foreground hidden text-xs font-medium sm:inline'>
-            {t('Model')}
-          </span>
-          <Select
-            items={modelOptions.map((model) => ({
-              value: model,
-              label: model,
-            }))}
-            value={selectedModel}
-            onValueChange={(value) => {
-              if (value) setSelectedModel(value)
-            }}
-          >
-            <SelectTrigger size='sm' className='w-[180px]'>
-              <SelectValue placeholder={DEFAULT_MONITOR_MODEL} />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                {modelOptions.map((model) => (
-                  <SelectItem key={model} value={model}>
-                    <span className='font-mono text-xs'>{model}</span>
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className='border-border bg-muted/40 text-muted-foreground hidden h-7 min-w-36 flex-col justify-center rounded-md border px-2 text-[11px] sm:flex'>
+        <div className='border-border bg-muted/40 text-muted-foreground flex h-8 min-w-36 flex-col justify-center rounded-md border px-2 text-[11px]'>
           <div className='flex items-center justify-between gap-2 leading-none'>
             <span>{t('Auto refresh')}</span>
             <span className='font-mono tabular-nums'>
-              {refreshRemainingSeconds}
-              {t('s')}
+              {refreshRemainingSeconds}s
             </span>
           </div>
           <div className='bg-muted mt-1 h-0.5 overflow-hidden rounded-full'>
@@ -367,7 +312,11 @@ export function ChannelMonitor() {
                 {t('Failed to load group monitor')}
               </div>
             ) : (
-              <MonitorCardGrid items={filteredItems} loading={loading} />
+              <MonitorCardGrid
+                items={filteredItems}
+                loading={loading}
+                refreshRemainingSeconds={refreshRemainingSeconds}
+              />
             )
           ) : (
             /* Table view */
@@ -401,7 +350,7 @@ export function ChannelMonitor() {
                       <TableHead className='text-right'>
                         {t('Models')}
                       </TableHead>
-                      <TableHead>{t('24h usage success rate')}</TableHead>
+                      <TableHead>{t('Recent requests')}</TableHead>
                       <TableHead className='text-right'>
                         {t('Latency')}
                       </TableHead>
@@ -492,7 +441,6 @@ function ChannelMonitorTableRow(props: { item: ChannelMonitorItem }) {
   const channelCount = item.channel_count ?? 0
   const enabledCount = item.enabled_count ?? 0
   const hasUsage = hasUsageMetrics(item)
-  const usageRate = getUsageSuccessRate(item)
   const availabilityRate = getAvailabilityRate(item)
   const usageHint = hasUsage
     ? t('{{success}}/{{total}} successful requests in the last 24 hours', {
@@ -528,16 +476,10 @@ function ChannelMonitorTableRow(props: { item: ChannelMonitorItem }) {
       <TableCell className='text-right font-mono'>{`${enabledCount}/${channelCount}`}</TableCell>
       <TableCell className='text-right font-mono'>{item.model_count}</TableCell>
       <TableCell>
-        <SuccessRateStrip
-          rate={usageRate}
-          source={hasUsage ? 'usage' : 'availability'}
-          series={item.success_series}
-          availabilityRate={availabilityRate}
-          enabledCount={enabledCount}
-          totalCount={channelCount}
-          size='sm'
+        <RecentRequestStrip
+          requests={item.recent_requests}
           className='min-w-[180px]'
-          emptyLabel={t('No data')}
+          emptyLabel={t('No recent requests')}
         />
         <div className='text-muted-foreground mt-1 text-[11px]'>
           {usageHint}

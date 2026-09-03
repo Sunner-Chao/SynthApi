@@ -39,6 +39,7 @@ import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-p
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
+import { Route as AuthenticatedVideoWorkbenchIndexRouteImport } from './routes/_authenticated/video-workbench/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedTopupOrdersIndexRouteImport } from './routes/_authenticated/topup-orders/index'
@@ -49,11 +50,16 @@ import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
+import { Route as AuthenticatedIntelligenceRadarIndexRouteImport } from './routes/_authenticated/intelligence-radar/index'
+import { Route as AuthenticatedImageWorkbenchIndexRouteImport } from './routes/_authenticated/image-workbench/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChannelMonitorIndexRouteImport } from './routes/_authenticated/channel-monitor/index'
 import { Route as AuthenticatedAccountsIndexRouteImport } from './routes/_authenticated/accounts/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
+import { Route as AuthenticatedRewardsReferralRouteImport } from './routes/_authenticated/rewards/referral'
+import { Route as AuthenticatedRewardsRechargeRouteImport } from './routes/_authenticated/rewards/recharge'
+import { Route as AuthenticatedRewardsAdminRouteImport } from './routes/_authenticated/rewards/admin'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
@@ -224,6 +230,12 @@ const AuthenticatedWalletIndexRoute =
     path: '/wallet/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedVideoWorkbenchIndexRoute =
+  AuthenticatedVideoWorkbenchIndexRouteImport.update({
+    id: '/video-workbench/',
+    path: '/video-workbench/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
@@ -282,6 +294,18 @@ const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   path: '/keys/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedIntelligenceRadarIndexRoute =
+  AuthenticatedIntelligenceRadarIndexRouteImport.update({
+    id: '/intelligence-radar/',
+    path: '/intelligence-radar/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedImageWorkbenchIndexRoute =
+  AuthenticatedImageWorkbenchIndexRouteImport.update({
+    id: '/image-workbench/',
+    path: '/image-workbench/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
@@ -310,6 +334,24 @@ const AuthenticatedUsageLogsSectionRoute =
   AuthenticatedUsageLogsSectionRouteImport.update({
     id: '/usage-logs/$section',
     path: '/usage-logs/$section',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRewardsReferralRoute =
+  AuthenticatedRewardsReferralRouteImport.update({
+    id: '/rewards/referral',
+    path: '/rewards/referral',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRewardsRechargeRoute =
+  AuthenticatedRewardsRechargeRouteImport.update({
+    id: '/rewards/recharge',
+    path: '/rewards/recharge',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRewardsAdminRoute =
+  AuthenticatedRewardsAdminRouteImport.update({
+    id: '/rewards/admin',
+    path: '/rewards/admin',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedModelsSectionRoute =
@@ -457,11 +499,16 @@ export interface FileRoutesByFullPath {
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/rewards/admin': typeof AuthenticatedRewardsAdminRoute
+  '/rewards/recharge': typeof AuthenticatedRewardsRechargeRoute
+  '/rewards/referral': typeof AuthenticatedRewardsReferralRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/accounts/': typeof AuthenticatedAccountsIndexRoute
   '/channel-monitor/': typeof AuthenticatedChannelMonitorIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/image-workbench/': typeof AuthenticatedImageWorkbenchIndexRoute
+  '/intelligence-radar/': typeof AuthenticatedIntelligenceRadarIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -472,6 +519,7 @@ export interface FileRoutesByFullPath {
   '/topup-orders/': typeof AuthenticatedTopupOrdersIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
+  '/video-workbench/': typeof AuthenticatedVideoWorkbenchIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -520,11 +568,16 @@ export interface FileRoutesByTo {
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/rewards/admin': typeof AuthenticatedRewardsAdminRoute
+  '/rewards/recharge': typeof AuthenticatedRewardsRechargeRoute
+  '/rewards/referral': typeof AuthenticatedRewardsReferralRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/accounts': typeof AuthenticatedAccountsIndexRoute
   '/channel-monitor': typeof AuthenticatedChannelMonitorIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/image-workbench': typeof AuthenticatedImageWorkbenchIndexRoute
+  '/intelligence-radar': typeof AuthenticatedIntelligenceRadarIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
@@ -535,6 +588,7 @@ export interface FileRoutesByTo {
   '/topup-orders': typeof AuthenticatedTopupOrdersIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
+  '/video-workbench': typeof AuthenticatedVideoWorkbenchIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -587,11 +641,16 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/_authenticated/rewards/admin': typeof AuthenticatedRewardsAdminRoute
+  '/_authenticated/rewards/recharge': typeof AuthenticatedRewardsRechargeRoute
+  '/_authenticated/rewards/referral': typeof AuthenticatedRewardsReferralRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/accounts/': typeof AuthenticatedAccountsIndexRoute
   '/_authenticated/channel-monitor/': typeof AuthenticatedChannelMonitorIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/image-workbench/': typeof AuthenticatedImageWorkbenchIndexRoute
+  '/_authenticated/intelligence-radar/': typeof AuthenticatedIntelligenceRadarIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -602,6 +661,7 @@ export interface FileRoutesById {
   '/_authenticated/topup-orders/': typeof AuthenticatedTopupOrdersIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/video-workbench/': typeof AuthenticatedVideoWorkbenchIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -653,11 +713,16 @@ export interface FileRouteTypes {
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
+    | '/rewards/admin'
+    | '/rewards/recharge'
+    | '/rewards/referral'
     | '/usage-logs/$section'
     | '/accounts/'
     | '/channel-monitor/'
     | '/channels/'
     | '/dashboard/'
+    | '/image-workbench/'
+    | '/intelligence-radar/'
     | '/keys/'
     | '/models/'
     | '/playground/'
@@ -668,6 +733,7 @@ export interface FileRouteTypes {
     | '/topup-orders/'
     | '/usage-logs/'
     | '/users/'
+    | '/video-workbench/'
     | '/wallet/'
     | '/pricing/$modelId/'
     | '/system-settings/auth/$section'
@@ -716,11 +782,16 @@ export interface FileRouteTypes {
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
+    | '/rewards/admin'
+    | '/rewards/recharge'
+    | '/rewards/referral'
     | '/usage-logs/$section'
     | '/accounts'
     | '/channel-monitor'
     | '/channels'
     | '/dashboard'
+    | '/image-workbench'
+    | '/intelligence-radar'
     | '/keys'
     | '/models'
     | '/playground'
@@ -731,6 +802,7 @@ export interface FileRouteTypes {
     | '/topup-orders'
     | '/usage-logs'
     | '/users'
+    | '/video-workbench'
     | '/wallet'
     | '/pricing/$modelId'
     | '/system-settings/auth/$section'
@@ -782,11 +854,16 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
+    | '/_authenticated/rewards/admin'
+    | '/_authenticated/rewards/recharge'
+    | '/_authenticated/rewards/referral'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/accounts/'
     | '/_authenticated/channel-monitor/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/image-workbench/'
+    | '/_authenticated/intelligence-radar/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
@@ -797,6 +874,7 @@ export interface FileRouteTypes {
     | '/_authenticated/topup-orders/'
     | '/_authenticated/usage-logs/'
     | '/_authenticated/users/'
+    | '/_authenticated/video-workbench/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
     | '/_authenticated/system-settings/auth/$section'
@@ -1050,6 +1128,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWalletIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/video-workbench/': {
+      id: '/_authenticated/video-workbench/'
+      path: '/video-workbench'
+      fullPath: '/video-workbench/'
+      preLoaderRoute: typeof AuthenticatedVideoWorkbenchIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/users/': {
       id: '/_authenticated/users/'
       path: '/users'
@@ -1120,6 +1205,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKeysIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/intelligence-radar/': {
+      id: '/_authenticated/intelligence-radar/'
+      path: '/intelligence-radar'
+      fullPath: '/intelligence-radar/'
+      preLoaderRoute: typeof AuthenticatedIntelligenceRadarIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/image-workbench/': {
+      id: '/_authenticated/image-workbench/'
+      path: '/image-workbench'
+      fullPath: '/image-workbench/'
+      preLoaderRoute: typeof AuthenticatedImageWorkbenchIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard/': {
       id: '/_authenticated/dashboard/'
       path: '/dashboard'
@@ -1153,6 +1252,27 @@ declare module '@tanstack/react-router' {
       path: '/usage-logs/$section'
       fullPath: '/usage-logs/$section'
       preLoaderRoute: typeof AuthenticatedUsageLogsSectionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rewards/referral': {
+      id: '/_authenticated/rewards/referral'
+      path: '/rewards/referral'
+      fullPath: '/rewards/referral'
+      preLoaderRoute: typeof AuthenticatedRewardsReferralRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rewards/recharge': {
+      id: '/_authenticated/rewards/recharge'
+      path: '/rewards/recharge'
+      fullPath: '/rewards/recharge'
+      preLoaderRoute: typeof AuthenticatedRewardsRechargeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rewards/admin': {
+      id: '/_authenticated/rewards/admin'
+      path: '/rewards/admin'
+      fullPath: '/rewards/admin'
+      preLoaderRoute: typeof AuthenticatedRewardsAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/models/$section': {
@@ -1381,11 +1501,16 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
+  AuthenticatedRewardsAdminRoute: typeof AuthenticatedRewardsAdminRoute
+  AuthenticatedRewardsRechargeRoute: typeof AuthenticatedRewardsRechargeRoute
+  AuthenticatedRewardsReferralRoute: typeof AuthenticatedRewardsReferralRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAccountsIndexRoute: typeof AuthenticatedAccountsIndexRoute
   AuthenticatedChannelMonitorIndexRoute: typeof AuthenticatedChannelMonitorIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedImageWorkbenchIndexRoute: typeof AuthenticatedImageWorkbenchIndexRoute
+  AuthenticatedIntelligenceRadarIndexRoute: typeof AuthenticatedIntelligenceRadarIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
@@ -1395,6 +1520,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTopupOrdersIndexRoute: typeof AuthenticatedTopupOrdersIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
+  AuthenticatedVideoWorkbenchIndexRoute: typeof AuthenticatedVideoWorkbenchIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
 
@@ -1406,11 +1532,17 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
+  AuthenticatedRewardsAdminRoute: AuthenticatedRewardsAdminRoute,
+  AuthenticatedRewardsRechargeRoute: AuthenticatedRewardsRechargeRoute,
+  AuthenticatedRewardsReferralRoute: AuthenticatedRewardsReferralRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAccountsIndexRoute: AuthenticatedAccountsIndexRoute,
   AuthenticatedChannelMonitorIndexRoute: AuthenticatedChannelMonitorIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedImageWorkbenchIndexRoute: AuthenticatedImageWorkbenchIndexRoute,
+  AuthenticatedIntelligenceRadarIndexRoute:
+    AuthenticatedIntelligenceRadarIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
@@ -1421,6 +1553,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTopupOrdersIndexRoute: AuthenticatedTopupOrdersIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
+  AuthenticatedVideoWorkbenchIndexRoute: AuthenticatedVideoWorkbenchIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
 

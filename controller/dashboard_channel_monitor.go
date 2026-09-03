@@ -15,25 +15,26 @@ import (
 )
 
 type ChannelMonitorItem struct {
-	Id                int                       `json:"id"`
-	Name              string                    `json:"name"`
-	Type              int                       `json:"type"`
-	TypeName          string                    `json:"type_name"`
-	Status            int                       `json:"status"`
-	Group             string                    `json:"group"`
-	Tag               string                    `json:"tag,omitempty"`
-	ModelCount        int                       `json:"model_count"`
-	ResponseTime      int                       `json:"response_time"`
-	TestTime          int64                     `json:"test_time"`
-	ActiveUsers       int                       `json:"active_users"`
-	ChannelCount      int                       `json:"channel_count"`
-	EnabledCount      int                       `json:"enabled_count"`
-	SuccessRate       float64                   `json:"success_rate"`
-	SuccessRateSource string                    `json:"success_rate_source"`
-	AvailabilityRate  float64                   `json:"availability_rate"`
-	UsageRequestCount int64                     `json:"usage_request_count"`
-	UsageSuccessCount int64                     `json:"usage_success_count"`
-	SuccessSeries     []perfmetrics.BucketPoint `json:"success_series,omitempty"`
+	Id                int                               `json:"id"`
+	Name              string                            `json:"name"`
+	Type              int                               `json:"type"`
+	TypeName          string                            `json:"type_name"`
+	Status            int                               `json:"status"`
+	Group             string                            `json:"group"`
+	Tag               string                            `json:"tag,omitempty"`
+	ModelCount        int                               `json:"model_count"`
+	ResponseTime      int                               `json:"response_time"`
+	TestTime          int64                             `json:"test_time"`
+	ActiveUsers       int                               `json:"active_users"`
+	ChannelCount      int                               `json:"channel_count"`
+	EnabledCount      int                               `json:"enabled_count"`
+	SuccessRate       float64                           `json:"success_rate"`
+	SuccessRateSource string                            `json:"success_rate_source"`
+	AvailabilityRate  float64                           `json:"availability_rate"`
+	UsageRequestCount int64                             `json:"usage_request_count"`
+	UsageSuccessCount int64                             `json:"usage_success_count"`
+	SuccessSeries     []perfmetrics.BucketPoint         `json:"success_series,omitempty"`
+	RecentRequests    []perfmetrics.RecentRequestStatus `json:"recent_requests,omitempty"`
 }
 
 type ChannelMonitorSummary struct {
@@ -68,12 +69,8 @@ func GetDashboardChannelMonitor(c *gin.Context) {
 	const slowResponseMs = 3000
 	const defaultItemLimit = 12
 	const maxItemLimit = 200
-	const defaultModelName = "gpt-5.5"
 
 	selectedModel := strings.TrimSpace(c.Query("model"))
-	if selectedModel == "" {
-		selectedModel = defaultModelName
-	}
 
 	itemLimit := defaultItemLimit
 	if rawLimit := c.Query("limit"); rawLimit != "" {
@@ -286,6 +283,7 @@ func GetDashboardChannelMonitor(c *gin.Context) {
 				UsageRequestCount: groupUsageRequestCount(group),
 				UsageSuccessCount: groupUsageSuccessCount(group),
 				SuccessSeries:     groupSuccessSeries(group),
+				RecentRequests:    perfmetrics.QueryRecentRequestStatuses(group.name, 60),
 			})
 		}
 	}

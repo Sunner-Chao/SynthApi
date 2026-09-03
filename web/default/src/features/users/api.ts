@@ -18,6 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import type {
+  AdminUserRewardListSummary,
+  AdminUserRewardSummary,
+} from '@/features/reward-center/types'
+import type {
   User,
   GetUsersParams,
   GetUsersResponse,
@@ -74,6 +78,35 @@ export async function searchUsers(
 export async function getUser(id: number): Promise<ApiResponse<User>> {
   const res = await api.get(`/api/user/${id}`)
   return res.data
+}
+
+export async function getUserRewardSummary(
+  id: number
+): Promise<ApiResponse<AdminUserRewardSummary>> {
+  const res = await api.get(`/api/user/rewards/admin/users/${id}/summary`)
+  return res.data
+}
+
+export async function getUserRewardListSummaries(
+  ids: number[]
+): Promise<ApiResponse<Record<number, AdminUserRewardListSummary>>> {
+  try {
+    const res = await api.get('/api/user/rewards/admin/users/summaries', {
+      params: { ids: ids.join(',') },
+      skipErrorHandler: true,
+    })
+    return res.data
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'response' in error &&
+      (error as { response?: { status?: number } }).response?.status === 404
+    ) {
+      return { success: true, message: '', data: {} }
+    }
+    throw error
+  }
 }
 
 /**

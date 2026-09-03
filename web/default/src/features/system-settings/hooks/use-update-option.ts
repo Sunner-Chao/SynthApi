@@ -28,6 +28,8 @@ const STATUS_RELATED_KEYS = [
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'PublicBusinessPreviewEnabled',
+  'AffiliateMilestoneRewardEnabled',
+  'RechargeBenefitEnabled',
   'Notice',
   'LogConsumeEnabled',
   'QuotaPerUnit',

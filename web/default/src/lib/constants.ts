@@ -22,7 +22,11 @@ For commercial licensing, please contact support@quantumnous.com
 
 // System Configuration Defaults
 export const DEFAULT_SYSTEM_NAME = 'New API'
-export const DEFAULT_LOGO = '/logo.png'
+export const DEFAULT_LOGO = '/logo.png?v=synthapi-logo-root-20260828'
+// Keep the browser tab icon separate from the horizontal wordmark. The
+// version query also invalidates stale browser/CDN favicon caches on release.
+export const DEFAULT_FAVICON =
+  '/favicon.png?v=synthapi-logo-from-root-20260828'
 
 // LocalStorage Keys
 export const STORAGE_KEYS = {

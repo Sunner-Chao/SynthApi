@@ -108,6 +108,66 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// RegistrationRateLimit applies a dedicated per-IP budget to public account
+// creation. It is intentionally separate from CriticalRateLimit so a burst of
+// sign-up attempts cannot consume the same budget used by login/reset flows.
+func RegistrationRateLimit() func(c *gin.Context) {
+	if !common.RegistrationRateLimitEnable && !common.RegistrationGlobalRateLimitEnable {
+		return defNext
+	}
+	perIP := rateLimitFactory(common.RegistrationRateLimitNum, common.RegistrationRateLimitDuration, "REG")
+	return func(c *gin.Context) {
+		if common.RegistrationGlobalRateLimitEnable && !globalRateLimit(c,
+			common.RegistrationGlobalRateLimitNum,
+			common.RegistrationGlobalRateLimitDuration,
+			"REG",
+		) {
+			return
+		}
+		if common.RegistrationRateLimitEnable {
+			perIP(c)
+			return
+		}
+		c.Next()
+	}
+}
+
+// globalRateLimit applies an atomic counter shared by all source IPs. The
+// existing registration limiter is intentionally still applied afterwards;
+// this second dimension prevents proxy rotation from creating an account burst.
+func globalRateLimit(c *gin.Context, maxRequestNum int, duration int64, mark string) bool {
+	if maxRequestNum <= 0 || duration <= 0 {
+		return true
+	}
+	if common.RedisEnabled {
+		ctx := context.Background()
+		key := "rateLimit:global:" + mark
+		count, err := common.RDB.Incr(ctx, key).Result()
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			c.Abort()
+			return false
+		}
+		if count == 1 {
+			common.RDB.Expire(ctx, key, time.Duration(duration)*time.Second)
+		}
+		if count > int64(maxRequestNum) {
+			c.Status(http.StatusTooManyRequests)
+			c.Abort()
+			return false
+		}
+		return true
+	}
+
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	if !inMemoryRateLimiter.Request("global:"+mark, maxRequestNum, duration) {
+		c.Status(http.StatusTooManyRequests)
+		c.Abort()
+		return false
+	}
+	return true
+}
+
 func DownloadRateLimit() func(c *gin.Context) {
 	return rateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "DW")
 }

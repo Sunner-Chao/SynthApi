@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
-import { CircleAlert, Sparkles, KeyRound } from 'lucide-react'
+import {
+  CircleAlert,
+  CircleCheck,
+  Eye,
+  KeyRound,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
@@ -50,13 +57,19 @@ import {
   getSubscriptionBillingDisplay,
   hasAnyCacheTokens,
   isViolationFeeLog,
+  isAutoGroupLog,
+  getAutoRouteStatus,
   parseLogOther,
 } from '../../lib/format'
 import {
   getLogFirstResponseLatency,
   type FirstResponseLatencySource,
 } from '../../lib/latency'
-import { formatTokensPerSecond, getLogThroughput } from '../../lib/throughput'
+import {
+  formatTokensPerSecond,
+  getLogThroughputAssessment,
+  type ThroughputUnavailabilityReason,
+} from '../../lib/throughput'
 import {
   isDisplayableLogType,
   isTimingLogType,
@@ -64,7 +77,11 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData, UsageLog } from '../../types'
-import { ApiLineBadge } from '../api-line-badge'
+import {
+  ApiLineBadge,
+  ChannelConcurrencyBadge,
+  WorkerNodeBadge,
+} from '../api-line-badge'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
@@ -93,6 +110,26 @@ function getFirstResponseTooltip(
     default:
       return t('First response timing unavailable')
   }
+}
+
+function getThroughputTooltip(t: (key: string) => string): string {
+  return t(
+    'Measured from the first upstream stream event to response completion'
+  )
+}
+
+function getUnavailableThroughputTooltip(
+  reason: ThroughputUnavailabilityReason,
+  t: (key: string) => string
+): string {
+  if (reason === 'buffered_stream') {
+    return t(
+      'Upstream returned buffered stream data; token throughput cannot be measured'
+    )
+  }
+  return t(
+    'Token throughput is unavailable because this stream cannot be measured reliably'
+  )
 }
 
 function formatRatioCompact(ratio: number | undefined): string {
@@ -292,15 +329,20 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       cell: ({ row }) => {
         const log = row.original
         const timestamp = row.getValue('created_at') as number
+        const fullTimestamp = formatTimestampToDate(timestamp)
+        const compactTimestamp = fullTimestamp.replace(/^\d{4}-/, '')
         const config = getLogTypeConfig(log.type)
         const other = parseLogOther(log.other)
 
         return (
-          <div className='flex flex-col gap-0.5'>
-            <span className='font-mono text-xs tabular-nums'>
-              {formatTimestampToDate(timestamp)}
+          <div className='command-log-time flex min-w-[12rem] flex-col gap-1'>
+            <span
+              className='font-mono text-xs tabular-nums'
+              title={fullTimestamp}
+            >
+              {compactTimestamp}
             </span>
-            <div className='flex flex-wrap items-center gap-1'>
+            <div className='grid grid-cols-2 items-center gap-x-1.5 gap-y-1'>
               <StatusBadge
                 label={t(config.label)}
                 variant={config.color as StatusBadgeProps['variant']}
@@ -308,12 +350,31 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 copyable={false}
                 className='!text-xs [&_span]:!text-xs'
               />
-              {isTimingLogType(log.type) && (
+              {isTimingLogType(log.type) ? (
                 <ApiLineBadge
                   line={other?.ingress_line}
                   host={other?.ingress_host}
                   className='!text-xs [&_span]:!text-xs'
                 />
+              ) : (
+                <span />
+              )}
+              {isTimingLogType(log.type) ? (
+                <WorkerNodeBadge
+                  node={other?.worker_node}
+                  className='!text-xs [&_span]:!text-xs'
+                />
+              ) : (
+                <span />
+              )}
+              {isTimingLogType(log.type) ? (
+                <ChannelConcurrencyBadge
+                  active={other?.channel_concurrency_active}
+                  limit={other?.channel_concurrency_limit}
+                  className='!text-xs [&_span]:!text-xs'
+                />
+              ) : (
+                <span />
               )}
             </div>
           </div>
@@ -358,11 +419,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           const channelName = sensitiveVisible ? log.channel_name : '••••'
 
           return (
-            <TooltipProvider>
+            <div className='command-log-channel flex min-w-0 flex-col gap-1'>
+              <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <div className='flex max-w-[160px] flex-col gap-0.5' />
+                    <div className='command-log-channel flex min-w-0 flex-col gap-0.5' />
                   }
                 >
                   <div className='relative inline-flex w-fit'>
@@ -397,7 +459,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                     )}
                   </div>
                   {log.channel_name && (
-                    <span className='text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'>
+                    <span className='command-log-secondary text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'>
                       {channelName}
                     </span>
                   )}
@@ -431,7 +493,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   </div>
                 </TooltipContent>
               </Tooltip>
-            </TooltipProvider>
+              </TooltipProvider>
+            </div>
           )
         },
         meta: { label: t('Channel') },
@@ -443,9 +506,14 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <DataTableColumnHeader column={column} title={t('User')} />
         ),
         cell: function UserCell({ row }) {
-          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-            useUsageLogsContext()
+          const {
+            sensitiveVisible,
+            setSelectedUserId,
+            setUserInfoDialogOpen,
+            rewardSummaries,
+          } = useUsageLogsContext()
           const log = row.original
+          const reward = rewardSummaries[log.user_id]
 
           if (!log.username && log.user_id <= 0) return null
           const avatarSeed = log.username || String(log.user_id)
@@ -453,7 +521,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           return (
             <button
               type='button'
-              className='flex items-center gap-1.5 text-left'
+              className='command-log-user flex items-center gap-1.5 text-left'
               onClick={(e) => {
                 e.stopPropagation()
                 setSelectedUserId(log.user_id)
@@ -481,7 +549,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                     <Tooltip>
                       <TooltipTrigger
                         render={
-                          <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
+                          <span className='text-muted-foreground max-w-full truncate text-sm hover:underline' />
                         }
                       >
                         {sensitiveVisible ? log.username : '••••'}
@@ -495,9 +563,46 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   </TooltipProvider>
                 )}
                 {log.user_id > 0 && (
-                  <span className='text-muted-foreground/60 font-mono text-xs'>
+                  <span className='command-log-secondary text-muted-foreground/60 font-mono text-xs'>
                     {t('ID')} {log.user_id}
                   </span>
+                )}
+                {isAdmin && reward && (
+                  <TooltipProvider delay={200}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className='usage-reward-rank max-w-full truncate' />
+                        }
+                      >
+                        <Sparkles aria-hidden='true' />
+                        {reward.current_stage.name}
+                        <b>{reward.current_stage.rate_bps / 100}%</b>
+                      </TooltipTrigger>
+                      <TooltipContent side='top'>
+                        <div className='grid gap-1 text-xs'>
+                          <strong>{reward.current_stage.name}</strong>
+                          <span>
+                            {t('Effective paid invitees')}：
+                            {reward.effective_invite_count}
+                          </span>
+                          <span>
+                            {t('Total rebate earned')}：¥
+                            {reward.total_reward_cny.toFixed(2)}
+                          </span>
+                          <span>
+                            {t('Total recharge')}：¥
+                            {reward.total_recharge_cny.toFixed(2)}
+                          </span>
+                          <span>
+                            {t('Recharge benefit')}：
+                            {reward.granted_benefit_count} {t('Granted')} /{' '}
+                            {reward.pending_benefit_count} {t('Pending')}
+                          </span>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
             </button>
@@ -530,6 +635,33 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         : `${t('Token')} #${tokenId}`
       let group = log.group
       if (!group) group = other?.group || ''
+      const isAutoRoute = isAutoGroupLog(other)
+      const autoRouteStatus = getAutoRouteStatus(other)
+      const autoRoutePriority = other?.auto_route_priority
+      const autoRouteStatusLabel =
+        autoRouteStatus === 'degraded'
+          ? t('Auto degraded')
+          : autoRouteStatus === 'recovered'
+            ? t('Auto priority restored')
+            : autoRouteStatus === 'normal'
+              ? t('Auto healthy')
+              : null
+      const AutoRouteStatusIcon =
+        autoRouteStatus === 'degraded'
+          ? CircleAlert
+          : autoRouteStatus === 'recovered'
+            ? RotateCcw
+            : CircleCheck
+      const autoRouteStatusVariant =
+        autoRouteStatus === 'degraded'
+          ? 'warning'
+          : autoRouteStatus === 'recovered'
+            ? 'success'
+            : 'info'
+
+      const autoRouteLabel = autoRoutePriority
+        ? `${t('Auto')} · P${autoRoutePriority}`
+        : t('Auto')
 
       const metaParts: string[] = []
       const groupRatioText = getGroupRatioText(other)
@@ -542,7 +674,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       if (groupRatioText) metaParts.push(groupRatioText)
 
       return (
-        <div className='flex max-w-[200px] flex-col gap-0.5'>
+        <div className='command-log-token flex min-w-0 flex-col gap-0.5'>
           <TooltipProvider delay={300}>
             <Tooltip>
               <TooltipTrigger render={<div className='max-w-full' />}>
@@ -568,10 +700,30 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               )}
             </Tooltip>
           </TooltipProvider>
-          {metaParts.length > 0 && (
-            <span className='text-muted-foreground/60 truncate [font-family:var(--font-body)] !text-xs'>
-              {metaParts.join(' · ')}
-            </span>
+          {(metaParts.length > 0 || isAutoRoute) && (
+            <div className='command-log-secondary flex min-w-0 flex-wrap items-center gap-1 [font-family:var(--font-body)] !text-xs'>
+              {metaParts.length > 0 && (
+                <span className='text-muted-foreground/60 truncate'>
+                  {metaParts.join(' · ')}
+                </span>
+              )}
+              {isAutoRoute && (
+                <StatusBadge
+                  label={autoRouteLabel}
+                  icon={AutoRouteStatusIcon}
+                  variant={autoRouteStatusVariant}
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='h-4 rounded px-1 text-[10px] leading-none'
+                  title={
+                    autoRouteStatusLabel
+                      ? `${autoRouteStatusLabel}${autoRoutePriority ? ` · P${autoRoutePriority}` : ''}`
+                      : autoRouteLabel
+                  }
+                />
+              )}
+            </div>
           )}
         </div>
       )
@@ -607,10 +759,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     {
       accessorKey: 'use_time',
       header: ({ column }) => (
-        <DataTableColumnHeader
-          column={column}
-          title={t('Total / Upstream First Token')}
-        />
+        <DataTableColumnHeader column={column} title={t('Timing')} />
       ),
       cell: ({ row }) => {
         const log = row.original
@@ -619,7 +768,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const useTime = row.getValue('use_time') as number
         const other = parseLogOther(log.other)
         const firstResponse = getLogFirstResponseLatency(log, other)
-        const throughput = getLogThroughput(log, other)
+        const throughputAssessment = getLogThroughputAssessment(log, other)
+        const throughput = throughputAssessment.throughput
         const timeVariant = getResponseTimeColor(
           useTime,
           log.completion_tokens,
@@ -641,65 +791,115 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         }
 
         return (
-          <div className='flex flex-col gap-1'>
-            <div className='flex items-center gap-1.5'>
-              <StatusBadge
-                label={formatUseTime(useTime)}
-                variant={timeVariant as StatusBadgeProps['variant']}
-                size='sm'
-                copyable={false}
-                className={cn('rounded-md font-mono', timingBgMap[timeVariant])}
-              />
-              <TooltipProvider delay={300}>
-                <Tooltip>
-                  <TooltipTrigger render={<span className='inline-flex' />}>
-                    {firstResponse ? (
-                      <StatusBadge
-                        label={formatUseTime(firstResponse.milliseconds / 1000)}
-                        variant={
-                          firstResponseVariant as StatusBadgeProps['variant']
-                        }
-                        size='sm'
-                        showDot={false}
-                        copyable={false}
-                        className={cn(
-                          'rounded-md font-mono',
-                          timingBgMap[firstResponseVariant]
-                        )}
-                      />
-                    ) : (
-                      <StatusBadge
-                        label='N/A'
-                        variant='neutral'
-                        size='sm'
-                        showDot={false}
-                        copyable={false}
-                        className={cn(
-                          'rounded-md font-mono',
-                          timingBgMap.neutral
-                        )}
-                      />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent side='top' className='max-w-xs'>
-                    {getFirstResponseTooltip(firstResponse?.source ?? null, t)}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+          <div className='command-log-timing flex flex-col gap-1'>
+            <div className='grid grid-cols-2 gap-1.5'>
+              <div className='flex min-w-0 flex-col gap-0.5'>
+                <span className='text-muted-foreground/70 text-[10px] leading-none'>
+                  {t('Total')}
+                </span>
+                <StatusBadge
+                  label={formatUseTime(useTime)}
+                  variant={timeVariant as StatusBadgeProps['variant']}
+                  size='sm'
+                  copyable={false}
+                  className={cn(
+                    'w-fit rounded-md font-mono',
+                    timingBgMap[timeVariant]
+                  )}
+                />
+              </div>
+              <div className='flex min-w-0 flex-col gap-0.5'>
+                <span className='text-muted-foreground/70 text-[10px] leading-none'>
+                  {t('First Token')}
+                </span>
+                <TooltipProvider delay={300}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={<span className='inline-flex w-fit' />}
+                    >
+                      {firstResponse ? (
+                        <StatusBadge
+                          label={formatUseTime(
+                            firstResponse.milliseconds / 1000
+                          )}
+                          variant={
+                            firstResponseVariant as StatusBadgeProps['variant']
+                          }
+                          size='sm'
+                          showDot={false}
+                          copyable={false}
+                          className={cn(
+                            'w-fit rounded-md font-mono',
+                            timingBgMap[firstResponseVariant]
+                          )}
+                        />
+                      ) : (
+                        <StatusBadge
+                          label='N/A'
+                          variant='neutral'
+                          size='sm'
+                          showDot={false}
+                          copyable={false}
+                          className={cn(
+                            'w-fit rounded-md font-mono',
+                            timingBgMap.neutral
+                          )}
+                        />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent side='top' className='max-w-xs'>
+                      {getFirstResponseTooltip(
+                        firstResponse?.source ?? null,
+                        t
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             </div>
-            <div className='flex items-center gap-1 [font-family:var(--font-body)] !text-xs leading-none'>
-              <span className='text-muted-foreground/60 [font-family:var(--font-body)] !text-xs leading-none'>
-                {log.is_stream ? t('Stream') : t('Non-stream')}
+            <div className='usage-log-throughput flex w-full items-center justify-center gap-1 [font-family:var(--font-body)] text-[11px] leading-none'>
+              <span className='text-muted-foreground/60 inline-flex w-full items-center justify-center [font-family:var(--font-body)] text-[11px] leading-none whitespace-nowrap'>
                 {throughput != null && (
-                  <>
-                    {' · '}
-                    {throughput.estimated && '~'}
-                    <span className='tabular-nums'>
-                      {formatTokensPerSecond(throughput.tokensPerSecond)}
-                    </span>
-                    {' t/s'}
-                  </>
+                  <TooltipProvider delay={300}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={<span className='inline-flex cursor-help' />}
+                      >
+                        {log.is_stream ? t('Stream') : t('Non-stream')}
+                        {' · '}
+                        <span className='tabular-nums'>
+                          {formatTokensPerSecond(throughput.tokensPerSecond)}
+                        </span>
+                        {' t/s'}
+                      </TooltipTrigger>
+                      <TooltipContent side='top' className='max-w-xs'>
+                        {getThroughputTooltip(t)}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
+                {throughput == null &&
+                  throughputAssessment.unavailableReason != null && (
+                    <TooltipProvider delay={300}>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<span className='inline-flex cursor-help' />}
+                        >
+                          {log.is_stream ? t('Stream') : t('Non-stream')}
+                          {' · N/A'}
+                        </TooltipTrigger>
+                        <TooltipContent side='top' className='max-w-xs'>
+                          {getUnavailableThroughputTooltip(
+                            throughputAssessment.unavailableReason,
+                            t
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                {throughput == null &&
+                  throughputAssessment.unavailableReason == null &&
+                  (log.is_stream ? t('Stream') : t('Non-stream'))}
               </span>
               {log.is_stream &&
                 other?.stream_status &&
@@ -765,7 +965,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               {completionTokens.toLocaleString()}
             </span>
             {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
-              <div className='flex items-center gap-1 text-[11px]'>
+              <div className='command-log-cache flex items-center gap-1 text-[11px]'>
                 {cacheReadTokens > 0 && (
                   <span className='text-muted-foreground/60'>
                     {t('Cache')}↓ {cacheReadTokens.toLocaleString()}
@@ -876,33 +1076,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <>
             <button
               type='button'
-              className='group flex max-w-[220px] flex-col items-start gap-0.5 text-left text-xs'
+              className='border-border/70 bg-muted/40 hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium'
               onClick={() => setDialogOpen(true)}
-              title={t('Click to view full details')}
+              title={segments[0]?.text || t('Click to view full details')}
             >
-              {segments.length > 0 ? (
-                segments.map((segment, index) => (
-                  <span
-                    key={`${segment.text}-${index}`}
-                    className={cn(
-                      'max-w-full truncate leading-snug group-hover:underline',
-                      segment.muted
-                        ? 'text-muted-foreground/60'
-                        : segment.danger
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-foreground'
-                    )}
-                  >
-                    {segment.text}
-                  </span>
-                ))
-              ) : log.content ? (
-                <span className='text-muted-foreground truncate group-hover:underline'>
-                  {log.content}
-                </span>
-              ) : (
-                <span className='text-muted-foreground/40'>—</span>
-              )}
+              <Eye className='size-3.5' aria-hidden='true' />
+              <span>{t('View')}</span>
             </button>
             <DetailsDialog
               log={log}

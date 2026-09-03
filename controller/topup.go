@@ -44,12 +44,11 @@ func GetTopUpInfo(c *gin.Context) {
 	enableAlipayDirect := service.IsAlipayDirectTopUpEnabled()
 	if enableAlipayDirect {
 		payMethods = append([]map[string]string{{
-			"name":        "支付宝（官方）",
-			"type":        model.PaymentMethodAlipay,
-			"provider":    model.PaymentProviderAlipayDirect,
-			"color":       "#1677FF",
-			"min_topup":   strconv.FormatFloat(service.GetAlipayDirectMinTopUp(), 'f', -1, 64),
-			"recommended": "true",
+			"name":      "支付宝（官方）",
+			"type":      model.PaymentMethodAlipay,
+			"provider":  model.PaymentProviderAlipayDirect,
+			"color":     "#1677FF",
+			"min_topup": strconv.FormatFloat(service.GetAlipayDirectMinTopUp(), 'f', -1, 64),
 		}}, payMethods...)
 	}
 
@@ -120,39 +119,44 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 	if enableMPay {
-		hasMPayAlipay := false
-		hasMPayWechat := false
+		mpayMethod := service.GetMPayPaymentMethod()
+		hasMPayMethod := false
 		for _, method := range payMethods {
-			if method["provider"] != model.PaymentProviderMPay {
-				continue
-			}
-			switch method["type"] {
-			case model.PaymentMethodAlipay:
-				hasMPayAlipay = true
-			case model.PaymentMethodWechat:
-				hasMPayWechat = true
+			if method["provider"] == model.PaymentProviderMPay && method["type"] == mpayMethod {
+				hasMPayMethod = true
+				break
 			}
 		}
-		// Official Alipay remains the single Alipay entry when it is enabled.
-		// MPay still provides the independent WeChat entry.
-		if !enableAlipayDirect && !hasMPayAlipay {
-			payMethods = append(payMethods, map[string]string{
-				"name":        "支付宝",
-				"type":        model.PaymentMethodAlipay,
-				"provider":    model.PaymentProviderMPay,
-				"color":       "#1677FF",
-				"min_topup":   strconv.FormatFloat(service.GetMPayMinTopup(), 'f', -1, 64),
-				"recommended": "true",
-			})
-		}
-		if !hasMPayWechat {
-			payMethods = append(payMethods, map[string]string{
-				"name":      "微信支付",
-				"type":      model.PaymentMethodWechat,
+		if !(mpayMethod == model.PaymentMethodAlipay && enableAlipayDirect) && !hasMPayMethod {
+			method := map[string]string{
+				"name":      "SynthPay",
+				"type":      mpayMethod,
 				"provider":  model.PaymentProviderMPay,
-				"color":     "#07C160",
+				"color":     "#36E59F",
 				"min_topup": strconv.FormatFloat(service.GetMPayMinTopup(), 'f', -1, 64),
-			})
+			}
+			switch mpayMethod {
+			case model.PaymentMethodAlipay:
+				method["name"] = "支付宝（SynthPay）"
+				method["color"] = "#1677FF"
+			case model.PaymentMethodWechat:
+				method["name"] = "微信支付（SynthPay）"
+				method["color"] = "#07C160"
+			}
+			payMethods = append(payMethods, method)
+		}
+	}
+
+	// The recommendation is a single, user-facing choice. Keep it on WeChat
+	// whenever that method is available, regardless of its payment provider.
+	// This also removes stale flags retained in the configurable Epay list.
+	for _, method := range payMethods {
+		delete(method, "recommended")
+	}
+	for _, method := range payMethods {
+		if method["type"] == model.PaymentMethodWechat {
+			method["recommended"] = "true"
+			break
 		}
 	}
 
@@ -557,7 +561,18 @@ func EpayNotify(c *gin.Context) {
 				return
 			}
 			logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值成功 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
-			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), c.ClientIP(), topUp.PaymentMethod, "epay")
+			model.RecordPaymentLog(topUp.UserId,
+				fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money),
+				model.PaymentAuditInfo{
+					Event:                 "topup_completed",
+					Source:                "webhook",
+					TradeNo:               topUp.TradeNo,
+					ProviderTradeNo:       topUp.ProviderTradeNo,
+					PaymentMethod:         topUp.PaymentMethod,
+					PaymentProvider:       model.PaymentProviderEpay,
+					CallbackPaymentMethod: verifyInfo.Type,
+					CallerIp:              c.ClientIP(),
+				})
 		}
 	} else {
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 忽略事件 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))

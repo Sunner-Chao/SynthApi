@@ -73,7 +73,31 @@ export type CodexUsageResponse = {
   success: boolean
   message?: string
   upstream_status?: number
+  reset_count?: number
+  last_reset_at?: number
+  provider_reset_supported?: boolean
+  provider_reset_credits?: {
+    available_count?: number
+  }
   data?: Record<string, unknown>
+}
+
+export type ImportedAccountResetResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    channel_id?: number
+    reset_count?: number
+    last_reset_at?: number
+    provider_reset_supported?: boolean
+    provider_outcome?:
+      | 'reset'
+      | 'nothing_to_reset'
+      | 'no_credit'
+      | 'already_redeemed'
+    provider_windows_reset?: number
+    local_reset_applied?: boolean
+  }
 }
 
 export type CodexCredentialRefreshResponse = {
@@ -169,6 +193,30 @@ export async function updateImportedAccountMonitor(
   const res = await api.post(
     `/api/channel/${id}/imported_account_monitor`,
     { monitor },
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function getImportedAccountResetState(
+  id: number
+): Promise<ImportedAccountResetResponse> {
+  const res = await api.get(
+    `/api/channel/${id}/imported_account_reset`,
+    channelActionConfig({ disableDuplicate: true })
+  )
+  return res.data
+}
+
+export async function resetImportedAccountState(
+  id: number
+): Promise<ImportedAccountResetResponse> {
+  const idempotencyKey =
+    globalThis.crypto?.randomUUID?.() ||
+    `synthapi-reset-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const res = await api.post(
+    `/api/channel/${id}/imported_account_reset`,
+    { idempotency_key: idempotencyKey },
     channelActionConfig()
   )
   return res.data

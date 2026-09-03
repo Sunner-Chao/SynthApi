@@ -327,7 +327,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
             </div>
           </div>
 
-          <div className='grid gap-4 md:grid-cols-3'>
+          <div className='grid gap-4 md:grid-cols-4'>
             <FormField
               control={form.control}
               name='ModelRequestRateLimitDurationMinutes'
@@ -419,6 +419,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                 </FormItem>
               )}
             />
+
           </div>
 
           <FormField

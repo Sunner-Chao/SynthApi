@@ -131,10 +131,26 @@ export interface ImageGenerationRequest {
   prompt: string
   size?: string
   resolution?: string
+  quality?: string
+  background?: string
+  output_format?: string
+  output_compression?: number
+  moderation?: string
+  input_fidelity?: string
+  response_format?: string
+  partial_images?: number
+  user?: string
   n?: number
+  images?: string[]
+  image_urls?: string[]
+  official_fallback?: boolean
+  image?: string
+  watermark?: boolean
+  [key: string]: unknown
 }
 
 export interface ImageGenerationData {
+  id?: string
   url?: string
   b64_json?: string
   revised_prompt?: string
@@ -148,11 +164,31 @@ export interface ImageGenerationResponse {
   status?: string
   progress?: string | number
   message?: string
-  data?: ImageGenerationData[]
+  data?: ImageGenerationData[] | ImageGenerationData
   error?: {
     message?: string
     code?: string
     type?: string
+  }
+}
+
+export interface ImageGenerationHistoryItem {
+  id: number
+  task_id: string
+  status: string
+  progress?: string
+  result_url?: string
+  submit_time?: number
+  finish_time?: number
+  properties?: {
+    input?: string
+    origin_model_name?: string
+    upstream_model_name?: string
+    image_size?: string
+    image_resolution?: string
+    image_quality?: string
+    image_count?: number
+    image_watermark?: boolean
   }
 }
 
@@ -203,4 +239,52 @@ export interface GroupOption {
   value: string
   ratio: number
   desc?: string
+  supportsResolutionPricing?: boolean
+  supportsCustomImageParameters?: boolean
+  supportsCustomVideoParameters?: boolean
+  models?: string[]
+}
+
+export interface VideoGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  duration?: number
+  seconds?: string
+  resolution?: string
+  size?: string
+  aspect_ratio?: string
+  image_urls?: string[]
+  video_urls?: string[]
+  audio_urls?: string[]
+  first_frame_image?: string
+  last_frame_image?: string
+  generate_audio?: boolean
+  seed?: number
+  negative_prompt?: string
+  [key: string]: unknown
+}
+
+export interface VideoGenerationResponse {
+  id?: string
+  task_id?: string
+  status?: string
+  progress?: string | number
+  error?: { message?: string; code?: string; type?: string }
+  data?: unknown
+}
+
+export interface VideoGenerationHistoryItem {
+  id: number
+  task_id: string
+  status: string
+  progress?: string
+  result_url?: string
+  submit_time?: number
+  finish_time?: number
+  properties?: {
+    input?: string
+    origin_model_name?: string
+    upstream_model_name?: string
+  }
 }

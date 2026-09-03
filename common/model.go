@@ -15,9 +15,18 @@ var (
 		"gpt-image-1",
 		"gpt-image-2",
 		"chatgpt-image",
+		"gemini-2.5-flash-image-preview",
+		"gemini-3-pro-image-preview",
+		"gemini-3.1-flash-image-preview",
+		"gemini-3.1-flash-lite-image",
 		"prefix:imagen-",
 		"flux-",
 		"flux.1-",
+		"seedream-",
+		"qwen-image-",
+		"grok-imagine-",
+		"wan2.7-image",
+		"z-image-",
 	}
 	OpenAITextModels = []string{
 		"gpt-",

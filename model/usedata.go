@@ -119,6 +119,9 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (qu
 	if endTime > 0 {
 		query = query.Where("created_at <= ?", endTime)
 	}
+	if query, err = applyNonAdminLogScope(query); err != nil {
+		return nil, err
+	}
 	err = query.Group("user_id, username, model_name, " + bucketExpr).
 		Find(&quotaDatas).Error
 	return quotaDatas, err
@@ -133,6 +136,9 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 	if endTime > 0 {
 		query = query.Where("created_at <= ?", endTime)
 	}
+	if query, err = applyNonAdminLogScope(query); err != nil {
+		return nil, err
+	}
 	err = query.Group("user_id, username, model_name, " + bucketExpr).
 		Find(&quotaDatas).Error
 	return quotaDatas, err
@@ -146,6 +152,9 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*Quota
 		Where("type = ? and created_at >= ?", LogTypeConsume, startTime)
 	if endTime > 0 {
 		query = query.Where("created_at <= ?", endTime)
+	}
+	if query, err = applyNonAdminLogScope(query); err != nil {
+		return nil, err
 	}
 	err = query.Group("user_id, username, " + bucketExpr).
 		Find(&quotaDatas).Error
@@ -163,6 +172,9 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaDat
 		Where("type = ? and created_at >= ?", LogTypeConsume, startTime)
 	if endTime > 0 {
 		query = query.Where("created_at <= ?", endTime)
+	}
+	if query, err = applyNonAdminLogScope(query); err != nil {
+		return nil, err
 	}
 	err = query.Group("model_name, " + bucketExpr).
 		Find(&quotaDatas).Error

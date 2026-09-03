@@ -20,10 +20,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import { type Table } from '@tanstack/react-table'
-import { Eye, EyeOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsAdmin } from '@/hooks/use-admin'
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -32,16 +30,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
 import type { CommonLogFilters } from '../types'
-import { CommonLogsStats } from './common-logs-stats'
 import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
 import {
   LogsFilterField,
@@ -71,7 +63,7 @@ export function CommonLogsFilterBar<TData>(
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
   const isAdmin = useIsAdmin()
-  const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
+  const { sensitiveVisible } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
 
   const [filters, setFilters] = useState<CommonLogFilters>(() => {
@@ -196,30 +188,6 @@ export function CommonLogsFilterBar<TData>(
   const logTypeLabel =
     logTypeItems.find((type) => type.value === logType)?.label ?? t('All Types')
 
-  const statsBar = (
-    <div className='flex flex-wrap items-center gap-2'>
-      <CommonLogsStats />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant='ghost'
-              size='icon'
-              onClick={() => setSensitiveVisible(!sensitiveVisible)}
-              aria-label={sensitiveVisible ? t('Hide') : t('Show')}
-              className='text-muted-foreground hover:text-foreground size-7'
-            />
-          }
-        >
-          {sensitiveVisible ? <Eye /> : <EyeOff />}
-        </TooltipTrigger>
-        <TooltipContent>
-          {sensitiveVisible ? t('Hide') : t('Show')}
-        </TooltipContent>
-      </Tooltip>
-    </div>
-  )
-
   const dateRangeFilter = (
     <LogsFilterField wide>
       <CompactDateTimeRangePicker
@@ -333,7 +301,6 @@ export function CommonLogsFilterBar<TData>(
   return (
     <LogsFilterToolbar
       table={props.table}
-      stats={statsBar}
       primaryFilters={
         <>
           {dateRangeFilter}

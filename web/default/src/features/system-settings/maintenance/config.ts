@@ -63,14 +63,17 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     enabled: true,
     detail: true,
     group_monitor: true,
+    intelligence_radar: true,
     token: true,
     log: true,
     midjourney: true,
     task: true,
+    image_workbench: true,
   },
   personal: {
     enabled: true,
     topup: true,
+    rewards: true,
     personal: true,
   },
   admin: {

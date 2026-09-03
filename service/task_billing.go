@@ -50,6 +50,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
+	AppendAutoGroupLogInfo(c, info, other)
 	AppendRelayTraceLogInfo(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
@@ -217,6 +218,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	taskAdjustTokenQuota(ctx, task, quotaDelta)
 
 	task.Quota = actualQuota
+	if err := task.Update(); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("持久化任务结算额度失败 task %s: %s", task.TaskID, err.Error()))
+	}
 
 	var logType int
 	var logQuota int

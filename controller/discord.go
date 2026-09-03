@@ -151,7 +151,7 @@ func DiscordOAuth(c *gin.Context) {
 			} else {
 				user.DisplayName = "Discord User"
 			}
-			err := user.Insert(0)
+			err := model.CreatePublicUser(&user, c.ClientIP(), 0)
 			if err != nil {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,

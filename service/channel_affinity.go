@@ -612,7 +612,10 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			CacheKey:       cacheKeyFull,
 			TTLSeconds:     ttlSeconds,
 			RuleName:       rule.Name,
-			SkipRetry:      rule.SkipRetryOnFailure,
+			// Auto owns group and priority selection. Keep the rule metadata so
+			// request-specific headers/templates and failure scoping still work,
+			// but never let an Auto affinity hit disable cross-group failover.
+			SkipRetry:      rule.SkipRetryOnFailure && !strings.EqualFold(strings.TrimSpace(usingGroup), "auto"),
 			ParamTemplate:  cloneStringAnyMap(rule.ParamOverrideTemplate),
 			KeySourceType:  strings.TrimSpace(usedSource.Type),
 			KeySourceKey:   strings.TrimSpace(usedSource.Key),
@@ -623,6 +626,12 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			ModelName:      modelName,
 			RequestPath:    path,
 		})
+		if strings.EqualFold(strings.TrimSpace(usingGroup), "auto") {
+			// A cached channel is scoped to a concrete group. Returning it here
+			// would bypass Auto's configured order and keep a conversation pinned
+			// to a lower-priority fallback after the higher-priority group recovers.
+			return 0, false
+		}
 
 		cache := getChannelAffinityCache()
 		channelID, found, err := cache.Get(cacheKeySuffix)
@@ -755,6 +764,11 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 	}
 	setting := operation_setting.GetChannelAffinitySetting()
 	if setting == nil || !setting.Enabled {
+		return
+	}
+	if meta, ok := getChannelAffinityMeta(c); ok && strings.EqualFold(strings.TrimSpace(meta.UsingGroup), "auto") {
+		// Auto affinity is metadata-only. It must not create a cache entry that
+		// could later be mistaken for a concrete group selection.
 		return
 	}
 	if setting.SwitchOnSuccess && c != nil {

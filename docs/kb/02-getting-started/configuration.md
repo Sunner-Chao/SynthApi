@@ -17,6 +17,7 @@
 | `TZ` | 时区 | UTC | `TZ=Asia/Shanghai` |
 | `NODE_TYPE` | 节点类型 | master | `NODE_TYPE=slave` |
 | `NODE_NAME` | 节点名称 | 空 | `NODE_NAME=node-1` |
+| `AUDIT_SERVER_IP` | 支付审计日志记录的服务器公网 IP；未设置时使用本机网卡地址 | 空 | `AUDIT_SERVER_IP=203.0.113.10` |
 
 ### 数据库配置
 
@@ -104,6 +105,18 @@ REDIS_CONN_STRING=redis://user:password@localhost:6379
 | `SEARCH_RATE_LIMIT` | 搜索限流次数 | 10 | `SEARCH_RATE_LIMIT=30` |
 | `SEARCH_RATE_LIMIT_DURATION` | 搜索限流周期（秒） | 60 | `SEARCH_RATE_LIMIT_DURATION=30` |
 | `MODEL_REQUEST_RATE_LIMIT` | 模型请求限流 | 空 | `MODEL_REQUEST_RATE_LIMIT=60/min` |
+
+### 注册与邀请反滥用
+
+| 变量 | 说明 | 默认值 | 示例 |
+|------|------|--------|------|
+| `REGISTER_RATE_LIMIT_ENABLE` | 启用公开注册专用限流 | true | `REGISTER_RATE_LIMIT_ENABLE=true` |
+| `REGISTER_RATE_LIMIT` | 单 IP 注册次数 | 5 | `REGISTER_RATE_LIMIT=3` |
+| `REGISTER_RATE_LIMIT_DURATION` | 单 IP 限流周期（秒） | 3600 | `REGISTER_RATE_LIMIT_DURATION=7200` |
+| `REGISTER_SUBNET_LIMIT_ENABLE` | 启用 IPv4 /24 网络注册上限 | true | `REGISTER_SUBNET_LIMIT_ENABLE=true` |
+| `REGISTER_SUBNET_LIMIT` | 单 IPv4 /24 网络账号上限 | 3 | `REGISTER_SUBNET_LIMIT=2` |
+| `AFFILIATE_REWARD_AFTER_PAYMENT` | 邀请人奖励改为充值成功后结算 | true | `AFFILIATE_REWARD_AFTER_PAYMENT=true` |
+| `AFFILIATE_REWARD_MIN_PAYMENT` | 触发邀请奖励的最低支付金额 | 1 | `AFFILIATE_REWARD_MIN_PAYMENT=5` |
 
 ### 超时配置
 

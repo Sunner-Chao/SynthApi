@@ -25,6 +25,7 @@
 ### 04 - API 参考
 - [管理 API](./04-api-reference/admin-api.md) — 用户、渠道、Token、系统配置接口
 - [代理转发 API](./04-api-reference/proxy-api.md) — Chat、Image、Audio、Embedding 等接口
+- [图像生成 API](./04-api-reference/image-api.md) — APIMart 模型、真 4K 参数、参考图与异步任务轮询
 - [SDK 与集成](./04-api-reference/sdk-libraries.md) — 官方/社区客户端与集成方案
 
 ### 05 - 运维与可观测性

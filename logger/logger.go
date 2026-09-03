@@ -64,7 +64,10 @@ func SetupLogger() {
 		currentLogPathMu.Unlock()
 
 		common.LogWriterMu.Lock()
-		gin.DefaultWriter = io.MultiWriter(os.Stdout, fd)
+		// Keep normal request and audit summaries in the application log. Mirroring
+		// every line to stdout caused the same high-volume payload to be persisted
+		// again by journald and rsyslog on constrained production nodes.
+		gin.DefaultWriter = fd
 		gin.DefaultErrorWriter = io.MultiWriter(os.Stderr, fd)
 		if oldFile != nil {
 			_ = oldFile.Close()

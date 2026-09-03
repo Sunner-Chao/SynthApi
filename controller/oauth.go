@@ -237,13 +237,6 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		return nil, &OAuthRegistrationDisabledError{}
 	}
 	registerIP := c.ClientIP()
-	ipUsed, err := model.IsRegisterIPUsed(registerIP)
-	if err != nil {
-		return nil, err
-	}
-	if ipUsed {
-		return nil, fmt.Errorf("当前网络环境已注册过账号，请勿重复注册")
-	}
 
 	// Set up new user
 	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
@@ -269,72 +262,63 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
-	user.RegisterIP = registerIP
 
 	// Handle affiliate code
 	affCode := session.Get("aff")
 	inviterId := 0
-	if affCode != nil {
-		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
+	if affCodeString, ok := affCode.(string); ok && affCodeString != "" {
+		inviterId, _ = model.GetUserIdByAffCode(affCodeString)
 	}
 
-	// Use transaction to ensure user creation and OAuth binding are atomic
-	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
-		// Custom provider: create user and binding in a transaction
-		err := model.DB.Transaction(func(tx *gorm.DB) error {
-			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
-				return err
-			}
-
-			// Create OAuth binding
-			binding := &model.UserOAuthBinding{
-				UserId:         user.Id,
-				ProviderId:     genericProvider.GetProviderId(),
-				ProviderUserId: oauthUser.ProviderUserID,
-			}
-			if err := model.CreateUserOAuthBindingWithTx(tx, binding); err != nil {
-				return err
-			}
-
-			return nil
-		})
+	// Use one per-IP guard for the database check and the transaction. This
+	// closes the check-then-insert race and applies the same affiliate rules as
+	// password registration.
+	err := model.WithRegistrationGuard(registerIP, func() error {
+		var normalizedIP string
+		var safeInviterID int
+		var err error
+		normalizedIP, safeInviterID, err = model.ValidatePublicRegistration(user, registerIP, inviterId)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		user.RegisterIP = normalizedIP
+		user.InviterId = safeInviterID
+		inviterId = safeInviterID
+
+		// Use transaction to ensure user creation and OAuth binding are atomic.
+		if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
+			return model.DB.Transaction(func(tx *gorm.DB) error {
+				if err := user.InsertWithTx(tx, inviterId); err != nil {
+					return err
+				}
+				binding := &model.UserOAuthBinding{
+					UserId:         user.Id,
+					ProviderId:     genericProvider.GetProviderId(),
+					ProviderUserId: oauthUser.ProviderUserID,
+				}
+				return model.CreateUserOAuthBindingWithTx(tx, binding)
+			})
 		}
 
-		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
-		user.FinalizeOAuthUserCreation(inviterId)
-	} else {
-		// Built-in provider: create user and update provider ID in a transaction
-		err := model.DB.Transaction(func(tx *gorm.DB) error {
-			// Create user
+		return model.DB.Transaction(func(tx *gorm.DB) error {
 			if err := user.InsertWithTx(tx, inviterId); err != nil {
 				return err
 			}
-
-			// Set the provider user ID on the user model and update
 			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
-			if err := tx.Model(user).Updates(map[string]interface{}{
+			return tx.Model(user).Updates(map[string]interface{}{
 				"github_id":   user.GitHubId,
 				"discord_id":  user.DiscordId,
 				"oidc_id":     user.OidcId,
 				"linux_do_id": user.LinuxDOId,
 				"wechat_id":   user.WeChatId,
 				"telegram_id": user.TelegramId,
-			}).Error; err != nil {
-				return err
-			}
-
-			return nil
+			}).Error
 		})
-		if err != nil {
-			return nil, err
-		}
-
-		// Perform post-transaction tasks
-		user.FinalizeOAuthUserCreation(inviterId)
+	})
+	if err != nil {
+		return nil, err
 	}
+	user.FinalizeOAuthUserCreation(inviterId)
 
 	return user, nil
 }

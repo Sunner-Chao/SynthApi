@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -94,23 +95,41 @@ func authHelper(c *gin.Context, minRole int) {
 	}
 	// get header New-Api-User
 	apiUserIdStr := c.Request.Header.Get("New-Api-User")
+	apiUserId := 0
 	if apiUserIdStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": common.TranslateMessage(c, i18n.MsgAuthUserIdNotProvided),
-		})
-		c.Abort()
-		return
-	}
-	apiUserId, err := strconv.Atoi(apiUserIdStr)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": common.TranslateMessage(c, i18n.MsgAuthUserIdFormatError),
-		})
-		c.Abort()
-		return
-
+		// Browser dashboard requests can lose the per-origin uid localStorage
+		// value when moving between synthapi.asia and admin.synthapi.asia.
+		// A valid signed session already binds the request to one user, so use
+		// that identity instead of rejecting the request before the controller.
+		if useAccessToken {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserIdNotProvided),
+			})
+			c.Abort()
+			return
+		}
+		sessionID, ok := id.(int)
+		if !ok || sessionID <= 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserIdNotProvided),
+			})
+			c.Abort()
+			return
+		}
+		apiUserId = sessionID
+	} else {
+		var err error
+		apiUserId, err = strconv.Atoi(apiUserIdStr)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserIdFormatError),
+			})
+			c.Abort()
+			return
+		}
 	}
 	if id != apiUserId {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -215,6 +234,9 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		key := c.Request.Header.Get("Authorization")
 		if key == "" {
+			key = c.Request.Header.Get("x-api-key")
+		}
+		if key == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": common.TranslateMessage(c, i18n.MsgTokenNotProvided),
@@ -222,14 +244,19 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
-		if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
-			key = strings.TrimSpace(key[7:])
-		}
-		key = strings.TrimPrefix(key, "sk-")
-		parts := strings.Split(key, "-")
-		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		var token *model.Token
+		var err error
+		candidates := readOnlyTokenKeyCandidates(key)
+		for _, candidate := range candidates {
+			token, err = model.GetTokenByKey(candidate, false)
+			if err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
+				break
+			}
+		}
+		if len(candidates) == 0 {
+			err = gorm.ErrRecordNotFound
+		}
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusUnauthorized, gin.H{
@@ -271,6 +298,36 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		c.Set("token_key", token.Key)
 		c.Next()
 	}
+}
+
+// readOnlyTokenKeyCandidates normalizes the key formats emitted by CC Switch.
+// The complete key is always checked before progressively removing optional
+// routing suffixes, so a legitimate token containing '-' is not truncated.
+func readOnlyTokenKeyCandidates(raw string) []string {
+	key := strings.TrimSpace(raw)
+	if len(key) >= 7 && strings.EqualFold(key[:7], "Bearer ") {
+		key = strings.TrimSpace(key[7:])
+	}
+	for len(key) >= 3 && strings.EqualFold(key[:3], "sk-") {
+		key = strings.TrimSpace(key[3:])
+	}
+	if key == "" {
+		return nil
+	}
+
+	candidates := []string{key}
+	for len(candidates) < 8 {
+		separator := strings.LastIndexByte(key, '-')
+		if separator <= 0 {
+			break
+		}
+		key = strings.TrimSpace(key[:separator])
+		if key == "" {
+			break
+		}
+		candidates = append(candidates, key)
+	}
+	return candidates
 }
 
 func TokenAuth() func(c *gin.Context) {
@@ -383,7 +440,7 @@ func TokenAuth() func(c *gin.Context) {
 		tokenGroup := token.Group
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+			if !service.IsUserTokenGroupAccessible(userGroup, tokenGroup) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 				return
 			}
@@ -425,7 +482,17 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		c.Set("token_model_limit_enabled", false)
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
-	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
+	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry,
+		setting.IsAutoCrossGroupRetryEnabled() && token.CrossGroupRetry)
+	if token.AutoGroups != "" {
+		autoGroups, err := token.GetAutoGroups()
+		if err != nil {
+			common.SysError(fmt.Sprintf("failed to parse auto groups for token %d: %v", token.Id, err))
+			common.SetContextKey(c, constant.ContextKeyTokenAutoGroups, []string{})
+		} else if len(autoGroups) > 0 {
+			common.SetContextKey(c, constant.ContextKeyTokenAutoGroups, autoGroups)
+		}
+	}
 	if len(parts) > 1 {
 		if model.IsAdmin(token.UserId) {
 			c.Set("specific_channel_id", parts[1])

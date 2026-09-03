@@ -233,7 +233,7 @@ func LinuxdoOAuth(c *gin.Context) {
 					inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
 				}
 
-				if err := user.Insert(inviterId); err != nil {
+				if err := model.CreatePublicUser(&user, c.ClientIP(), inviterId); err != nil {
 					c.JSON(http.StatusOK, gin.H{
 						"success": false,
 						"message": err.Error(),

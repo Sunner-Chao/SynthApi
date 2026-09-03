@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"embed"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -37,6 +38,10 @@ import (
 	_ "net/http/pprof"
 )
 
+var backfillAffiliateRebates = flag.Bool("backfill-affiliate-rebates", false, "rebuild historical affiliate rebate ledger")
+var backfillAdminRecharges = flag.Bool("backfill-admin-recharges", false, "rebuild historical administrator recharge ledger")
+var applyAffiliateRebates = flag.Bool("apply", false, "apply affiliate rebate backfill changes")
+
 //go:embed web/default/dist
 var buildFS embed.FS
 
@@ -55,6 +60,34 @@ func main() {
 	err := InitResources()
 	if err != nil {
 		common.FatalLog("failed to initialize resources: " + err.Error())
+		return
+	}
+	if *backfillAffiliateRebates {
+		summary, backfillErr := model.BackfillAffiliateMilestoneRebates(*applyAffiliateRebates)
+		if backfillErr != nil {
+			common.FatalLog("affiliate rebate backfill failed: " + backfillErr.Error())
+			return
+		}
+		payload, marshalErr := common.Marshal(summary)
+		if marshalErr != nil {
+			common.FatalLog("affiliate rebate backfill output failed: " + marshalErr.Error())
+			return
+		}
+		fmt.Println(string(payload))
+		return
+	}
+	if *backfillAdminRecharges {
+		summary, backfillErr := model.BackfillAdminQuotaRechargeLedger(*applyAffiliateRebates)
+		if backfillErr != nil {
+			common.FatalLog("administrator recharge backfill failed: " + backfillErr.Error())
+			return
+		}
+		payload, marshalErr := common.Marshal(summary)
+		if marshalErr != nil {
+			common.FatalLog("administrator recharge backfill output failed: " + marshalErr.Error())
+			return
+		}
+		fmt.Println(string(payload))
 		return
 	}
 
@@ -232,6 +265,7 @@ func newHTTPServer(assets router.ThemeAssets, exposure router.ExposureMode) *gin
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	store.Options(sessions.Options{
 		Path:     "/",
+		Domain:   os.Getenv("SESSION_COOKIE_DOMAIN"),
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
 		Secure:   false,

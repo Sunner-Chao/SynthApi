@@ -21,10 +21,12 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
+		apiRouter.GET("/status/announcement-image/:hash", controller.GetAnnouncementImage)
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/dashboard/channel-monitor", middleware.UserAuth(), controller.GetDashboardChannelMonitor)
+		apiRouter.GET("/model-intelligence", middleware.UserAuth(), controller.GetModelIntelligence)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)
@@ -69,7 +71,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		userRoute := apiRouter.Group("/user")
 		{
-			userRoute.POST("/register", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Register)
+			userRoute.POST("/register", middleware.RegistrationRateLimit(), middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Register)
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Login)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), controller.Verify2FALogin)
 			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), controller.PasskeyLoginBegin)
@@ -117,6 +119,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
+				selfRoute.GET("/rewards/overview", controller.GetRewardProgramOverview)
+				selfRoute.POST("/rewards/recharge/claim", middleware.CriticalRateLimit(), controller.RequestRechargeBenefit)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
 				// 2FA routes
@@ -196,6 +200,17 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			paymentRefundReviewRoute.GET("", controller.AdminListPaymentRefundReviews)
 		}
+		rewardAdminRoute := apiRouter.Group("/user/rewards/admin")
+		rewardAdminRoute.Use(middleware.AdminAuth())
+		{
+			rewardAdminRoute.GET("/settings", controller.AdminGetRewardProgramSettings)
+			rewardAdminRoute.PUT("/settings", controller.AdminUpdateRewardProgramSettings)
+			rewardAdminRoute.GET("/claims", controller.AdminListRechargeBenefitClaims)
+			rewardAdminRoute.GET("/users/summaries", controller.AdminGetUserRewardListSummaries)
+			rewardAdminRoute.GET("/users/:id/summary", controller.AdminGetUserRewardSummary)
+			rewardAdminRoute.POST("/claims/:id/grant", controller.AdminGrantRechargeBenefit)
+			rewardAdminRoute.POST("/claims/:id/reject", controller.AdminRejectRechargeBenefit)
+		}
 
 		// XPay callback and notification (no auth)
 		apiRouter.POST("/xpay/callback", controller.XPayCallback)
@@ -265,6 +280,8 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.GET("/imported_accounts", controller.GetImportedAccountChannels)
 			channelRoute.GET("/:id", controller.GetChannel)
 			channelRoute.POST("/:id/imported_account_monitor", controller.UpdateImportedAccountMonitor)
+			channelRoute.GET("/:id/imported_account_reset", controller.GetImportedAccountResetState)
+			channelRoute.POST("/:id/imported_account_reset", controller.ResetImportedAccountState)
 			channelRoute.POST("/:id/key", middleware.RootAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.GetChannelKey)
 			channelRoute.GET("/test", controller.TestAllChannels)
 			channelRoute.GET("/test/:id", controller.TestChannel)
@@ -307,6 +324,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
+			tokenRoute.GET("/auto-groups", controller.GetTokenAutoGroups)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
 			tokenRoute.POST("/", controller.AddToken)
@@ -327,6 +345,7 @@ func SetApiRouter(router *gin.Engine) {
 			ccswitchUsageRoute := usageRoute.Group("/ccswitch")
 			ccswitchUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{
+				ccswitchUsageRoute.GET("", controller.GetCCSwitchTokenUsage)
 				ccswitchUsageRoute.GET("/", controller.GetCCSwitchTokenUsage)
 			}
 		}

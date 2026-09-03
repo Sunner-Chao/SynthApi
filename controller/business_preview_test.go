@@ -73,12 +73,14 @@ func TestPublicBusinessPreviewReturnsOnlySanitizedBusinessData(t *testing.T) {
 	originalMPayPID := setting.MPayPid
 	originalMPayKey := setting.MPayKey
 	originalMinTopUp := setting.MPayMinTopUp
+	originalMPayPaymentType := setting.MPayPaymentType
 	setting.SetPublicBusinessPreviewEnabled(true)
 	setting.MPayEnabled = true
 	setting.MPayApiBase = "https://pay.example.com"
 	setting.MPayPid = "merchant"
 	setting.MPayKey = "private-secret"
 	setting.MPayMinTopUp = 0.1
+	setting.MPayPaymentType = model.PaymentMethodAlipay
 	t.Cleanup(func() {
 		setting.SetPublicBusinessPreviewEnabled(originalPreview)
 		setting.MPayEnabled = originalMPayEnabled
@@ -86,6 +88,7 @@ func TestPublicBusinessPreviewReturnsOnlySanitizedBusinessData(t *testing.T) {
 		setting.MPayPid = originalMPayPID
 		setting.MPayKey = originalMPayKey
 		setting.MPayMinTopUp = originalMinTopUp
+		setting.MPayPaymentType = originalMPayPaymentType
 	})
 
 	recorder := httptest.NewRecorder()
@@ -114,7 +117,7 @@ func TestPublicBusinessPreviewReturnsOnlySanitizedBusinessData(t *testing.T) {
 		methodTypes = append(methodTypes, method.Type)
 	}
 	require.Contains(t, methodTypes, model.PaymentMethodAlipay)
-	require.Contains(t, methodTypes, model.PaymentMethodWechat)
+	require.NotContains(t, methodTypes, model.PaymentMethodWechat)
 
 	body := recorder.Body.String()
 	for _, forbidden := range []string{
@@ -205,23 +208,26 @@ func TestPublicBusinessPreviewDoesNotExposeDatabaseErrors(t *testing.T) {
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "database")
 }
 
-func TestGetTopUpInfoIncludesMPayAlipayAndWechat(t *testing.T) {
+func TestGetTopUpInfoIncludesOnlyConfiguredMPayMethod(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
 	originalMPayEnabled := setting.MPayEnabled
 	originalMPayAPIBase := setting.MPayApiBase
 	originalMPayPID := setting.MPayPid
 	originalMPayKey := setting.MPayKey
+	originalMPayPaymentType := setting.MPayPaymentType
 	originalAlipayConfig := setting.GetAlipayDirectConfig()
 	setting.MPayEnabled = true
 	setting.MPayApiBase = "https://pay.example.com"
 	setting.MPayPid = "merchant"
 	setting.MPayKey = "secret"
+	setting.MPayPaymentType = model.PaymentMethodAlipay
 	setting.StoreAlipayDirectConfig(setting.AlipayDirectConfig{})
 	t.Cleanup(func() {
 		setting.MPayEnabled = originalMPayEnabled
 		setting.MPayApiBase = originalMPayAPIBase
 		setting.MPayPid = originalMPayPID
 		setting.MPayKey = originalMPayKey
+		setting.MPayPaymentType = originalMPayPaymentType
 		setting.StoreAlipayDirectConfig(originalAlipayConfig)
 	})
 
@@ -243,7 +249,7 @@ func TestGetTopUpInfoIncludesMPayAlipayAndWechat(t *testing.T) {
 		}
 	}
 	require.True(t, found[model.PaymentMethodAlipay])
-	require.True(t, found[model.PaymentMethodWechat])
+	require.False(t, found[model.PaymentMethodWechat])
 }
 
 func requireExactJSONKeys(t *testing.T, value map[string]any, expected ...string) {

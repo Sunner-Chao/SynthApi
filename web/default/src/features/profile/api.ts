@@ -98,11 +98,13 @@ export async function sendEmailVerification(
   email: string,
   turnstileToken?: string
 ): Promise<ApiResponse> {
-  const params = new URLSearchParams({ email })
-  if (turnstileToken) {
-    params.append('turnstile', turnstileToken)
-  }
-  const res = await api.get(`/api/verification?${params}`)
+  const res = await api.get('/api/verification', {
+    params: { email },
+    headers: turnstileToken
+      ? { 'X-Turnstile-Token': turnstileToken }
+      : undefined,
+    timeout: 10_000,
+  })
   return res.data
 }
 
@@ -178,9 +180,11 @@ export async function getCheckinStatus(
 export async function performCheckin(
   turnstileToken?: string
 ): Promise<ApiResponse<CheckinResponse>> {
-  const url = turnstileToken
-    ? `/api/user/checkin?turnstile=${encodeURIComponent(turnstileToken)}`
-    : '/api/user/checkin'
-  const res = await api.post(url)
+  const res = await api.post('/api/user/checkin', undefined, {
+    headers: turnstileToken
+      ? { 'X-Turnstile-Token': turnstileToken }
+      : undefined,
+    timeout: 10_000,
+  })
   return res.data
 }

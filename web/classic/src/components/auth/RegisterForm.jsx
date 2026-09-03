@@ -58,6 +58,7 @@ import {
 } from '../../helpers';
 import OIDCIcon from '../common/logo/OIDCIcon';
 import LinuxDoIcon from '../common/logo/LinuxDoIcon';
+import LogoFull from '../common/logo/LogoFull';
 import WeChatIcon from '../common/logo/WeChatIcon';
 import TelegramLoginButton from 'react-telegram-login/src';
 import { UserContext } from '../../context/User';
@@ -236,8 +237,14 @@ const RegisterForm = () => {
         }
         inputs.aff_code = affCode;
         const res = await API.post(
-          `/api/user/register?turnstile=${turnstileToken}`,
+          '/api/user/register',
           inputs,
+          {
+            headers: turnstileToken
+              ? { 'X-Turnstile-Token': turnstileToken }
+              : undefined,
+            timeout: 10000,
+          },
         );
         const { success, message } = res.data;
         if (success) {
@@ -263,7 +270,14 @@ const RegisterForm = () => {
     setVerificationCodeLoading(true);
     try {
       const res = await API.get(
-        `/api/verification?email=${encodeURIComponent(inputs.email)}&turnstile=${turnstileToken}`,
+        '/api/verification',
+        {
+          params: { email: inputs.email },
+          headers: turnstileToken
+            ? { 'X-Turnstile-Token': turnstileToken }
+            : undefined,
+          timeout: 10000,
+        },
       );
       const { success, message } = res.data;
       if (success) {
@@ -396,10 +410,7 @@ const RegisterForm = () => {
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
           <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
-            <Title heading={3} className='!text-gray-800'>
-              {systemName}
-            </Title>
+            <LogoFull src={logo} alt={systemName} className='h-14 w-44' />
           </div>
 
           <Card className='border-0 !rounded-2xl overflow-hidden'>
@@ -559,10 +570,7 @@ const RegisterForm = () => {
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
           <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
-            <Title heading={3} className='!text-gray-800'>
-              {systemName}
-            </Title>
+            <LogoFull src={logo} alt={systemName} className='h-14 w-44' />
           </div>
 
           <Card className='border-0 !rounded-2xl overflow-hidden'>

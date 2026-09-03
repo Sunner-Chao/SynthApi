@@ -40,7 +40,7 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { defaultTopNavLinks } from '../config/top-nav.config'
 import type { TopNavLink } from '../types'
-import { HeaderLogo } from './header-logo'
+import { LogoFull } from './logo-mark'
 
 const AUTH_PROMPT_SECONDS = 5
 
@@ -91,7 +91,6 @@ export function PublicHeader(props: PublicHeaderProps) {
     systemName,
     logo: systemLogo,
     loading,
-    logoLoaded,
   } = useSystemConfig()
   const dynamicLinks = useTopNavLinks()
   const notifications = useNotifications()
@@ -200,23 +199,19 @@ export function PublicHeader(props: PublicHeaderProps) {
               to={homeUrl}
               className='group flex shrink-0 items-center gap-2.5'
             >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
+              <div className='flex h-8 w-[7.6rem] shrink-0 items-center justify-start transition-all duration-300 group-hover:scale-[1.02]'>
                 {loading ? (
                   <Skeleton className='size-full rounded-lg' />
                 ) : customLogo ? (
                   customLogo
                 ) : (
-                  <HeaderLogo
+                  <LogoFull
                     src={systemLogo}
-                    loading={loading}
-                    logoLoaded={logoLoaded}
-                    className='size-full rounded-lg object-contain'
+                    alt={displaySiteName}
+                    className='h-10 w-full'
                   />
                 )}
               </div>
-              <span className='text-sm font-semibold tracking-tight'>
-                {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
-              </span>
             </Link>
 
             {/* Desktop nav */}
@@ -279,11 +274,18 @@ export function PublicHeader(props: PublicHeaderProps) {
                   notice={notifications.notice}
                   announcements={notifications.announcements}
                   popupAnnouncements={notifications.unreadAnnouncements}
-                  announcementDialogOpen={
-                    notifications.announcementDialogOpen
-                  }
+                  announcementDialogOpen={notifications.announcementDialogOpen}
                   onAnnouncementDialogOpenChange={
                     notifications.setAnnouncementDialogOpen
+                  }
+                  desktopNotificationsSupported={
+                    notifications.desktopNotificationsSupported
+                  }
+                  desktopNotificationPermission={
+                    notifications.desktopNotificationPermission
+                  }
+                  onRequestDesktopNotifications={
+                    notifications.requestDesktopNotifications
                   }
                   loading={notifications.loading}
                 />

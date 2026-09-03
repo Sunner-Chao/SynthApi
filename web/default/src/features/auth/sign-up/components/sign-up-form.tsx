@@ -215,7 +215,7 @@ export function SignUpForm({
     try {
       const res = await wechatLoginByCode(wechatCode)
       if (res?.success) {
-        await handleLoginSuccess(res.data as { id?: number } | null)
+        await handleLoginSuccess(res.data ?? null)
         toast.success(t('Signed in via WeChat'))
         handleWeChatDialogChange(false)
       } else {
@@ -346,6 +346,7 @@ export function SignUpForm({
             <Turnstile
               siteKey={turnstileSiteKey}
               onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken('')}
             />
           </div>
         )}
@@ -361,10 +362,7 @@ export function SignUpForm({
         <Button
           type='submit'
           className='mt-2 w-full justify-center gap-2'
-          disabled={
-            isLoading ||
-            !turnstileReady
-          }
+          disabled={isLoading || !turnstileReady}
         >
           {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
           {t('Create account')}
@@ -455,7 +453,9 @@ export function SignUpForm({
           <DialogHeader className='text-left'>
             <DialogTitle>{t('Agreement Required')}</DialogTitle>
             <DialogDescription>
-              {t('You need to read and agree to the User Agreement and Privacy Policy before creating an account. Please check the agreement box below the form.')}
+              {t(
+                'You need to read and agree to the User Agreement and Privacy Policy before creating an account. Please check the agreement box below the form.'
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

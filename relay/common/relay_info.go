@@ -706,16 +706,27 @@ type TaskRelayInfo struct {
 }
 
 type TaskSubmitReq struct {
-	Prompt         string                 `json:"prompt"`
-	Model          string                 `json:"model,omitempty"`
-	Mode           string                 `json:"mode,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	Images         []string               `json:"images,omitempty"`
-	Size           string                 `json:"size,omitempty"`
-	Duration       int                    `json:"duration,omitempty"`
-	Seconds        string                 `json:"seconds,omitempty"`
-	InputReference string                 `json:"input_reference,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Prompt          string                 `json:"prompt"`
+	Model           string                 `json:"model,omitempty"`
+	Mode            string                 `json:"mode,omitempty"`
+	Image           string                 `json:"image,omitempty"`
+	Images          []string               `json:"images,omitempty"`
+	ImageURLs       []string               `json:"image_urls,omitempty"`
+	VideoURLs       []string               `json:"video_urls,omitempty"`
+	AudioURLs       []string               `json:"audio_urls,omitempty"`
+	FirstFrameImage string                 `json:"first_frame_image,omitempty"`
+	LastFrameImage  string                 `json:"last_frame_image,omitempty"`
+	VideoURL        string                 `json:"video_url,omitempty"`
+	Size            string                 `json:"size,omitempty"`
+	Resolution      string                 `json:"resolution,omitempty"`
+	AspectRatio     string                 `json:"aspect_ratio,omitempty"`
+	Duration        int                    `json:"duration,omitempty"`
+	Seconds         string                 `json:"seconds,omitempty"`
+	GenerateAudio   *bool                  `json:"generate_audio,omitempty"`
+	Seed            *int                   `json:"seed,omitempty"`
+	NegativePrompt  string                 `json:"negative_prompt,omitempty"`
+	InputReference  string                 `json:"input_reference,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {
@@ -723,7 +734,8 @@ func (t *TaskSubmitReq) GetPrompt() string {
 }
 
 func (t *TaskSubmitReq) HasImage() bool {
-	return len(t.Images) > 0
+	return t.Image != "" || len(t.Images) > 0 || len(t.ImageURLs) > 0 ||
+		t.FirstFrameImage != "" || t.LastFrameImage != ""
 }
 
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
@@ -797,6 +809,7 @@ type TaskInfo struct {
 	Progress         string `json:"progress,omitempty"`
 	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	SourceCostUSD    float64 `json:"source_cost_usd,omitempty"`  // 上游异步任务最终成本
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -73,6 +75,22 @@ const (
 )
 
 func appendIngressLogInfo(c *gin.Context, other map[string]interface{}) map[string]interface{} {
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	if node := strings.TrimSpace(common.NodeName); node != "" {
+		// Keep the worker marker top-level so it remains visible to both
+		// administrators and users after admin-only fields are filtered.
+		other["worker_node"] = node
+	}
+	if c != nil {
+		if active := common.GetContextKeyInt(c, constant.ContextKeyChannelConcurrencyActive); active > 0 {
+			other["channel_concurrency_active"] = active
+		}
+		if limit := common.GetContextKeyInt(c, constant.ContextKeyChannelConcurrencyLimit); limit > 0 {
+			other["channel_concurrency_limit"] = limit
+		}
+	}
 	if c == nil || c.Request == nil {
 		return other
 	}
@@ -171,15 +189,90 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 	}
 }
 
-func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
-	username, _ := GetUsernameById(userId, false)
+const paymentAuditSchemaVersion = 2
+
+// PaymentAuditInfo describes how a balance-affecting payment event reached the
+// application. Keep provider payloads and credentials out of this structure.
+type PaymentAuditInfo struct {
+	Event                 string
+	Source                string
+	TradeNo               string
+	ProviderTradeNo       string
+	ReferenceId           string
+	PaymentMethod         string
+	PaymentProvider       string
+	CallbackPaymentMethod string
+	CallerIp              string
+}
+
+func paymentAuditServerIp() string {
+	if configured := strings.TrimSpace(os.Getenv("AUDIT_SERVER_IP")); configured != "" {
+		return configured
+	}
+	return strings.TrimSpace(common.GetIp())
+}
+
+func paymentAuditNodeName() string {
+	if configured := strings.TrimSpace(common.NodeName); configured != "" {
+		return configured
+	}
+	hostname, _ := os.Hostname()
+	return strings.TrimSpace(hostname)
+}
+
+func normalizePaymentAuditSource(source string, callerIp *string) string {
+	source = strings.TrimSpace(source)
+	*callerIp = strings.TrimSpace(*callerIp)
+	if *callerIp != "" && net.ParseIP(*callerIp) == nil {
+		source = *callerIp
+		*callerIp = ""
+	}
+	return source
+}
+
+func buildPaymentAuditAdminInfo(audit PaymentAuditInfo) map[string]interface{} {
+	audit.Source = normalizePaymentAuditSource(audit.Source, &audit.CallerIp)
 	adminInfo := map[string]interface{}{
-		"server_ip":               common.GetIp(),
-		"node_name":               common.NodeName,
-		"caller_ip":               callerIp,
-		"payment_method":          paymentMethod,
-		"callback_payment_method": callbackPaymentMethod,
-		"version":                 common.Version,
+		"audit_schema_version": paymentAuditSchemaVersion,
+		"server_ip":            paymentAuditServerIp(),
+		"node_name":            paymentAuditNodeName(),
+		"version":              strings.TrimSpace(common.Version),
+	}
+	fields := map[string]string{
+		"event":                   audit.Event,
+		"source":                  audit.Source,
+		"trade_no":                audit.TradeNo,
+		"provider_trade_no":       audit.ProviderTradeNo,
+		"reference_id":            audit.ReferenceId,
+		"payment_method":          audit.PaymentMethod,
+		"payment_provider":        audit.PaymentProvider,
+		"callback_payment_method": audit.CallbackPaymentMethod,
+		"caller_ip":               audit.CallerIp,
+	}
+	for key, value := range fields {
+		if value = strings.TrimSpace(value); value != "" {
+			adminInfo[key] = value
+		}
+	}
+	return adminInfo
+}
+
+func RecordPaymentLog(userId int, content string, audit PaymentAuditInfo) {
+	if audit.Event == "topup_completed" && audit.TradeNo != "" {
+		if err := GrantInviteRewardAfterPayment(audit.TradeNo); err != nil {
+			common.SysLog(fmt.Sprintf("failed to settle affiliate reward for trade %s: %v", audit.TradeNo, err))
+		}
+		if err := SettleAffiliateMilestoneRebate(audit.TradeNo); err != nil {
+			common.SysLog(fmt.Sprintf("failed to settle affiliate milestone rebate for trade %s: %v", audit.TradeNo, err))
+		}
+	}
+	username, _ := GetUsernameById(userId, false)
+	callerIp := strings.TrimSpace(audit.CallerIp)
+	adminInfo := buildPaymentAuditAdminInfo(audit)
+	if value, ok := adminInfo["caller_ip"].(string); ok {
+		callerIp = value
+	} else {
+		callerIp = ""
 	}
 	other := map[string]interface{}{
 		"admin_info": adminInfo,
@@ -193,10 +286,20 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 		Ip:        callerIp,
 		Other:     common.MapToJsonStr(other),
 	}
-	err := LOG_DB.Create(log).Error
-	if err != nil {
-		common.SysLog("failed to record topup log: " + err.Error())
+	if err := LOG_DB.Create(log).Error; err != nil {
+		common.SysLog("failed to record payment log: " + err.Error())
 	}
+}
+
+func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
+	RecordPaymentLog(userId, content, PaymentAuditInfo{
+		Event:                 "topup_completed",
+		Source:                "callback",
+		PaymentMethod:         paymentMethod,
+		PaymentProvider:       callbackPaymentMethod,
+		CallbackPaymentMethod: callbackPaymentMethod,
+		CallerIp:              callerIp,
+	})
 }
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
@@ -265,7 +368,22 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	if !common.LogConsumeEnabled {
 		return
 	}
-	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	// The complete accounting and relay trace are persisted in Log.Other below.
+	// Keep the text log concise so high request volume does not duplicate large
+	// JSON documents into both the application log and the system journal.
+	logger.LogInfo(c, fmt.Sprintf(
+		"record consume log: user_id=%d channel_id=%d token_id=%d model=%q group=%q prompt_tokens=%d completion_tokens=%d quota=%d stream=%t use_time_s=%d",
+		userId,
+		params.ChannelId,
+		params.TokenId,
+		params.ModelName,
+		params.Group,
+		params.PromptTokens,
+		params.CompletionTokens,
+		params.Quota,
+		params.IsStream,
+		params.UseTimeSeconds,
+	))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
@@ -497,6 +615,27 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+// applyNonAdminLogScope keeps administrative traffic visible in the log table,
+// but excludes it from aggregate usage statistics. Admin requests are control
+// plane activity and must not inflate the user-facing total cost or throughput
+// figures shown on the usage-logs page.
+func applyNonAdminLogScope(tx *gorm.DB) (*gorm.DB, error) {
+	if DB == nil {
+		return tx, nil
+	}
+
+	var adminUserIDs []int
+	if err := DB.Model(&User{}).
+		Where("role >= ?", common.RoleAdminUser).
+		Pluck("id", &adminUserIDs).Error; err != nil {
+		return nil, err
+	}
+	if len(adminUserIDs) > 0 {
+		tx = tx.Where("user_id NOT IN ?", adminUserIDs)
+	}
+	return tx, nil
+}
+
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
@@ -532,6 +671,12 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
 		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+	if tx, err = applyNonAdminLogScope(tx); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyNonAdminLogScope(rpmTpmQuery); err != nil {
+		return stat, err
 	}
 
 	tx = tx.Where("type = ?", LogTypeConsume)

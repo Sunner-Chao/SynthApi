@@ -9,10 +9,22 @@ export LC_ALL=C
 
 readonly APP_DIR="/home/ubuntu/demo/SynthApi"
 readonly APP_BINARY="${APP_DIR}/synthapi-server-new"
+readonly BUILD_OUTPUT_ROOT="/home/ubuntu/demo/SynthApi-build-output"
+readonly SYNC_BACKUP_ROOT="/home/ubuntu/demo/SynthApi-sync-backups"
 readonly LOCK_DIR="/run/synthapi-maintenance"
 readonly LOCK_FILE="${LOCK_DIR}/cleanup.lock"
 readonly DEFAULT_THRESHOLD_BYTES=$((5 * 1024 * 1024 * 1024))
 readonly DEFAULT_TARGET_BYTES=$((7 * 1024 * 1024 * 1024))
+# Keep the inspection bounded without skipping normal release history. A full
+# release is roughly 100 MiB, so the limit remains far below an unbounded scan.
+readonly MAX_BINARY_CANDIDATES=512
+readonly RELEASE_ARCHIVE_KEEP_COUNT=2
+readonly DEPLOY_BACKUP_KEEP_COUNT=3
+readonly BUILD_OUTPUT_KEEP_COUNT=3
+readonly SYNC_BACKUP_KEEP_COUNT=3
+readonly APP_LOG_RETENTION_DAYS=14
+readonly PACKAGE_RETENTION_DAYS=14
+readonly GENERIC_TMP_RETENTION_DAYS=7
 
 THRESHOLD_BYTES="${THRESHOLD_BYTES:-${DEFAULT_THRESHOLD_BYTES}}"
 TARGET_BYTES="${TARGET_BYTES:-${DEFAULT_TARGET_BYTES}}"
@@ -170,6 +182,25 @@ remove_binary_file() {
   fi
 }
 
+remove_regular_file() {
+  local path="$1"
+
+  if [[ ! -f "${path}" || -L "${path}" ]]; then
+    log "warning: ${path} is no longer a regular file; leaving it in place"
+    return 0
+  fi
+  if (( DRY_RUN == 1 )); then
+    log "would remove ${path}"
+    return 0
+  fi
+
+  if rm -f -- "${path}"; then
+    log "removed ${path}"
+  else
+    log "warning: failed to remove ${path}"
+  fi
+}
+
 run_cleanup_command() {
   if (( DRY_RUN == 1 )); then
     printf 'synthapi-disk-cleanup: would run'
@@ -260,7 +291,7 @@ prune_service_binaries() {
 
   while IFS= read -r -d '' file; do
     (( candidate_count += 1 ))
-    if (( candidate_count > 64 )); then
+    if (( candidate_count > MAX_BINARY_CANDIDATES )); then
       log "warning: too many binary candidates; skipping binary pruning"
       return 0
     fi
@@ -375,6 +406,101 @@ prune_service_binaries() {
   done
 }
 
+prune_release_archives() {
+  local entry path index=0
+
+  # Release packages are rollback artifacts, not live executables. Retain only
+  # the two newest packages; the active canonical binary is handled separately.
+  while IFS= read -r -d '' entry; do
+    path="${entry#* }"
+    (( index += 1 ))
+    (( index <= RELEASE_ARCHIVE_KEEP_COUNT )) && continue
+    remove_regular_file "${path}"
+  done < <(
+    find "${APP_DIR}" -xdev -mindepth 1 -maxdepth 1 -type f -name 'synthapi-server-*.gz' \
+      -printf '%T@ %p\0' 2>/dev/null | sort -znr
+  )
+
+  # Uncompressed rollback aliases are handled by prune_service_binaries, which
+  # explicitly keeps the active binary and the newest distinct rollback build.
+}
+
+prune_deploy_backups() {
+  local entry path index=0
+  local backup_root="${APP_DIR}/deploy-backups"
+
+  [[ -d "${backup_root}" && ! -L "${backup_root}" ]] || return 0
+  while IFS= read -r -d '' entry; do
+    path="${entry#* }"
+    (( index += 1 ))
+    (( index <= DEPLOY_BACKUP_KEEP_COUNT )) && continue
+    remove_path "${path}"
+  done < <(
+    find "${backup_root}" -xdev -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\0' 2>/dev/null | sort -znr
+  )
+}
+
+prune_snapshot_directories() {
+  local root="$1"
+  local keep_count="$2"
+  local label="$3"
+  local entry path index=0
+
+  [[ -d "${root}" && ! -L "${root}" ]] || return 0
+  if build_is_running; then
+    log "a Go or frontend build process is active; skipping ${label} pruning"
+    return 0
+  fi
+
+  while IFS= read -r -d '' entry; do
+    path="${entry#* }"
+    (( index += 1 ))
+    (( index <= keep_count )) && continue
+    # The root and its immediate children are fixed allowlisted paths. Keep
+    # this guard so a malformed find result can never escape the tree.
+    [[ "${path}" == "${root}"/* ]] || continue
+    remove_path "${path}"
+  done < <(
+    find "${root}" -xdev -mindepth 1 -maxdepth 1 -type d \
+      -printf '%T@ %p\0' 2>/dev/null | sort -znr
+  )
+}
+
+prune_old_packages() {
+  local root path
+
+  # Only generated/build directories are searched. User uploads and payment
+  # assets are intentionally outside this allowlist.
+  for root in "${APP_DIR}" "${BUILD_OUTPUT_ROOT}" "${SYNC_BACKUP_ROOT}"; do
+    [[ -d "${root}" && ! -L "${root}" ]] || continue
+    while IFS= read -r -d '' path; do
+      remove_regular_file "${path}"
+    done < <(
+      find "${root}" -xdev -type f -mtime "+${PACKAGE_RETENTION_DAYS}" \
+        \( -iname '*.apk' -o -iname '*.aab' -o -iname '*.ipa' \) \
+        -print0 2>/dev/null
+    )
+  done
+}
+
+prune_application_logs() {
+  local path inode
+  local logs_dir="${APP_DIR}/logs"
+
+  [[ -d "${logs_dir}" && ! -L "${logs_dir}" ]] || return 0
+  while IFS= read -r -d '' path; do
+    inode="$(stat -Lc '%d:%i' "${path}" 2>/dev/null || true)"
+    if [[ "${inode}" =~ ^[0-9]+:[0-9]+$ ]] && inode_is_running "${inode}"; then
+      log "keeping active application log ${path}"
+      continue
+    fi
+    remove_regular_file "${path}"
+  done < <(
+    find "${logs_dir}" -xdev -mindepth 1 -maxdepth 1 -type f -name 'oneapi-*.log' \
+      -mtime "+${APP_LOG_RETENTION_DAYS}" -print0 2>/dev/null
+  )
+}
+
 build_is_running() {
   local process_name proc_cwd cwd
 
@@ -424,6 +550,33 @@ cleanup_stale_build_artifacts() {
   )
 }
 
+cleanup_old_tmp_files() {
+  local path
+
+  if build_is_running; then
+    log "a Go or frontend build process is active; skipping generic temporary files"
+    return 0
+  fi
+
+  # /tmp is explicitly ephemeral. Remove only regular files older than a week;
+  # service-private directories, sockets and currently open files are left in
+  # place. Empty directories are cleaned in a second bounded pass.
+  while IFS= read -r -d '' path; do
+    if command -v lsof >/dev/null 2>&1 && lsof -- "${path}" >/dev/null 2>&1; then
+      continue
+    fi
+    remove_regular_file "${path}"
+  done < <(
+    find /tmp -xdev -mindepth 1 -type f -mtime "+${GENERIC_TMP_RETENTION_DAYS}" \
+      -print0 2>/dev/null
+  )
+
+  if (( DRY_RUN == 0 )); then
+    find /tmp -xdev -mindepth 1 -depth -type d -empty \
+      -mtime "+${GENERIC_TMP_RETENTION_DAYS}" -delete 2>/dev/null || true
+  fi
+}
+
 cleanup_compiler_and_package_caches() {
   local path
 
@@ -463,7 +616,28 @@ cleanup_module_download_caches() {
 prune_service_binaries
 target_reached && exit 0
 
+prune_release_archives
+target_reached && exit 0
+
+prune_deploy_backups
+target_reached && exit 0
+
+prune_snapshot_directories "${BUILD_OUTPUT_ROOT}" "${BUILD_OUTPUT_KEEP_COUNT}" "build output snapshots"
+target_reached && exit 0
+
+prune_snapshot_directories "${SYNC_BACKUP_ROOT}" "${SYNC_BACKUP_KEEP_COUNT}" "source sync backups"
+target_reached && exit 0
+
+prune_old_packages
+target_reached && exit 0
+
+prune_application_logs
+target_reached && exit 0
+
 cleanup_stale_build_artifacts
+target_reached && exit 0
+
+cleanup_old_tmp_files
 target_reached && exit 0
 
 cleanup_compiler_and_package_caches

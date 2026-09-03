@@ -19,16 +19,19 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 import {
   Bell,
+  BellRing,
   ChevronRight,
   Inbox,
   Megaphone,
   ShieldCheck,
   Sparkles,
+  TriangleAlert,
   X,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDateTimeObject } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import type { DesktopNotificationPermission } from '@/hooks/use-notifications'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,6 +77,9 @@ interface NotificationPopoverProps {
   popupAnnouncements?: AnnouncementItem[]
   announcementDialogOpen?: boolean
   onAnnouncementDialogOpenChange?: (open: boolean) => void
+  desktopNotificationsSupported?: boolean
+  desktopNotificationPermission?: DesktopNotificationPermission
+  onRequestDesktopNotifications?: () => Promise<void>
   loading: boolean
   className?: string
 }
@@ -549,29 +555,41 @@ function AnnouncementDialog({
   open,
   onOpenChange,
   announcements,
+  desktopNotificationsSupported,
+  desktopNotificationPermission,
+  onRequestDesktopNotifications,
   t,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   announcements: AnnouncementItem[]
+  desktopNotificationsSupported: boolean
+  desktopNotificationPermission: DesktopNotificationPermission
+  onRequestDesktopNotifications?: () => Promise<void>
   t: TFunction
 }) {
   if (announcements.length === 0) return null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='overflow-hidden p-0 sm:max-w-xl'>
-        <DialogHeader className='border-b px-5 pt-5 pb-4'>
+      <DialogContent
+        className='border-destructive overflow-hidden border-2 p-0 shadow-[0_0_0_5px_rgba(220,38,38,0.12),0_24px_90px_rgba(220,38,38,0.42)] sm:max-w-xl'
+        aria-live='assertive'
+      >
+        <div className='bg-destructive h-1.5 w-full animate-pulse' />
+        <DialogHeader className='bg-destructive text-destructive-foreground border-b border-red-800 px-5 pt-5 pb-4'>
           <div className='flex items-center gap-3'>
-            <div className='bg-warning/10 text-warning flex size-10 items-center justify-center rounded-lg'>
-              <Megaphone className='size-5' />
+            <div className='flex size-11 shrink-0 items-center justify-center rounded-lg bg-white/16 ring-1 ring-white/30'>
+              <TriangleAlert className='size-6 animate-pulse' />
             </div>
             <div className='min-w-0'>
-              <DialogTitle className='text-lg'>
-                {t('System Announcements')}
+              <DialogTitle className='text-destructive-foreground text-lg font-bold'>
+                {t('Important system alert')}
               </DialogTitle>
-              <DialogDescription className='mt-1'>
-                {t('Latest platform updates and notices')}
+              <DialogDescription className='text-destructive-foreground/85 mt-1'>
+                {t('{{count}} unread announcements', {
+                  count: announcements.length,
+                })}
               </DialogDescription>
             </div>
           </div>
@@ -582,7 +600,7 @@ function AnnouncementDialog({
             {announcements.map((item, idx) => (
               <div
                 key={idx}
-                className='border-border/40 bg-card rounded-lg border p-3'
+                className='border-destructive/35 bg-destructive/[0.035] rounded-lg border p-3 shadow-sm'
               >
                 <AnnouncementCard item={item} t={t} />
               </div>
@@ -590,8 +608,55 @@ function AnnouncementDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className='bg-muted/20 border-t px-5 pb-4'>
-          <Button onClick={() => onOpenChange(false)}>{t('Close')}</Button>
+        <DialogFooter className='bg-destructive/[0.035] flex-col items-stretch justify-between gap-3 border-t px-5 pb-4 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='min-w-0 flex-1 text-xs'>
+            {desktopNotificationsSupported &&
+              desktopNotificationPermission === 'default' && (
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={() => void onRequestDesktopNotifications?.()}
+                  className='border-destructive/30 text-destructive hover:bg-destructive/8'
+                >
+                  <BellRing aria-hidden='true' />
+                  {t('Enable desktop notifications')}
+                </Button>
+              )}
+            {desktopNotificationsSupported &&
+              desktopNotificationPermission === 'granted' && (
+                <span className='text-success inline-flex items-center gap-1.5'>
+                  <BellRing className='size-3.5' aria-hidden='true' />
+                  {t('Desktop notifications enabled')}
+                </span>
+              )}
+            {desktopNotificationsSupported &&
+              desktopNotificationPermission === 'denied' && (
+                <div className='border-destructive/30 bg-destructive/8 text-destructive space-y-2 rounded-md border px-3 py-2'>
+                  <span className='inline-flex items-center gap-1.5 font-semibold'>
+                    <BellRing className='size-3.5' aria-hidden='true' />
+                    {t('Desktop notifications blocked by browser settings')}
+                  </span>
+                  <p className='text-foreground/75 leading-relaxed'>
+                    {t(
+                      'Use the lock icon in the address bar to allow notifications for this site, then check again.'
+                    )}
+                  </p>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() => void onRequestDesktopNotifications?.()}
+                    className='border-destructive/35 text-destructive hover:bg-destructive/10'
+                  >
+                    {t('Check notification permission')}
+                  </Button>
+                </div>
+              )}
+          </div>
+          <Button variant='destructive' onClick={() => onOpenChange(false)}>
+            {t('Reviewed and close')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -681,6 +746,9 @@ export function NotificationPopover({
   popupAnnouncements = [],
   announcementDialogOpen = false,
   onAnnouncementDialogOpenChange,
+  desktopNotificationsSupported = false,
+  desktopNotificationPermission = 'unsupported',
+  onRequestDesktopNotifications,
   loading,
   className,
 }: NotificationPopoverProps) {
@@ -692,6 +760,9 @@ export function NotificationPopover({
         open={announcementDialogOpen}
         onOpenChange={onAnnouncementDialogOpenChange ?? (() => {})}
         announcements={popupAnnouncements}
+        desktopNotificationsSupported={desktopNotificationsSupported}
+        desktopNotificationPermission={desktopNotificationPermission}
+        onRequestDesktopNotifications={onRequestDesktopNotifications}
         t={t}
       />
 
@@ -703,15 +774,21 @@ export function NotificationPopover({
               size='icon'
               className={cn(
                 'hover:bg-muted/50 relative size-9 transition-all duration-200',
+                unreadCount > 0 &&
+                  'bg-destructive/10 text-destructive ring-destructive/30 hover:bg-destructive/15 ring-1',
                 className
               )}
               aria-label={t('Notifications')}
             />
           }
         >
-          <Bell className='size-[1.15rem]' />
           {unreadCount > 0 ? (
-            <span className='bg-primary text-primary-foreground absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-semibold'>
+            <BellRing className='size-[1.15rem] animate-pulse' />
+          ) : (
+            <Bell className='size-[1.15rem]' />
+          )}
+          {unreadCount > 0 ? (
+            <span className='bg-destructive text-destructive-foreground absolute -top-1 -right-1 flex h-5 min-w-5 animate-pulse items-center justify-center rounded-full text-[10px] font-bold shadow-sm'>
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           ) : null}

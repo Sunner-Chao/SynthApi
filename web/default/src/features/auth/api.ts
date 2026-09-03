@@ -30,18 +30,27 @@ import type {
 // Authentication APIs
 // ============================================================================
 
+const TURNSTILE_REQUEST_TIMEOUT_MS = 10_000
+
+function turnstileHeaders(token?: string): Record<string, string> | undefined {
+  return token ? { 'X-Turnstile-Token': token } : undefined
+}
+
 // ----------------------------------------------------------------------------
 // Login & Logout
 // ----------------------------------------------------------------------------
 
 // User login with username and password
 export async function login(payload: LoginPayload) {
-  const turnstile = payload.turnstile ?? ''
   const res = await api.post<LoginResponse>(
-    `/api/user/login?turnstile=${turnstile}`,
+    '/api/user/login',
     {
       username: payload.username,
       password: payload.password,
+    },
+    {
+      headers: turnstileHeaders(payload.turnstile),
+      timeout: TURNSTILE_REQUEST_TIMEOUT_MS,
     }
   )
   return res.data
@@ -69,7 +78,9 @@ export async function sendPasswordResetEmail(
   turnstile?: string
 ): Promise<ApiResponse> {
   const res = await api.get('/api/reset_password', {
-    params: { email, turnstile },
+    params: { email },
+    headers: turnstileHeaders(turnstile),
+    timeout: TURNSTILE_REQUEST_TIMEOUT_MS,
   })
   return res.data
 }
@@ -105,8 +116,11 @@ export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
 
 // User registration
 export async function register(payload: RegisterPayload): Promise<ApiResponse> {
-  const res = await api.post(`/api/user/register`, payload, {
-    params: { turnstile: payload.turnstile ?? '' },
+  const body = { ...payload }
+  delete body.turnstile
+  const res = await api.post(`/api/user/register`, body, {
+    headers: turnstileHeaders(payload.turnstile),
+    timeout: TURNSTILE_REQUEST_TIMEOUT_MS,
   })
   return res.data
 }
@@ -117,7 +131,9 @@ export async function sendEmailVerification(
   turnstile?: string
 ): Promise<ApiResponse> {
   const res = await api.get('/api/verification', {
-    params: { email, turnstile },
+    params: { email },
+    headers: turnstileHeaders(turnstile),
+    timeout: TURNSTILE_REQUEST_TIMEOUT_MS,
   })
   return res.data
 }

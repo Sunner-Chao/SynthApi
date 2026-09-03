@@ -19,11 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo, useState, type MouseEvent } from 'react'
 import {
   Check,
+  ChevronRight,
   ChevronsUpDown,
   CircleAlert,
   CircleCheck,
   CircleSlash,
+  Network,
   RefreshCw,
+  Star,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -43,6 +46,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import type { GroupChannelStatusSummary } from '../types'
+import './auto-group-order-editor.css'
 
 export type ApiKeyGroupOption = {
   value: string
@@ -104,6 +108,23 @@ function GroupRatioBadge({ ratio }: { ratio: ApiKeyGroupOption['ratio'] }) {
       )}
     >
       {label}
+    </Badge>
+  )
+}
+
+function RecommendedGroupBadge({ className }: { className?: string } = {}) {
+  const { t } = useTranslation()
+
+  return (
+    <Badge
+      variant='outline'
+      className={cn(
+        'shrink-0 gap-1 border-amber-300 bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-800 sm:text-xs dark:border-amber-700/80 dark:bg-amber-950/60 dark:text-amber-200',
+        className
+      )}
+    >
+      <Star className='size-3 fill-current' />
+      {t('Recommended')}
     </Badge>
   )
 }
@@ -232,6 +253,48 @@ function ChannelStatusBadge({
   )
 }
 
+function AutoChannelStatus({
+  status,
+  loading = false,
+}: {
+  status?: GroupChannelStatusSummary
+  loading?: boolean
+}) {
+  const { t } = useTranslation()
+  const reachable = status
+    ? status.tested > 0
+      ? status.reachable
+      : status.enabled
+    : 0
+  const total = status?.total ?? 0
+  const available = reachable > 0
+  const Icon = loading
+    ? CircleSlash
+    : available
+      ? CircleCheck
+      : total > 0
+        ? CircleAlert
+        : CircleSlash
+  const label = loading ? '...' : status ? `${reachable}/${total}` : '--'
+  const title = loading
+    ? t('Testing current channel connectivity')
+    : t('Current channels: {{enabled}} available / {{total}} total', {
+        enabled: reachable,
+        total,
+      })
+
+  return (
+    <span
+      className='auto-group-channel-status'
+      data-state={loading ? 'loading' : available ? 'available' : 'offline'}
+      title={title}
+    >
+      <Icon className={cn('size-3.5', loading && 'animate-spin')} />
+      <span>{label}</span>
+    </span>
+  )
+}
+
 export function ApiKeyGroupCombobox({
   options,
   value,
@@ -247,6 +310,7 @@ export function ApiKeyGroupCombobox({
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const selectedOption = options.find((option) => option.value === value)
+  const isAutoSelected = selectedOption?.value === 'auto'
 
   const filteredOptions = useMemo(() => {
     const search = searchValue.trim().toLowerCase()
@@ -294,33 +358,78 @@ export function ApiKeyGroupCombobox({
             role='combobox'
             aria-expanded={open}
             disabled={disabled}
-            className='border-input bg-muted/40 hover:bg-muted/55 hover:text-foreground active:bg-background data-popup-open:border-ring data-popup-open:bg-background data-popup-open:ring-ring/20 h-auto min-h-14 w-full justify-between gap-2 rounded-lg px-3 py-2 text-start shadow-none transition-[background-color,border-color,box-shadow] duration-150 data-popup-open:ring-[3px] sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3'
+            className={cn(
+              'border-input bg-muted/40 hover:bg-muted/55 hover:text-foreground active:bg-background data-popup-open:border-ring data-popup-open:bg-background data-popup-open:ring-ring/20 h-auto min-h-14 w-full justify-between gap-2 rounded-lg px-3 py-2 text-start shadow-none transition-[background-color,border-color,box-shadow] duration-150 data-popup-open:ring-[3px] sm:min-h-20 sm:gap-3 sm:px-4 sm:py-3',
+              isAutoSelected &&
+                'auto-group-neon-card auto-group-selection-trigger border-transparent bg-transparent text-white hover:text-white data-popup-open:border-cyan-200/70 data-popup-open:bg-transparent data-popup-open:ring-cyan-300/20'
+            )}
           />
         }
       >
-        <span className='flex min-w-0 flex-1 items-center justify-between gap-2 sm:gap-3'>
-          <span className='min-w-0'>
-            <span className='block truncate font-medium'>
-              {selectedOption?.label || placeholder || t('Select a group')}
+        <span
+          className={cn(
+            'flex min-w-0 flex-1 items-center justify-between gap-2 sm:gap-3',
+            isAutoSelected && 'auto-group-selection-layout'
+          )}
+        >
+          {isAutoSelected ? (
+            <span className='auto-group-selection-icon flex size-10 shrink-0 items-center justify-center rounded-xl sm:size-12'>
+              <Network className='size-5 text-cyan-200 sm:size-6' />
             </span>
-            {selectedOption?.desc && (
-              <span className='text-muted-foreground block truncate text-[11px] sm:text-xs'>
+          ) : null}
+          <span className='min-w-0 flex-1'>
+            <span className='flex min-w-0 items-center gap-2'>
+              <span
+                className={cn(
+                  'block truncate font-medium',
+                  isAutoSelected && 'auto-group-selection-title'
+                )}
+              >
+                {selectedOption?.label || placeholder || t('Select a group')}
+              </span>
+              {selectedOption?.value === 'auto' ? (
+                <RecommendedGroupBadge className='auto-group-recommended-badge' />
+              ) : null}
+            </span>
+            {selectedOption?.desc ? (
+              <span
+                className={cn(
+                  'text-muted-foreground block truncate text-[11px] sm:text-xs',
+                  isAutoSelected && 'auto-group-selection-description'
+                )}
+              >
                 {selectedOption.desc}
+              </span>
+            ) : null}
+          </span>
+          <span className='hidden shrink-0 sm:block'>
+            {isAutoSelected ? (
+              <span className='auto-group-selection-metrics'>
+                <AutoChannelStatus
+                  status={selectedOption?.channelStatus}
+                  loading={statusLoading}
+                />
+                <span className='auto-group-auto-ratio'>
+                  {selectedOption?.ratio ?? t('Auto')}x {t('Ratio')}
+                </span>
+              </span>
+            ) : (
+              <span className='flex items-center gap-1.5'>
+                <ChannelStatusBadge
+                  status={selectedOption?.channelStatus}
+                  compact
+                  loading={statusLoading}
+                />
+                <GroupRatioBadge ratio={selectedOption?.ratio} />
               </span>
             )}
           </span>
-          <span className='hidden sm:block'>
-            <span className='flex items-center gap-1.5'>
-              <ChannelStatusBadge
-                status={selectedOption?.channelStatus}
-                compact
-                loading={statusLoading}
-              />
-              <GroupRatioBadge ratio={selectedOption?.ratio} />
-            </span>
-          </span>
         </span>
-        <ChevronsUpDown className='h-4 w-4 shrink-0 opacity-50' />
+        {isAutoSelected ? (
+          <ChevronRight className='auto-group-selection-chevron size-5 shrink-0' />
+        ) : (
+          <ChevronsUpDown className='h-4 w-4 shrink-0 opacity-50' />
+        )}
       </PopoverTrigger>
       <PopoverContent
         className='data-closed:zoom-out-100 data-open:zoom-in-100 data-[side=bottom]:slide-in-from-top-0 data-[side=left]:slide-in-from-right-0 data-[side=right]:slide-in-from-left-0 data-[side=top]:slide-in-from-bottom-0 w-[var(--anchor-width)] overflow-hidden rounded-xl p-0 shadow-lg data-closed:duration-75 data-open:duration-100'
@@ -342,7 +451,11 @@ export function ApiKeyGroupCombobox({
                   key={option.value}
                   value={option.value}
                   onSelect={() => handleSelect(option.value)}
-                  className='data-[selected=true]:bg-muted items-start gap-3 rounded-lg px-3 py-3 transition-colors'
+                  className={cn(
+                    'data-[selected=true]:bg-muted items-start gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors',
+                    option.value === 'auto' &&
+                      'border-amber-300/80 bg-amber-50/80 shadow-[inset_3px_0_0_0_rgb(245_158_11)] data-[selected=true]:bg-amber-100 dark:border-amber-800/80 dark:bg-amber-950/40 dark:data-[selected=true]:bg-amber-950/70'
+                  )}
                 >
                   <Check
                     className={cn(
@@ -351,8 +464,13 @@ export function ApiKeyGroupCombobox({
                     )}
                   />
                   <span className='min-w-0 flex-1'>
-                    <span className='block truncate font-medium'>
-                      {option.label}
+                    <span className='flex min-w-0 items-center gap-2'>
+                      <span className='block truncate font-medium'>
+                        {option.label}
+                      </span>
+                      {option.value === 'auto' ? (
+                        <RecommendedGroupBadge />
+                      ) : null}
                     </span>
                     {option.desc && (
                       <span className='text-muted-foreground block truncate text-xs'>
@@ -363,7 +481,9 @@ export function ApiKeyGroupCombobox({
                   <span className='flex shrink-0 items-center gap-1.5'>
                     <ChannelStatusBadge
                       status={option.channelStatus}
-                      loading={statusLoading || testingGroups?.has(option.value)}
+                      loading={
+                        statusLoading || testingGroups?.has(option.value)
+                      }
                     />
                     <GroupRatioBadge ratio={option.ratio} />
                     {onTestGroup ? (
@@ -374,7 +494,9 @@ export function ApiKeyGroupCombobox({
                         className='size-7 shrink-0'
                         title={t('Test current group connectivity')}
                         disabled={testingGroups?.has(option.value)}
-                        onClick={(event) => handleTestGroup(event, option.value)}
+                        onClick={(event) =>
+                          handleTestGroup(event, option.value)
+                        }
                       >
                         <RefreshCw
                           className={cn(

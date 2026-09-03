@@ -165,40 +165,21 @@ func Register(c *gin.Context) {
 		}
 	}
 	registerIP := c.ClientIP()
-	ipUsed, err := model.IsRegisterIPUsed(registerIP)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		common.SysLog(fmt.Sprintf("IsRegisterIPUsed error: %v", err))
-		return
-	}
-	if ipUsed {
-		common.ApiErrorMsg(c, "当前网络环境已注册过账号，请勿重复注册")
-		return
-	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
-		return
-	}
-	if exist {
-		common.ApiErrorI18n(c, i18n.MsgUserExists)
-		return
-	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	inviterId := 0
+	if strings.TrimSpace(affCode) != "" {
+		inviterId, _ = model.GetUserIdByAffCode(strings.TrimSpace(affCode))
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
-		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
-		RegisterIP:  registerIP,
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := model.CreatePublicUser(&cleanUser, registerIP, inviterId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -372,12 +353,20 @@ func TransferAffQuota(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	err = user.TransferAffQuotaToQuota(tran.Quota)
+	record, err := user.TransferAffQuotaToQuota(tran.Quota)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
 		return
 	}
-	common.ApiSuccessI18n(c, i18n.MsgUserTransferSuccess, nil)
+	model.RecordLog(id, model.LogTypeSystem, fmt.Sprintf(
+		"邀请返利领取成功：%s 已转入主余额（返利余额 %s → %s）",
+		logger.LogQuota(record.Quota), logger.LogQuota(record.AffQuotaBefore), logger.LogQuota(record.AffQuotaAfter),
+	))
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("已成功将 %s 转入主余额", logger.LogQuota(record.Quota)),
+		"data":    record,
+	})
 }
 
 func GetAffCode(c *gin.Context) {
@@ -469,9 +458,13 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 		// 超级管理员不需要边栏设置功能
 		permissions["sidebar_settings"] = false
 		permissions["sidebar_modules"] = map[string]interface{}{}
+		permissions["model_management"] = true
 	} else if userRole == common.RoleAdminUser {
 		// 管理员可以设置边栏，但不包含系统设置功能
 		permissions["sidebar_settings"] = true
+		// Model metadata, vendor metadata and deployment pages are available to
+		// regular administrators; system settings remain root-only.
+		permissions["model_management"] = true
 		permissions["sidebar_modules"] = map[string]interface{}{
 			"admin": map[string]interface{}{
 				"setting": false, // 管理员不能访问系统设置
@@ -983,10 +976,13 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
+			result, err := model.AdjustUserQuotaByAdmin(user.Id, adminId, req.Mode, req.Value, c.GetString(common.RequestIdKey))
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}
+			adminInfo["net_recharge_counted"] = result.RechargeQuota > 0
+			adminInfo["net_recharge_cny"] = result.RechargeCNY
 			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
 				fmt.Sprintf("管理员增加用户额度 %s", logger.LogQuota(req.Value)), adminInfo)
 		case "subtract":
@@ -994,26 +990,22 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.DecreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if _, err := model.AdjustUserQuotaByAdmin(user.Id, adminId, req.Mode, req.Value, c.GetString(common.RequestIdKey)); err != nil {
 				common.ApiError(c, err)
 				return
 			}
 			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
 				fmt.Sprintf("管理员减少用户额度 %s", logger.LogQuota(req.Value)), adminInfo)
 		case "override":
-			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			result, err := model.AdjustUserQuotaByAdmin(user.Id, adminId, req.Mode, req.Value, c.GetString(common.RequestIdKey))
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}
-			if req.Value >= model.LowQuotaNotifyThreshold(user.GetSetting().QuotaWarningThreshold) {
-				if err := model.ClearLowQuotaNotifyState(user.Id, model.LowQuotaNotifyScopeWallet, 0); err != nil {
-					common.ApiError(c, err)
-					return
-				}
-			}
+			adminInfo["net_recharge_counted"] = result.RechargeQuota > 0
+			adminInfo["net_recharge_cny"] = result.RechargeCNY
 			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
-				fmt.Sprintf("管理员覆盖用户额度从 %s 为 %s", logger.LogQuota(oldQuota), logger.LogQuota(req.Value)), adminInfo)
+				fmt.Sprintf("管理员覆盖用户额度从 %s 为 %s", logger.LogQuota(result.OldQuota), logger.LogQuota(result.NewQuota)), adminInfo)
 		default:
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			return

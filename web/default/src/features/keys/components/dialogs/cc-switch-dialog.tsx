@@ -21,7 +21,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels } from '@/lib/api'
-import { FAST_API_BASE_URL, FAST_OPENAI_BASE_URL } from '@/lib/api-routes'
+import {
+  FAST_API_BASE_URL,
+  FAST_ANTHROPIC_COMPAT_BASE_URL,
+  FAST_OPENAI_BASE_URL,
+} from '@/lib/api-routes'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
@@ -51,6 +55,11 @@ const APP_CONFIGS = {
     defaultName: 'My Codex',
     modelFields: [{ key: 'model', labelKey: 'Primary Model', required: true }],
   },
+  opencode: {
+    label: 'OpenCode',
+    defaultName: 'My OpenCode',
+    modelFields: [{ key: 'model', labelKey: 'Primary Model', required: true }],
+  },
   gemini: {
     label: 'Gemini',
     defaultName: 'My Gemini',
@@ -59,9 +68,12 @@ const APP_CONFIGS = {
 } as const
 
 type AppType = keyof typeof APP_CONFIGS
+type OpenCodeProtocol = 'openai-compatible' | 'anthropic'
 
 const SYNTHAPI_USAGE_QUERY_SCRIPT =
-  '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){return r&&r.data?r.data:r}})'
+  '({request:{url:"{{baseUrl}}/api/usage/ccswitch/",method:"GET",headers:{Authorization:"Bearer {{apiKey}}"}},extractor:function(r){var v=r&&r.data?r.data:r;return v&&typeof v==="object"?v:{isValid:false,invalidMessage:"Invalid usage response"}}})'
+
+const CCSWITCH_USAGE_BASE_URL = FAST_API_BASE_URL
 
 function base64EncodeUtf8(value: string): string {
   if (typeof window === 'undefined') return ''
@@ -94,28 +106,6 @@ function normalizePublicServerAddress(value: unknown): string {
   } catch {
     return ''
   }
-}
-
-function normalizeLocalServerAddress(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  const trimmed = value.trim().replace(/\/+$/, '')
-  if (!trimmed) return ''
-
-  try {
-    const url = new URL(trimmed)
-    const hostname = url.hostname.toLowerCase()
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '::1'
-    ) {
-      return url.origin
-    }
-  } catch {
-    /* empty */
-  }
-
-  return ''
 }
 
 function getServerAddress(): string {
@@ -152,23 +142,20 @@ function getServerAddress(): string {
   return ''
 }
 
-function getCCSwitchUsageBaseUrl(serverAddress: string): string {
-  if (typeof window === 'undefined') return serverAddress
-
-  const localOrigin = normalizeLocalServerAddress(window.location.origin)
-  if (localOrigin) return localOrigin
-
-  return serverAddress
-}
-
 function buildCCSwitchURL(
   app: string,
   name: string,
   models: Record<string, string>,
-  apiKey: string
+  apiKey: string,
+  protocol: OpenCodeProtocol
 ): string {
   const serverAddress = getServerAddress()
-  const endpoint = app === 'codex' ? FAST_OPENAI_BASE_URL : FAST_API_BASE_URL
+  const endpoint =
+    app === 'opencode' && protocol === 'anthropic'
+      ? FAST_ANTHROPIC_COMPAT_BASE_URL
+      : app === 'codex' || app === 'opencode'
+      ? FAST_OPENAI_BASE_URL
+      : FAST_API_BASE_URL
   const params = new URLSearchParams()
   params.set('resource', 'provider')
   params.set('app', app)
@@ -181,16 +168,39 @@ function buildCCSwitchURL(
   params.set('homepage', serverAddress)
   params.set('enabled', 'true')
 
-  const usageBaseUrl = getCCSwitchUsageBaseUrl(serverAddress)
-  if (usageBaseUrl) {
-    params.set('usageEnabled', 'true')
-    params.set('usageScript', base64EncodeUtf8(SYNTHAPI_USAGE_QUERY_SCRIPT))
-    params.set('usageApiKey', apiKey)
-    params.set('usageBaseUrl', usageBaseUrl)
-    params.set('usageAutoInterval', '10')
-  }
+  params.set('usageEnabled', 'true')
+  params.set('usageScript', base64EncodeUtf8(SYNTHAPI_USAGE_QUERY_SCRIPT))
+  params.set('usageApiKey', apiKey)
+  params.set('usageBaseUrl', CCSWITCH_USAGE_BASE_URL)
+  params.set('usageAutoInterval', '10')
 
   return `ccswitch://v1/import?${params.toString()}`
+}
+
+function buildOpenCodeAnthropicConfig(
+  name: string,
+  model: string,
+  apiKey: string
+): string {
+  return JSON.stringify(
+    {
+      $schema: 'https://opencode.ai/config.json',
+      provider: {
+        synthapi: {
+          npm: '@ai-sdk/anthropic',
+          options: {
+            baseURL: FAST_ANTHROPIC_COMPAT_BASE_URL,
+            apiKey,
+          },
+          models: {
+            [model]: { name: name || model },
+          },
+        },
+      },
+    },
+    null,
+    2
+  )
 }
 
 function openCustomProtocol(url: string): void {
@@ -209,6 +219,8 @@ interface Props {
 export function CCSwitchDialog(props: Props) {
   const { t } = useTranslation()
   const [app, setApp] = useState<AppType>('claude')
+  const [opencodeProtocol, setOpencodeProtocol] =
+    useState<OpenCodeProtocol>('openai-compatible')
   const [name, setName] = useState<string>(APP_CONFIGS.claude.defaultName)
   const [models, setModels] = useState<Record<string, string>>({})
 
@@ -230,6 +242,7 @@ export function CCSwitchDialog(props: Props) {
       setModels({})
 
       setApp('claude')
+      setOpencodeProtocol('openai-compatible')
 
       setName(APP_CONFIGS.claude.defaultName)
     }
@@ -241,6 +254,7 @@ export function CCSwitchDialog(props: Props) {
     const appVal = val as AppType
     setApp(appVal)
     setName(APP_CONFIGS[appVal].defaultName)
+    setOpencodeProtocol('openai-compatible')
     setModels({})
   }
 
@@ -252,10 +266,32 @@ export function CCSwitchDialog(props: Props) {
     const key = props.tokenKey.startsWith('sk-')
       ? props.tokenKey
       : `sk-${props.tokenKey}`
-    return buildCCSwitchURL(app, name, models, key)
+    return buildCCSwitchURL(app, name, models, key, opencodeProtocol)
+  }
+
+  const buildAnthropicConfig = (): string | null => {
+    if (!models.model) {
+      toast.warning(t('Please select a primary model'))
+      return null
+    }
+    const key = props.tokenKey.startsWith('sk-')
+      ? props.tokenKey
+      : `sk-${props.tokenKey}`
+    return buildOpenCodeAnthropicConfig(name, models.model, key)
   }
 
   const handleCopy = async () => {
+    if (app === 'opencode' && opencodeProtocol === 'anthropic') {
+      const config = buildAnthropicConfig()
+      if (!config) return
+      const copied = await copyToClipboard(config)
+      if (copied) {
+        toast.success(t('OpenCode Anthropic config copied'))
+      } else {
+        toast.error(t('Failed to copy OpenCode Anthropic config'))
+      }
+      return
+    }
     const url = buildImportURL()
     if (!url) return
 
@@ -268,6 +304,18 @@ export function CCSwitchDialog(props: Props) {
   }
 
   const handleSubmit = async () => {
+    if (app === 'opencode' && opencodeProtocol === 'anthropic') {
+      const config = buildAnthropicConfig()
+      if (!config) return
+      const copied = await copyToClipboard(config)
+      if (copied) {
+        toast.info(t('Paste this JSON into your OpenCode config file'))
+        props.onOpenChange(false)
+      } else {
+        toast.error(t('Failed to copy OpenCode Anthropic config'))
+      }
+      return
+    }
     const url = buildImportURL()
     if (!url) return
 
@@ -308,12 +356,47 @@ export function CCSwitchDialog(props: Props) {
             </RadioGroup>
           </div>
 
+          {app === 'opencode' && (
+            <div className='space-y-2'>
+              <Label>{t('OpenCode API protocol')}</Label>
+              <RadioGroup
+                value={opencodeProtocol}
+                onValueChange={(value) =>
+                  setOpencodeProtocol(value as OpenCodeProtocol)
+                }
+                className='flex gap-4'
+              >
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='openai-compatible' id='opencode-openai' />
+                  <Label htmlFor='opencode-openai' className='cursor-pointer'>
+                    OpenAI Compatible
+                  </Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <RadioGroupItem value='anthropic' id='opencode-anthropic' />
+                  <Label htmlFor='opencode-anthropic' className='cursor-pointer'>
+                    Anthropic Messages
+                  </Label>
+                </div>
+              </RadioGroup>
+              {opencodeProtocol === 'anthropic' && (
+                <p className='text-muted-foreground text-xs leading-5'>
+                  将复制使用 @ai-sdk/anthropic 的完整 OpenCode 配置，请粘贴到 opencode.json。
+                </p>
+              )}
+            </div>
+          )}
+
           <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2'>
             <span className='text-muted-foreground text-xs font-medium'>
               {t('High-speed API route')} · {t('Recommended')}
             </span>
             <code className='text-xs break-all'>
-              {app === 'codex' ? FAST_OPENAI_BASE_URL : FAST_API_BASE_URL}
+              {app === 'opencode' && opencodeProtocol === 'anthropic'
+                ? FAST_ANTHROPIC_COMPAT_BASE_URL
+                : app === 'codex' || app === 'opencode'
+                ? FAST_OPENAI_BASE_URL
+                : FAST_API_BASE_URL}
             </code>
           </div>
 
@@ -355,9 +438,15 @@ export function CCSwitchDialog(props: Props) {
             {t('Cancel')}
           </Button>
           <Button variant='outline' onClick={handleCopy}>
-            {t('Copy Link')}
+            {app === 'opencode' && opencodeProtocol === 'anthropic'
+              ? t('Copy Config')
+              : t('Copy Link')}
           </Button>
-          <Button onClick={handleSubmit}>{t('Open CC Switch')}</Button>
+          <Button onClick={handleSubmit}>
+            {app === 'opencode' && opencodeProtocol === 'anthropic'
+              ? t('Copy Config')
+              : t('Open CC Switch')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

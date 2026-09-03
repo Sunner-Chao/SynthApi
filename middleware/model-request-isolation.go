@@ -7,14 +7,72 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 	"github.com/tidwall/gjson"
 )
+
+const distributedConcurrencyKeyPrefix = "synthapi:concurrency:v1"
+
+var distributedConcurrencyAcquireScript = redis.NewScript(`
+local user_limit = tonumber(ARGV[1]) or 0
+local token_limit = tonumber(ARGV[2]) or 0
+local large_limit = tonumber(ARGV[3]) or 0
+local lease_seconds = tonumber(ARGV[4]) or 7200
+
+local user_count = tonumber(redis.call('GET', KEYS[1]) or '0')
+local token_count = tonumber(redis.call('GET', KEYS[2]) or '0')
+local large_count = tonumber(redis.call('GET', KEYS[3]) or '0')
+
+if user_limit > 0 and user_count >= user_limit then
+  return {0, 'user'}
+end
+if token_limit > 0 and token_count >= token_limit then
+  return {0, 'token'}
+end
+if large_limit > 0 and large_count >= large_limit then
+  return {0, 'large_user'}
+end
+
+local function increment(key, limit)
+  if limit > 0 then
+    redis.call('INCR', key)
+    redis.call('EXPIRE', key, lease_seconds)
+  end
+end
+
+increment(KEYS[1], user_limit)
+increment(KEYS[2], token_limit)
+increment(KEYS[3], large_limit)
+return {1, ''}
+`)
+
+var distributedConcurrencyReleaseScript = redis.NewScript(`
+local function decrement(key, enabled)
+  if enabled > 0 then
+    local value = redis.call('GET', key)
+    if value then
+      value = redis.call('DECR', key)
+      if value <= 0 then
+        redis.call('DEL', key)
+      end
+    end
+  end
+end
+
+decrement(KEYS[1], tonumber(ARGV[1]) or 0)
+decrement(KEYS[2], tonumber(ARGV[2]) or 0)
+decrement(KEYS[3], tonumber(ARGV[3]) or 0)
+return 1
+`)
+
+var lastDistributedConcurrencyError atomic.Int64
 
 type activeModelRequestLimiter struct {
 	mu         sync.Mutex
@@ -85,6 +143,106 @@ func (l *promptCacheKeyLimiter) acquire(ctx context.Context, key string, limit i
 			dropRef()
 		})
 	}, nil
+}
+
+func distributedConcurrencyKeys(userID, tokenID int) []string {
+	return []string{
+		fmt.Sprintf("%s:user:%d", distributedConcurrencyKeyPrefix, userID),
+		fmt.Sprintf("%s:token:%d", distributedConcurrencyKeyPrefix, tokenID),
+		fmt.Sprintf("%s:large-user:%d", distributedConcurrencyKeyPrefix, userID),
+	}
+}
+
+func distributedConcurrencyError(err error) {
+	if err == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := lastDistributedConcurrencyError.Load()
+	if last != 0 && now-last < int64(30*time.Second) {
+		return
+	}
+	if lastDistributedConcurrencyError.CompareAndSwap(last, now) {
+		common.SysError(fmt.Sprintf("distributed model concurrency unavailable; using local fallback: %v", err))
+	}
+}
+
+func redisScriptString(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+// acquireDistributedModelRequest reserves user/token slots atomically across
+// all Go instances. A false distributed flag means Redis is unavailable and
+// the caller should use the existing process-local limiter instead.
+func acquireDistributedModelRequest(ctx context.Context, userID, tokenID, userLimit, tokenLimit int, largeRequest bool, largeUserLimit int) (release func(), limitedBy string, distributed bool) {
+	if !common.RedisEnabled || common.RDB == nil {
+		return nil, "", false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+	keys := distributedConcurrencyKeys(userID, tokenID)
+	largeLimit := 0
+	if largeRequest {
+		largeLimit = largeUserLimit
+	}
+	leaseSeconds := common.ModelRequestConcurrencyLeaseSeconds
+	if leaseSeconds <= 0 {
+		leaseSeconds = 7200
+	}
+	result, err := distributedConcurrencyAcquireScript.Run(
+		checkCtx,
+		common.RDB,
+		keys,
+		userLimit,
+		tokenLimit,
+		largeLimit,
+		leaseSeconds,
+	).Result()
+	if err != nil {
+		distributedConcurrencyError(err)
+		return nil, "", false
+	}
+	values, ok := result.([]interface{})
+	if !ok || len(values) < 2 {
+		distributedConcurrencyError(fmt.Errorf("unexpected concurrency script result %T", result))
+		return nil, "", false
+	}
+	allowed, ok := values[0].(int64)
+	if !ok {
+		distributedConcurrencyError(fmt.Errorf("unexpected concurrency decision %T", values[0]))
+		return nil, "", false
+	}
+	if allowed == 0 {
+		return nil, redisScriptString(values[1]), true
+	}
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), time.Second)
+			defer releaseCancel()
+			if _, err := distributedConcurrencyReleaseScript.Run(
+				releaseCtx,
+				common.RDB,
+				keys,
+				userLimit,
+				tokenLimit,
+				largeLimit,
+			).Result(); err != nil {
+				distributedConcurrencyError(err)
+			}
+		})
+	}, "", true
 }
 
 func isPromptCacheKeyRequest(c *gin.Context) bool {
@@ -231,12 +389,12 @@ func (l *activeModelRequestLimiter) acquireRequest(userID, tokenID, userLimit, t
 				} else {
 					l.tokens[tokenID]--
 				}
-				if largeRequest && largeUserLimit > 0 {
-					if l.largeUsers[userID] <= 1 {
-						delete(l.largeUsers, userID)
-					} else {
-						l.largeUsers[userID]--
-					}
+			}
+			if largeRequest && largeUserLimit > 0 {
+				if l.largeUsers[userID] <= 1 {
+					delete(l.largeUsers, userID)
+				} else {
+					l.largeUsers[userID]--
 				}
 			}
 		})
@@ -266,7 +424,14 @@ func ModelRequestConcurrencyLimit() gin.HandlerFunc {
 			return
 		}
 		tokenID := c.GetInt("token_id")
-		release, limitedBy := modelRequestActiveLimiter.acquireRequest(userID, tokenID, userLimit, tokenLimit, largeRequest, largeUserLimit)
+		release, limitedBy, distributed := acquireDistributedModelRequest(
+			c.Request.Context(), userID, tokenID, userLimit, tokenLimit, largeRequest, largeUserLimit,
+		)
+		if !distributed {
+			release, limitedBy = modelRequestActiveLimiter.acquireRequest(
+				userID, tokenID, userLimit, tokenLimit, largeRequest, largeUserLimit,
+			)
+		}
 		if release == nil {
 			c.Header("Retry-After", "1")
 			limit := userLimit

@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	crand "crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"sort"
@@ -22,11 +25,49 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type MPayCreateResult struct {
 	PayURL string
 	Raw    map[string]any
+}
+
+type mpayPromotion struct {
+	Scene        string
+	Winner       bool
+	Percent      int
+	BonusQuota   int64
+	Day          string
+	BonusDisplay float64
+}
+
+const (
+	mpaySceneNightmare = "nightmare"
+	mpaySceneHyper     = "hyper"
+	mpaySceneRelic     = "relic"
+)
+
+func randomMPayInt(max int64) (int64, error) {
+	if max <= 0 {
+		return 0, errors.New("invalid random range")
+	}
+	n, err := crand.Int(crand.Reader, big.NewInt(max))
+	if err != nil {
+		return 0, fmt.Errorf("secure random failed: %w", err)
+	}
+	return n.Int64(), nil
+}
+
+func mpaySceneForEligibleRoll(roll int64) string {
+	switch {
+	case roll < 18:
+		return mpaySceneRelic
+	case roll < 59:
+		return mpaySceneNightmare
+	default:
+		return mpaySceneHyper
+	}
 }
 
 func IsMPayTopUpEnabled() bool {
@@ -50,6 +91,12 @@ func GetMPayMinTopup() float64 {
 	return minTopup
 }
 
+// GetMPayPaymentMethod returns the single payment type exposed by the
+// SynthPay-compatible V1 gateway configuration.
+func GetMPayPaymentMethod() string {
+	return normalizeMPayMethod(setting.MPayPaymentType)
+}
+
 func GetMPayMoney(amount float64, group string) float64 {
 	dAmount := decimal.NewFromFloat(operation_setting.DisplayAmountToUSD(amount))
 
@@ -67,6 +114,81 @@ func GetMPayMoney(amount float64, group string) float64 {
 		Mul(decimal.NewFromFloat(topupGroupRatio)).
 		Mul(decimal.NewFromFloat(discount)).
 		InexactFloat64()
+}
+
+func chooseMPayPromotion(tx *gorm.DB, userID int, storedAmount int64, displayAmount float64) (mpayPromotion, error) {
+	var user model.User
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id, role").First(&user, userID).Error; err != nil {
+		return mpayPromotion{}, fmt.Errorf("failed to lock promotion user: %w", err)
+	}
+	isAdmin := user.Role >= common.RoleAdminUser
+
+	today := time.Now().In(time.Local).Format("2006-01-02")
+	var activeWins int64
+	if !isAdmin {
+		if err := tx.Model(&model.TopUp{}).
+		Where("user_id = ? AND promotion_day = ? AND promotion_percent > 0", userID, today).
+		Where("status NOT IN ?", []string{common.TopUpStatusFailed, common.TopUpStatusExpired}).
+		Count(&activeWins).Error; err != nil {
+			return mpayPromotion{}, fmt.Errorf("failed to check daily promotion: %w", err)
+		}
+	}
+
+	roll, err := randomMPayInt(100)
+	if err != nil {
+		return mpayPromotion{}, err
+	}
+	// PostgreSQL date columns cannot store the Go string zero value. Keep the
+	// creation day for every order; only a positive promotion percent denotes a win.
+	promotion := mpayPromotion{Scene: mpaySceneHyper, Day: today}
+	eligibleScene := mpaySceneForEligibleRoll(roll)
+	if (isAdmin || activeWins == 0) && eligibleScene == mpaySceneRelic {
+		percentRoll, err := randomMPayInt(5)
+		if err != nil {
+			return mpayPromotion{}, err
+		}
+		promotion.Scene = mpaySceneRelic
+		promotion.Winner = true
+		promotion.Percent = int(percentRoll) + 1
+		promotion.BonusQuota = decimal.NewFromInt(storedAmount).
+			Mul(decimal.NewFromInt(int64(promotion.Percent))).
+			Div(decimal.NewFromInt(100)).IntPart()
+		if storedAmount > 0 && promotion.BonusQuota < 1 {
+			promotion.BonusQuota = 1
+		}
+		promotion.BonusDisplay, _ = decimal.NewFromFloat(displayAmount).
+			Mul(decimal.NewFromInt(int64(promotion.Percent))).
+			Div(decimal.NewFromInt(100)).Float64()
+		return promotion, nil
+	}
+
+	if isAdmin || activeWins == 0 {
+		promotion.Scene = eligibleScene
+		return promotion, nil
+	}
+
+	videoRoll, err := randomMPayInt(2)
+	if err != nil {
+		return mpayPromotion{}, err
+	}
+	if videoRoll == 0 {
+		promotion.Scene = mpaySceneNightmare
+	}
+	return promotion, nil
+}
+
+func encodeMPayPromotion(promotion mpayPromotion) (string, error) {
+	payload := map[string]any{
+		"synthpay_scene":         promotion.Scene,
+		"synthpay_winner":        promotion.Winner,
+		"synthpay_bonus_percent": promotion.Percent,
+		"synthpay_bonus_amount":  promotion.BonusDisplay,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode promotion: %w", err)
+	}
+	return string(encoded), nil
 }
 
 func CreateMPayOrder(ctx context.Context, userID int, amount float64, paymentMethod string, notifyURL string, returnURL string) (*XPayOrder, error) {
@@ -108,11 +230,28 @@ func CreateMPayOrder(ctx context.Context, userID int, amount float64, paymentMet
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
-	if err := topUp.Insert(); err != nil {
+	var promotion mpayPromotion
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		promotion, err = chooseMPayPromotion(tx, userID, storedAmount, amount)
+		if err != nil {
+			return err
+		}
+		topUp.PromotionScene = promotion.Scene
+		topUp.PromotionPercent = promotion.Percent
+		topUp.PromotionQuota = promotion.BonusQuota
+		topUp.PromotionDay = promotion.Day
+		return tx.Create(topUp).Error
+	}); err != nil {
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
+	promotionParam, err := encodeMPayPromotion(promotion)
+	if err != nil {
+		topUp.Status = common.TopUpStatusFailed
+		_ = topUp.Update()
+		return nil, err
+	}
 
-	result, err := createRemoteMPayOrder(ctx, localTradeNo, amount, payMoney, paymentMethod, notifyURL, returnURL)
+	result, err := createRemoteMPayOrder(ctx, localTradeNo, amount, payMoney, paymentMethod, notifyURL, returnURL, promotionParam)
 	if err != nil {
 		topUp.Status = common.TopUpStatusFailed
 		_ = topUp.Update()
@@ -134,7 +273,7 @@ func CreateMPayOrder(ctx context.Context, userID int, amount float64, paymentMet
 	}, nil
 }
 
-func createRemoteMPayOrder(ctx context.Context, localTradeNo string, amount float64, payMoney float64, paymentMethod string, notifyURL string, returnURL string) (*MPayCreateResult, error) {
+func createRemoteMPayOrder(ctx context.Context, localTradeNo string, amount float64, payMoney float64, paymentMethod string, notifyURL string, returnURL string, promotionParam string) (*MPayCreateResult, error) {
 	if notifyURL == "" {
 		notifyURL = setting.MPayNotifyURL
 	}
@@ -161,6 +300,7 @@ func createRemoteMPayOrder(ctx context.Context, localTradeNo string, amount floa
 		"money":        strconv.FormatFloat(payMoney, 'f', 2, 64),
 		"clientip":     "",
 		"device":       "pc",
+		"param":        promotionParam,
 		"sign_type":    "MD5",
 	}
 	payload["sign"] = SignMPayParams(payload, setting.MPayKey)
@@ -209,6 +349,7 @@ func createRemoteMPayOrder(ctx context.Context, localTradeNo string, amount floa
 func ConfirmMPayOrder(tradeNo string, callbackMoney float64, callerIP string) error {
 	var topUp model.TopUp
 	var quotaToAdd int
+	var promotionQuota int
 
 	refCol := "`trade_no`"
 	if common.UsingPostgreSQL {
@@ -235,7 +376,11 @@ func ConfirmMPayOrder(tradeNo string, callbackMoney float64, callerIP string) er
 			return fmt.Errorf("failed to update order: %w", err)
 		}
 
-		quotaToAdd = int(topUp.Amount)
+		promotionQuota = int(topUp.PromotionQuota)
+		if promotionQuota < 0 {
+			return errors.New("promotion quota cannot be negative")
+		}
+		quotaToAdd = int(topUp.Amount) + promotionQuota
 		if quotaToAdd < 0 {
 			return errors.New("quota cannot be negative")
 		}
@@ -251,9 +396,24 @@ func ConfirmMPayOrder(tradeNo string, callbackMoney float64, callerIP string) er
 		return err
 	}
 
-	logger.LogInfo(context.Background(), fmt.Sprintf("MPay 充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f",
-		tradeNo, topUp.UserId, quotaToAdd, topUp.Money))
-	model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用 MPay 在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIP, topUp.PaymentMethod, model.PaymentProviderMPay)
+	logger.LogInfo(context.Background(), fmt.Sprintf("MPay 充值成功 trade_no=%s user_id=%d quota_to_add=%d promotion_quota=%d promotion_percent=%d money=%.2f",
+		tradeNo, topUp.UserId, quotaToAdd, promotionQuota, topUp.PromotionPercent, topUp.Money))
+	promotionText := ""
+	if promotionQuota > 0 {
+		promotionText = fmt.Sprintf("，幸运赠送: %v（%d%%）", logger.LogQuota(promotionQuota), topUp.PromotionPercent)
+	}
+	model.RecordPaymentLog(topUp.UserId,
+		fmt.Sprintf("使用 MPay 在线充值成功，充值金额: %v，支付金额：%f%s", logger.LogQuota(quotaToAdd), topUp.Money, promotionText),
+		model.PaymentAuditInfo{
+			Event:                 "topup_completed",
+			Source:                "callback",
+			TradeNo:               topUp.TradeNo,
+			ProviderTradeNo:       topUp.ProviderTradeNo,
+			PaymentMethod:         topUp.PaymentMethod,
+			PaymentProvider:       model.PaymentProviderMPay,
+			CallbackPaymentMethod: model.PaymentProviderMPay,
+			CallerIp:              callerIP,
+		})
 	return nil
 }
 

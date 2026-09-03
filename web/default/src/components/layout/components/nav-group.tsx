@@ -111,8 +111,24 @@ export function NavGroup({ title, items }: NavGroupProps) {
 /**
  * Navigation badge component
  */
-function NavBadge({ children }: { children: ReactNode }) {
-  return <Badge className='shrink-0 px-1 py-0 text-xs'>{children}</Badge>
+function NavBadge({
+  children,
+  highlight,
+}: {
+  children: ReactNode
+  highlight?: 'reward'
+}) {
+  return (
+    <Badge
+      className={
+        highlight === 'reward'
+          ? 'sidebar-reward-badge shrink-0 px-1.5 py-0 text-xs'
+          : 'shrink-0 px-1 py-0 text-xs'
+      }
+    >
+      {children}
+    </Badge>
+  )
 }
 
 /**
@@ -125,11 +141,16 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
         tooltip={item.title}
+        className={
+          item.highlight === 'reward' ? 'sidebar-reward-link' : undefined
+        }
         render={<Link to={item.url} onClick={() => setOpenMobile(false)} />}
       >
         {item.icon && <item.icon className='shrink-0' />}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>
-        {item.badge && <NavBadge>{item.badge}</NavBadge>}
+        {item.badge && (
+          <NavBadge highlight={item.highlight}>{item.badge}</NavBadge>
+        )}
       </SidebarMenuButton>
     </SidebarMenuItem>
   )

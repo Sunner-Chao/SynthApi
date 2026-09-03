@@ -34,6 +34,11 @@ func isPaymentComplianceOptionKey(key string) bool {
 }
 
 func isSensitiveOptionKey(key string) bool {
+	// Turnstile's site key is intentionally public and must be returned so the
+	// browser widget can render. The secret key remains write-only.
+	if key == "TurnstileSiteKey" {
+		return false
+	}
 	// This is a numeric concurrency setting, not credential material.
 	if key == "ModelRequestMaxConcurrencyPerToken" {
 		return false

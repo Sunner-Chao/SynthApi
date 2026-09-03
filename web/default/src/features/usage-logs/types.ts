@@ -20,6 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
  * Type definitions for usage logs
  */
 
+import type { AdminUserRewardListSummary } from '@/features/reward-center/types'
+
 export interface UsageLog {
   id: number
   user_id: number
@@ -43,6 +45,11 @@ export interface UsageLog {
   upstream_request_id?: string
   other: string
 }
+
+export type UsageLogRewardSummaries = Record<
+  number,
+  AdminUserRewardListSummary
+>
 
 // ============================================================================
 // Log Category Types
@@ -212,7 +219,14 @@ export interface LogOtherData {
     channel_affinity?: ChannelAffinityInfo
     // Top-up audit fields (type=1, admin only)
     payment_method?: string
+    payment_provider?: string
     callback_payment_method?: string
+    event?: string
+    source?: string
+    trade_no?: string
+    provider_trade_no?: string
+    reference_id?: string
+    audit_schema_version?: number
     caller_ip?: string
     server_ip?: string
     version?: string
@@ -245,6 +259,12 @@ export interface LogOtherData {
   cache_creation_ratio_1h?: number
   is_model_mapped?: boolean
   upstream_model_name?: string
+  /** The request token explicitly selected the Auto route. */
+  auto_group?: boolean
+  requested_group?: string
+  /** Visible Auto routing state for this request. */
+  auto_route_status?: 'normal' | 'degraded' | 'recovered' | string
+  auto_route_priority?: number
   audio_ratio?: number
   audio_completion_ratio?: number
   frt?: number
@@ -303,6 +323,12 @@ export interface LogOtherData {
   subscription_discount?: number
   ingress_host?: string
   ingress_line?: ApiIngressLine
+  /** Go worker that handled the request (e.g. aliyun-prod or shanghai). */
+  worker_node?: string
+  /** Active requests on the selected channel after this request was admitted. */
+  channel_concurrency_active?: number
+  /** Effective total concurrency limit on the selected channel. */
+  channel_concurrency_limit?: number
   relay_trace?: RelayTrace
 }
 

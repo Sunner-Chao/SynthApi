@@ -123,6 +123,330 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
+@keyframes sidebarRewardShimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.sidebar-reward-link {
+  border: 1px solid color-mix(in oklab, #f59e0b 56%, transparent);
+  background: linear-gradient(
+    105deg,
+    rgba(245, 158, 11, 0.16),
+    rgba(236, 72, 153, 0.14),
+    rgba(6, 182, 212, 0.16)
+  );
+  background-size: 220% 100%;
+  box-shadow:
+    0 0 16px rgba(245, 158, 11, 0.12),
+    inset 0 0 12px rgba(255, 255, 255, 0.05);
+  animation: sidebarRewardShimmer 6s ease-in-out infinite;
+}
+
+.sidebar-reward-link > svg {
+  color: #f59e0b;
+  filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.55));
+}
+
+.sidebar-reward-link > span {
+  font-weight: 750;
+}
+
+.sidebar-reward-link--persistent {
+  position: relative;
+  min-height: 40px;
+}
+
+.sidebar-reward-link--persistent::after {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(100deg, #f59e0b, #ec4899, #06b6d4, #8b5cf6);
+  background-size: 260% 100%;
+  content: '';
+  opacity: 0.36;
+  filter: blur(6px);
+  animation: sidebarRewardShimmer 6s ease-in-out infinite;
+}
+
+.sidebar-reward-icon {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: #f59e0b;
+}
+
+.sidebar-reward-status {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--sidebar-background);
+  border-radius: 999px;
+  box-shadow: 0 0 7px currentColor;
+}
+
+.sidebar-reward-status.is-actionable {
+  color: #ef4444;
+  background: #ef4444;
+}
+
+.sidebar-reward-status.is-pending {
+  color: #f59e0b;
+  background: #f59e0b;
+}
+
+[data-collapsible='icon'] .sidebar-reward-link--persistent {
+  justify-content: center;
+}
+
+[data-collapsible='icon']
+  .sidebar-reward-link--persistent
+  .sidebar-reward-badge {
+  display: none;
+}
+
+.sidebar-reward-badge {
+  border: 0;
+  background: linear-gradient(100deg, #f59e0b, #ec4899 55%, #06b6d4);
+  color: white;
+  box-shadow: 0 0 9px rgba(236, 72, 153, 0.35);
+}
+
+.admin-reward-sidebar-panel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(8, 145, 178, 0.09), transparent 42%),
+    linear-gradient(315deg, rgba(245, 158, 11, 0.1), transparent 48%);
+}
+
+.admin-reward-sidebar-panel::before {
+  position: absolute;
+  inset: 5px;
+  z-index: -1;
+  border: 1px solid color-mix(in oklab, #22d3ee 30%, transparent);
+  border-radius: 6px;
+  content: '';
+  pointer-events: none;
+}
+
+.admin-reward-sidebar-label {
+  color: color-mix(in oklab, var(--sidebar-foreground) 82%, #22d3ee 18%);
+  letter-spacing: 0;
+}
+
+.admin-reward-sidebar-label svg {
+  color: #f59e0b;
+  filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.55));
+}
+
+.admin-reward-live {
+  border: 1px solid rgba(34, 211, 238, 0.38);
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: rgba(6, 182, 212, 0.1);
+  color: #0891b2;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.dark .admin-reward-live {
+  color: #67e8f9;
+}
+
+.admin-reward-sidebar-note {
+  margin-top: 1px;
+  color: color-mix(in oklab, var(--sidebar-foreground) 58%, transparent);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.usage-reward-rank {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  border-radius: 4px;
+  padding: 1px 4px;
+  background: linear-gradient(
+    100deg,
+    rgba(245, 158, 11, 0.1),
+    rgba(6, 182, 212, 0.08)
+  );
+  color: color-mix(in oklab, var(--foreground) 78%, #b45309 22%);
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.usage-reward-rank svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  color: #f59e0b;
+}
+
+.usage-reward-rank b {
+  color: #b45309;
+  font-size: inherit;
+}
+
+.dark .usage-reward-rank,
+.dark .usage-reward-rank b {
+  color: #fde68a;
+}
+
+[data-collapsible='icon'] .admin-reward-sidebar-label,
+[data-collapsible='icon'] .admin-reward-sidebar-note,
+[data-collapsible='icon'] .admin-reward-live {
+  display: none;
+}
+
+.reward-benefit-notice {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: min(460px, calc(100vw - 28px));
+  padding: 12px 12px 12px 14px;
+  overflow: hidden;
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--background) 88%, #7c2d12 12%);
+  box-shadow:
+    0 18px 50px rgba(15, 23, 42, 0.28),
+    0 0 30px rgba(245, 158, 11, 0.16);
+  backdrop-filter: blur(16px);
+}
+
+.reward-benefit-notice::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 0 30%,
+    rgba(250, 204, 21, 0.12) 45%,
+    rgba(236, 72, 153, 0.12) 55%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  animation: sidebarRewardShimmer 7s ease-in-out infinite;
+}
+
+.reward-benefit-notice > * {
+  position: relative;
+}
+.reward-benefit-notice__spark {
+  position: absolute;
+  top: -8px;
+  left: -6px;
+  color: #facc15;
+  opacity: 0.55;
+}
+.reward-benefit-notice__spark svg {
+  width: 36px;
+  height: 36px;
+}
+.reward-benefit-notice__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #f59e0b, #ec4899);
+  color: white;
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.32);
+}
+.reward-benefit-notice__icon svg {
+  width: 20px;
+  height: 20px;
+}
+.reward-benefit-notice__copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.reward-benefit-notice__copy strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reward-benefit-notice__copy span {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reward-benefit-notice__action {
+  background: linear-gradient(100deg, #f59e0b, #ec4899);
+  color: white;
+  font-weight: 750;
+}
+.reward-benefit-notice__close {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+}
+.reward-benefit-notice__close:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.reward-benefit-notice__close svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 640px) {
+  .reward-benefit-notice {
+    right: 10px;
+    bottom: 10px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .reward-benefit-notice__action {
+    grid-column: 2 / 4;
+    width: 100%;
+  }
+  .reward-benefit-notice__close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-reward-link,
+  .reward-benefit-notice::before {
+    animation: none !important;
+  }
+}
+
 @utility container {
   margin-inline: auto;
   padding-inline: 2rem;
@@ -270,7 +594,12 @@ For commercial licensing, please contact support@quantumnous.com
 /* Smooth scrollbar for sidebar */
 [data-sidebar='content'] {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--sidebar-foreground) 20%, transparent) transparent;
+  scrollbar-color: color-mix(
+      in oklch,
+      var(--sidebar-foreground) 20%,
+      transparent
+    )
+    transparent;
 }
 
 [data-sidebar='content']::-webkit-scrollbar {
@@ -282,12 +611,20 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 [data-sidebar='content']::-webkit-scrollbar-thumb {
-  background-color: color-mix(in oklch, var(--sidebar-foreground) 20%, transparent);
+  background-color: color-mix(
+    in oklch,
+    var(--sidebar-foreground) 20%,
+    transparent
+  );
   border-radius: 2px;
 }
 
 [data-sidebar='content']::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in oklch, var(--sidebar-foreground) 30%, transparent);
+  background-color: color-mix(
+    in oklch,
+    var(--sidebar-foreground) 30%,
+    transparent
+  );
 }
 
 @utility no-scrollbar {

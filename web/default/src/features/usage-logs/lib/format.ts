@@ -24,6 +24,12 @@ import {
   type ParsedTier,
 } from '@/features/pricing/lib/billing-expr'
 import { normalizeSubscriptionBillingDiscount } from '@/features/subscriptions/lib'
+import {
+  getRequestResponseColor,
+  getRequestDurationColor,
+  getRequestThroughputColor,
+  type RequestDurationColor,
+} from '@/lib/request-duration-colors'
 import type { LogOtherData, UsageLog } from '../types'
 
 export { normalizeTierLabel }
@@ -135,15 +141,33 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
+export function isAutoGroupLog(other: LogOtherData | null | undefined): boolean {
+  return other?.auto_group === true || other?.requested_group === 'auto'
+}
+
+export type AutoRouteStatus = 'normal' | 'degraded' | 'recovered'
+
+export function getAutoRouteStatus(
+  other: LogOtherData | null | undefined
+): AutoRouteStatus | null {
+  if (!isAutoGroupLog(other)) return null
+  switch (other?.auto_route_status) {
+    case 'normal':
+    case 'degraded':
+    case 'recovered':
+      return other.auto_route_status
+    default:
+      return null
+  }
+}
+
 /**
  * Get time color based on duration (in seconds)
  */
 export function getTimeColor(
   seconds: number
-): 'success' | 'warning' | 'danger' {
-  if (seconds < 10) return 'success'
-  if (seconds < 30) return 'warning'
-  return 'danger'
+): RequestDurationColor {
+  return getRequestDurationColor(seconds)
 }
 
 /**
@@ -163,9 +187,7 @@ export function getFirstResponseTimeColor(
 export function getThroughputColor(
   tokensPerSecond: number
 ): 'success' | 'warning' | 'danger' {
-  if (tokensPerSecond >= 30) return 'success'
-  if (tokensPerSecond >= 15) return 'warning'
-  return 'danger'
+  return getRequestThroughputColor(tokensPerSecond)
 }
 
 /**
@@ -176,15 +198,7 @@ export function getResponseTimeColor(
   completionTokens: number,
   tokensPerSecond?: number | null
 ): 'success' | 'warning' | 'danger' {
-  if (
-    completionTokens < 100 ||
-    tokensPerSecond == null ||
-    !Number.isFinite(tokensPerSecond) ||
-    tokensPerSecond <= 0
-  ) {
-    return getTimeColor(seconds)
-  }
-  return getThroughputColor(tokensPerSecond)
+  return getRequestResponseColor(seconds, completionTokens, tokensPerSecond)
 }
 
 /**

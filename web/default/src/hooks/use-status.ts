@@ -35,7 +35,12 @@ function getInitialStatus(): SystemStatus | undefined {
   return undefined
 }
 
-export function useStatus() {
+interface UseStatusOptions {
+  refetchInterval?: number | false
+  refetchIntervalInBackground?: boolean
+}
+
+export function useStatus(options: UseStatusOptions = {}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['status'],
     queryFn: async () => {
@@ -66,12 +71,16 @@ export function useStatus() {
     },
     // Use localStorage data as initial data
     placeholderData: getInitialStatus(),
-    // Always fetch fresh data on mount to sync currency settings
-    staleTime: 0,
+    // Share one bounded status request among shell components.
+    staleTime: 30 * 1000,
     // Cache expires after 5 minutes
     gcTime: 5 * 60 * 1000,
     // Refetch on window focus to sync settings
     refetchOnWindowFocus: true,
+    retry: 1,
+    retryDelay: 500,
+    refetchInterval: options.refetchInterval,
+    refetchIntervalInBackground: options.refetchIntervalInBackground,
   })
 
   return {

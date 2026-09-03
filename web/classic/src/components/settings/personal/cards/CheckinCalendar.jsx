@@ -114,10 +114,10 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
   };
 
   const postCheckin = async (token) => {
-    const url = token
-      ? `/api/user/checkin?turnstile=${encodeURIComponent(token)}`
-      : '/api/user/checkin';
-    return API.post(url);
+    return API.post('/api/user/checkin', undefined, {
+      headers: token ? { 'X-Turnstile-Token': token } : undefined,
+      timeout: 10000,
+    });
   };
 
   const shouldTriggerTurnstile = (message) => {

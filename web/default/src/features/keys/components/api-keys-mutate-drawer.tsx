@@ -70,6 +70,7 @@ import {
   updateApiKey,
   getApiKey,
   getGroupChannelStatus,
+  getTokenAutoGroups,
 } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -85,6 +86,7 @@ import {
   type ApiKeyGroupOption,
 } from './api-key-group-combobox'
 import { useApiKeys } from './api-keys-provider'
+import { AutoGroupOrderEditor } from './auto-group-order-editor'
 
 type ApiKeyMutateDrawerProps = {
   open: boolean
@@ -141,6 +143,12 @@ export function ApiKeysMutateDrawer({
     staleTime: GROUP_CHANNEL_STATUS_REFRESH_INTERVAL_MS,
     refetchOnWindowFocus: false,
   })
+  const { data: autoGroupsData } = useQuery({
+    queryKey: ['token-auto-groups'],
+    queryFn: getTokenAutoGroups,
+    enabled: open,
+    staleTime: 0,
+  })
 
   const models = modelsData?.data || []
   const groupsRaw = groupsData?.data || EMPTY_GROUPS
@@ -150,18 +158,57 @@ export function ApiKeysMutateDrawer({
   )
   const groups: ApiKeyGroupOption[] = useMemo(
     () =>
-      Object.entries(groupsRaw).map(([key, info]) => ({
-        value: key,
-        label: key,
-        desc: info.desc || key,
-        ratio: info.ratio,
-        channelStatus: groupChannelStatus[key],
-      })),
+      Object.entries(groupsRaw)
+        .sort(([left], [right]) => {
+          if (left === 'auto') return -1
+          if (right === 'auto') return 1
+          return 0
+        })
+        .map(([key, info]) => ({
+          value: key,
+          label: key,
+          desc:
+            key === 'auto'
+              ? t(
+                  'Automatically selects the best available group with circuit breaker mechanism'
+                )
+              : info.desc || key,
+          ratio: info.ratio,
+          channelStatus: groupChannelStatus[key],
+        })),
     [groupsRaw, groupChannelStatus]
   )
   const backendHasAuto = availableGroupValues.includes('auto')
+  const availableAutoGroupValues = useMemo(
+    () => availableGroupValues.filter((group) => group !== 'auto'),
+    [availableGroupValues]
+  )
+  const globalAutoGroups = useMemo(() => {
+    const available = new Set(availableAutoGroupValues)
+    return (autoGroupsData?.data?.groups || []).filter((group) =>
+      available.has(group)
+    )
+  }, [autoGroupsData, availableAutoGroupValues])
+  const globalAutoGroupOptions = useMemo(() => {
+    const groupsByValue = new Map(groups.map((group) => [group.value, group]))
+    return globalAutoGroups.flatMap((group) => {
+      const option = groupsByValue.get(group)
+      return option ? [option] : []
+    })
+  }, [globalAutoGroups, groups])
+  const hasGlobalAutoGroups = globalAutoGroupOptions.length > 0
+  const maxAutoGroups =
+    Number.isInteger(autoGroupsData?.data?.max_count) &&
+    Number(autoGroupsData?.data?.max_count) > 0
+      ? Number(autoGroupsData?.data?.max_count)
+      : 5
+  const autoCrossGroupRetryEnabled =
+    autoGroupsData?.data?.cross_group_retry_enabled !== false
   const normalizedPreferredGroup = preferredGroup.trim()
-  const schema = getApiKeyFormSchema(t)
+  const schema = useMemo(
+    () => getApiKeyFormSchema(t, maxAutoGroups, hasGlobalAutoGroups),
+    [t, maxAutoGroups, hasGlobalAutoGroups]
+  )
 
   useEffect(() => {
     if (groupChannelStatusData?.data) {
@@ -209,12 +256,20 @@ export function ApiKeysMutateDrawer({
     if (open && isUpdate && currentRow) {
       getApiKey(currentRow.id).then((result) => {
         if (result.success && result.data) {
-          form.reset(transformApiKeyToFormDefaults(result.data))
+          form.reset(
+            transformApiKeyToFormDefaults(
+              result.data,
+              availableAutoGroupValues,
+              maxAutoGroups,
+              hasGlobalAutoGroups
+            )
+          )
         }
       })
     } else if (open && !isUpdate) {
       const defaults = getApiKeyFormDefaultValues(
-        defaultUseAutoGroup && backendHasAuto
+        defaultUseAutoGroup && backendHasAuto,
+        autoCrossGroupRetryEnabled
       )
       if (
         normalizedPreferredGroup &&
@@ -232,6 +287,10 @@ export function ApiKeysMutateDrawer({
     form,
     defaultUseAutoGroup,
     backendHasAuto,
+    availableAutoGroupValues,
+    maxAutoGroups,
+    hasGlobalAutoGroups,
+    autoCrossGroupRetryEnabled,
     normalizedPreferredGroup,
     availableGroupValues,
   ])
@@ -247,6 +306,8 @@ export function ApiKeysMutateDrawer({
         ''
       form.setValue('group', fallback)
       if (currentGroup === 'auto') {
+        form.setValue('auto_groups', [])
+        form.setValue('auto_groups_mode', 'inherit')
         form.setValue('cross_group_retry', false)
       }
     }
@@ -341,6 +402,8 @@ export function ApiKeysMutateDrawer({
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
   const unlimitedQuota = form.watch('unlimited_quota')
+  const selectedGroup = form.watch('group')
+  const autoGroupsMode = form.watch('auto_groups_mode')
 
   return (
     <Sheet
@@ -402,7 +465,35 @@ export function ApiKeysMutateDrawer({
                       <ApiKeyGroupCombobox
                         options={groups}
                         value={field.value}
-                        onValueChange={field.onChange}
+                        onValueChange={(group) => {
+                          field.onChange(group)
+                          if (group === 'auto') {
+                            if (!hasGlobalAutoGroups) {
+                              form.setValue('auto_groups_mode', 'custom', {
+                                shouldDirty: true,
+                              })
+                              form.setValue('auto_groups', [], {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              })
+                            }
+                            form.setValue(
+                              'cross_group_retry',
+                              autoCrossGroupRetryEnabled,
+                              { shouldDirty: true }
+                            )
+                            return
+                          }
+                          form.setValue('auto_groups', [], {
+                            shouldDirty: true,
+                          })
+                          form.setValue('auto_groups_mode', 'inherit', {
+                            shouldDirty: true,
+                          })
+                          form.setValue('cross_group_retry', false, {
+                            shouldDirty: true,
+                          })
+                        }}
                         onTestGroup={handleTestGroupChannelStatus}
                         placeholder={t('Select a group')}
                         statusLoading={
@@ -417,30 +508,68 @@ export function ApiKeysMutateDrawer({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name='cross_group_retry'
-                render={({ field }) => (
-                  <FormItem className={sideDrawerSwitchItemClassName()}>
-                    <div className='flex flex-col gap-0.5'>
-                      <FormLabel className='text-sm'>
-                        {t('Cross-group retry')}
-                      </FormLabel>
-                      <FormDescription className='line-clamp-2 text-xs sm:line-clamp-none'>
-                        {t(
-                          'When enabled, if channels in the current group fail, it will try channels in the next group in order.'
-                        )}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={!!field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
+              {selectedGroup === 'auto' && (
+                <FormField
+                  control={form.control}
+                  name='auto_groups'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Auto group order')}</FormLabel>
+                      <FormControl>
+                        <AutoGroupOrderEditor
+                          value={field.value}
+                          mode={autoGroupsMode}
+                          options={groups}
+                          globalOptions={globalAutoGroupOptions}
+                          maxCount={maxAutoGroups}
+                          onChange={(value) => {
+                            form.setValue('auto_groups_mode', value.mode, {
+                              shouldDirty: true,
+                            })
+                            form.setValue('auto_groups', value.groups, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {selectedGroup === 'auto' && (
+                <FormField
+                  control={form.control}
+                  name='cross_group_retry'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <div className='flex flex-col gap-0.5'>
+                        <FormLabel className='text-sm'>
+                          {t('Cross-group retry')}
+                        </FormLabel>
+                        <FormDescription className='line-clamp-2 text-xs sm:line-clamp-none'>
+                          {autoCrossGroupRetryEnabled
+                            ? t(
+                                'When enabled, if channels in the current group fail, it will try channels in the next group in order.'
+                              )
+                            : t(
+                                'Cross-group retry is disabled by the administrator.'
+                              )}
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={autoCrossGroupRetryEnabled && !!field.value}
+                          disabled={!autoCrossGroupRetryEnabled}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}

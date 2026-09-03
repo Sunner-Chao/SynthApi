@@ -14,19 +14,23 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	DisplayAmount   float64 `json:"display_amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	ProviderTradeNo string  `json:"provider_trade_no" gorm:"type:varchar(128);index"`
-	Currency        string  `json:"currency" gorm:"type:varchar(8);default:''"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Id               int     `json:"id"`
+	UserId           int     `json:"user_id" gorm:"index"`
+	Amount           int64   `json:"amount"`
+	DisplayAmount    float64 `json:"display_amount"`
+	Money            float64 `json:"money"`
+	TradeNo          string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	ProviderTradeNo  string  `json:"provider_trade_no" gorm:"type:varchar(128);index"`
+	Currency         string  `json:"currency" gorm:"type:varchar(8);default:''"`
+	PaymentMethod    string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider  string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	PromotionScene   string  `json:"promotion_scene" gorm:"type:varchar(16);index"`
+	PromotionPercent int     `json:"promotion_percent" gorm:"default:0"`
+	PromotionQuota   int64   `json:"promotion_quota" gorm:"default:0"`
+	PromotionDay     string  `json:"promotion_day" gorm:"type:date;index"`
+	CreateTime       int64   `json:"create_time"`
+	CompleteTime     int64   `json:"complete_time"`
+	Status           string  `json:"status"`
 }
 
 const (
@@ -39,6 +43,7 @@ const (
 	PaymentMethodAlipay       = "alipay"
 	PaymentMethodWechat       = "wxpay"
 	PaymentMethodBalance      = "balance"
+	PaymentMethodRedemption   = "redemption"
 )
 
 const (
@@ -51,6 +56,7 @@ const (
 	PaymentProviderMPay         = "mpay"
 	PaymentProviderAlipayDirect = "alipay_direct"
 	PaymentProviderBalance      = "balance"
+	PaymentProviderRedemption   = "redemption"
 )
 
 var (
@@ -203,7 +209,18 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	RecordPaymentLog(topUp.UserId,
+		fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount),
+		PaymentAuditInfo{
+			Event:                 "topup_completed",
+			Source:                "webhook",
+			TradeNo:               topUp.TradeNo,
+			ProviderTradeNo:       topUp.ProviderTradeNo,
+			PaymentMethod:         topUp.PaymentMethod,
+			PaymentProvider:       PaymentProviderStripe,
+			CallbackPaymentMethod: PaymentMethodStripe,
+			CallerIp:              callerIp,
+		})
 
 	return nil
 }
@@ -387,6 +404,8 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var quotaToAdd int
 	var payMoney float64
 	var paymentMethod string
+	var paymentProvider string
+	var providerTradeNo string
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -427,6 +446,8 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		userId = topUp.UserId
 		payMoney = topUp.Money
 		paymentMethod = topUp.PaymentMethod
+		paymentProvider = topUp.PaymentProvider
+		providerTradeNo = topUp.ProviderTradeNo
 		return nil
 	})
 
@@ -435,7 +456,17 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	}
 
 	// 事务外记录日志，避免阻塞
-	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	RecordPaymentLog(userId,
+		fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney),
+		PaymentAuditInfo{
+			Event:           "manual_topup_completed",
+			Source:          "admin",
+			TradeNo:         tradeNo,
+			ProviderTradeNo: providerTradeNo,
+			PaymentMethod:   paymentMethod,
+			PaymentProvider: paymentProvider,
+			CallerIp:        callerIp,
+		})
 	return nil
 }
 
@@ -548,9 +579,18 @@ func CompleteAlipayDirectTopUp(tradeNo string, providerTradeNo string, paidMoney
 	if err := cacheIncrUserQuota(topUp.UserId, int64(quotaToAdd)); err != nil {
 		common.SysLog("failed to increase user quota cache after Alipay topup: " + err.Error())
 	}
-	RecordTopupLog(topUp.UserId,
+	RecordPaymentLog(topUp.UserId,
 		fmt.Sprintf("支付宝官方充值成功，充值金额: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money),
-		callerIp, PaymentMethodAlipay, PaymentProviderAlipayDirect)
+		PaymentAuditInfo{
+			Event:                 "topup_completed",
+			Source:                "verified_completion",
+			TradeNo:               topUp.TradeNo,
+			ProviderTradeNo:       topUp.ProviderTradeNo,
+			PaymentMethod:         PaymentMethodAlipay,
+			PaymentProvider:       PaymentProviderAlipayDirect,
+			CallbackPaymentMethod: PaymentMethodAlipay,
+			CallerIp:              callerIp,
+		})
 	return nil
 }
 
@@ -635,7 +675,18 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		return errors.New("充值失败，请稍后重试")
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodCreem)
+	RecordPaymentLog(topUp.UserId,
+		fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money),
+		PaymentAuditInfo{
+			Event:                 "topup_completed",
+			Source:                "webhook",
+			TradeNo:               topUp.TradeNo,
+			ProviderTradeNo:       topUp.ProviderTradeNo,
+			PaymentMethod:         topUp.PaymentMethod,
+			PaymentProvider:       PaymentProviderCreem,
+			CallbackPaymentMethod: PaymentMethodCreem,
+			CallerIp:              callerIp,
+		})
 
 	return nil
 }
@@ -698,13 +749,24 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
+		RecordPaymentLog(topUp.UserId,
+			fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money),
+			PaymentAuditInfo{
+				Event:                 "topup_completed",
+				Source:                "webhook",
+				TradeNo:               topUp.TradeNo,
+				ProviderTradeNo:       topUp.ProviderTradeNo,
+				PaymentMethod:         topUp.PaymentMethod,
+				PaymentProvider:       PaymentProviderWaffo,
+				CallbackPaymentMethod: PaymentMethodWaffo,
+				CallerIp:              callerIp,
+			})
 	}
 
 	return nil
 }
 
-func RechargeWaffoPancake(tradeNo string) (err error) {
+func RechargeWaffoPancake(tradeNo string, callerIp ...string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -762,7 +824,22 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
+		callbackIp := ""
+		if len(callerIp) > 0 {
+			callbackIp = callerIp[0]
+		}
+		RecordPaymentLog(topUp.UserId,
+			fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money),
+			PaymentAuditInfo{
+				Event:                 "topup_completed",
+				Source:                "webhook",
+				TradeNo:               topUp.TradeNo,
+				ProviderTradeNo:       topUp.ProviderTradeNo,
+				PaymentMethod:         topUp.PaymentMethod,
+				PaymentProvider:       PaymentProviderWaffoPancake,
+				CallbackPaymentMethod: PaymentMethodWaffoPancake,
+				CallerIp:              callbackIp,
+			})
 	}
 
 	return nil

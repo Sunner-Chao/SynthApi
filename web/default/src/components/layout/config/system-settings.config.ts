@@ -17,15 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type TFunction } from 'i18next'
-import {
-  Box,
-  CreditCard,
-  Layout,
-  Settings,
-  Shield,
-  ShieldAlert,
-  Wrench,
-} from 'lucide-react'
+import { Box, CreditCard, Layout, Settings, Shield, ShieldAlert, Wrench } from 'lucide-react'
 import { getAuthSectionNavItems } from '@/features/system-settings/auth/section-registry.tsx'
 import { getBillingSectionNavItems } from '@/features/system-settings/billing/section-registry.tsx'
 import { getContentSectionNavItems } from '@/features/system-settings/content/section-registry.tsx'

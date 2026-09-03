@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import {
   API,
   getLogo,
+  getFavicon,
   getSystemName,
   showError,
   setStatusData,
@@ -89,7 +90,10 @@ const PageLayout = () => {
 
   const loadStatus = async () => {
     try {
-      const res = await API.get('/api/status');
+      const res = await API.get('/api/status', {
+        timeout: 6000,
+        skipErrorHandler: true,
+      });
       const { success, data } = res.data;
       if (success) {
         statusDispatch({ type: 'set', payload: data });
@@ -98,7 +102,9 @@ const PageLayout = () => {
         showError('Unable to connect to server');
       }
     } catch (error) {
-      showError('Failed to load status');
+      // Keep public/auth pages usable with cached/default status when the
+      // control-plane request is slow or temporarily unavailable.
+      console.warn('Failed to load status', error);
     }
   };
 
@@ -109,11 +115,11 @@ const PageLayout = () => {
     if (systemName) {
       document.title = systemName;
     }
-    let logo = getLogo();
-    if (logo) {
+    let favicon = getFavicon();
+    if (favicon) {
       let linkElement = document.querySelector("link[rel~='icon']");
       if (linkElement) {
-        linkElement.href = logo;
+        linkElement.href = favicon;
       }
     }
   }, []);

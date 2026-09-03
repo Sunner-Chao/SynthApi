@@ -22,9 +22,6 @@ import { getSelf } from '@/lib/api'
 import { AuthenticatedLayout } from '@/components/layout'
 import { getBusinessPreview } from '@/features/business-preview/api'
 
-// 内存中的验证标记，避免同一会话中重复验证
-let sessionVerified = false
-
 async function redirectSignedOutUser(
   pathname: string,
   href: string
@@ -47,23 +44,22 @@ export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ location }) => {
     const { auth } = useAuthStore.getState()
 
-    // 如果本地没有用户信息，直接跳转登录页
-    if (!auth.user) {
-      await redirectSignedOutUser(location.pathname, location.href)
-    }
-
-    // 本地有用户信息，但需要验证 session 是否有效（每个会话只验证一次）
-    if (!sessionVerified) {
+    // Always validate the server session on the first authenticated navigation.
+    // localStorage is origin-scoped, so it cannot be the source of truth when
+    // switching between synthapi.asia and admin.synthapi.asia.
+	if (!auth.sessionVerified) {
       const res = await getSelf().catch(() => null)
       if (res?.success && res.data) {
         // 验证成功，更新用户信息（可能有变化）
         auth.setUser(res.data)
-        sessionVerified = true
+		auth.setSessionVerified(true)
       } else {
         // 验证失败或 API 调用失败，清除本地缓存并按公开预览策略跳转
         auth.reset()
         await redirectSignedOutUser(location.pathname, location.href)
       }
+    } else if (!auth.user) {
+      await redirectSignedOutUser(location.pathname, location.href)
     }
   },
   component: AuthenticatedLayout,

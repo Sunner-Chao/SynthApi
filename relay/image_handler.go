@@ -98,7 +98,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
-		if httpResp.StatusCode != http.StatusOK {
+		if httpResp.StatusCode < http.StatusOK || httpResp.StatusCode >= http.StatusMultipleChoices {
 			if httpResp.StatusCode == http.StatusCreated && info.ApiType == constant.APITypeReplicate {
 				// replicate channel returns 201 Created when using Prefer: wait, treat it as success.
 				httpResp.StatusCode = http.StatusOK
@@ -149,6 +149,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	if len(request.Size) > 0 {
 		logContent = append(logContent, fmt.Sprintf("大小 %s", request.Size))
+	}
+	if resolution := request.GetResolution(); resolution != "" && common.IsAPIMartAPIBaseURL(info.ChannelBaseUrl) {
+		logContent = append(logContent, fmt.Sprintf("分辨率档位 %s", strings.ToUpper(resolution)))
 	}
 	if len(quality) > 0 {
 		logContent = append(logContent, fmt.Sprintf("品质 %s", quality))

@@ -702,10 +702,18 @@ export const useLogsData = () => {
     if (!isAdminUser) {
       return;
     }
-    const res = await API.get(`/api/user/${userId}`);
+    const [res, rewardRes] = await Promise.all([
+      API.get(`/api/user/${userId}`),
+      API.get(`/api/user/rewards/admin/users/${userId}/summary`).catch(
+        () => null,
+      ),
+    ]);
     const { success, message, data } = res.data;
     if (success) {
-      setUserInfoData(data);
+      setUserInfoData({
+        ...data,
+        reward_summary: rewardRes?.data?.success ? rewardRes.data.data : null,
+      });
       setShowUserInfoModal(true);
     } else {
       showError(message);
@@ -1039,10 +1047,40 @@ export const useLogsData = () => {
       if (isAdminUser && logs[i].type === 1) {
         const adminInfo = other?.admin_info;
         if (adminInfo) {
+          if (adminInfo.event) {
+            expandDataLocal.push({
+              key: t('支付事件'),
+              value: adminInfo.event,
+            });
+          }
+          if (adminInfo.trade_no) {
+            expandDataLocal.push({
+              key: t('订单号'),
+              value: adminInfo.trade_no,
+            });
+          }
+          if (adminInfo.provider_trade_no) {
+            expandDataLocal.push({
+              key: t('平台订单号'),
+              value: adminInfo.provider_trade_no,
+            });
+          }
+          if (adminInfo.reference_id) {
+            expandDataLocal.push({
+              key: t('参考编号'),
+              value: adminInfo.reference_id,
+            });
+          }
           if (adminInfo.payment_method) {
             expandDataLocal.push({
               key: t('订单支付方式'),
               value: adminInfo.payment_method,
+            });
+          }
+          if (adminInfo.payment_provider) {
+            expandDataLocal.push({
+              key: t('支付网关'),
+              value: adminInfo.payment_provider,
             });
           }
           if (adminInfo.callback_payment_method) {
@@ -1075,13 +1113,29 @@ export const useLogsData = () => {
               value: adminInfo.version,
             });
           }
-        } else {
+          if (adminInfo.source) {
+            expandDataLocal.push({
+              key: t('支付来源'),
+              value: adminInfo.source,
+            });
+          }
+          if (adminInfo.audit_schema_version) {
+            expandDataLocal.push({
+              key: t('审计版本'),
+              value: String(adminInfo.audit_schema_version),
+            });
+          }
+        } else if (
+          !/^(使用余额购买订阅成功|通过兑换码充值|退订订阅成功)/.test(
+            String(logs[i].content || '').trim(),
+          )
+        ) {
           expandDataLocal.push({
             key: t('审计信息'),
             value: (
               <span style={{ color: 'var(--semi-color-warning)' }}>
                 {t(
-                  '该记录由旧版本实例写入，缺少审计信息，建议将实例升级至最新版本以便记录服务器IP、回调IP、支付方式与系统版本等审计字段。',
+                  '该历史支付记录未包含审计元数据，无法还原原始服务器与回调来源。',
                 )}
               </span>
             ),

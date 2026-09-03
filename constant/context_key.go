@@ -11,6 +11,8 @@ const (
 	ContextKeyRequestStartTime        ContextKey = "request_start_time"
 	ContextKeyPromptCacheQueue        ContextKey = "prompt_cache_queue"
 	ContextKeyChannelCapacityQueue    ContextKey = "channel_capacity_queue"
+	ContextKeyChannelConcurrencyActive ContextKey = "channel_concurrency_active"
+	ContextKeyChannelConcurrencyLimit  ContextKey = "channel_concurrency_limit"
 	ContextKeyLongContextOptimization ContextKey = "long_context_optimization"
 
 	/* token related keys */
@@ -22,6 +24,7 @@ const (
 	ContextKeyTokenModelLimitEnabled ContextKey = "token_model_limit_enabled"
 	ContextKeyTokenModelLimit        ContextKey = "token_model_limit"
 	ContextKeyTokenCrossGroupRetry   ContextKey = "token_cross_group_retry"
+	ContextKeyTokenAutoGroups        ContextKey = "token_auto_groups"
 
 	/* channel related keys */
 	ContextKeyChannelId                ContextKey = "channel_id"
@@ -44,6 +47,9 @@ const (
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"
 	ContextKeyAutoGroupRetryIndex ContextKey = "auto_group_retry_index"
+	ContextKeyAutoGroupOrder      ContextKey = "auto_group_order"
+	ContextKeyAutoRouteStatus     ContextKey = "auto_route_status"
+	ContextKeyAutoRoutePriority   ContextKey = "auto_route_priority"
 	ContextKeySmartFailoverGroups ContextKey = "smart_failover_groups"
 
 	/* user related keys */

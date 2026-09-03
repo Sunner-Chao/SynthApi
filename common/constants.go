@@ -210,6 +210,10 @@ var ModelRequestDefaultChannelMaxConcurrencyPerUser int
 var ModelRequestLargeBodyThresholdMB int
 var ModelRequestMaxLargeConcurrencyPerUser int
 var ModelRequestConcurrencyExemptUserIDs map[int]struct{}
+
+// ModelRequestConcurrencyLeaseSeconds bounds the lifetime of a distributed
+// request slot if a process disappears before its release callback runs.
+var ModelRequestConcurrencyLeaseSeconds int
 var ModelTextRequestBodyMB int
 var ModelTextRequestBodyReadTimeout int
 
@@ -266,6 +270,23 @@ var (
 	SearchRateLimitEnable         = true
 	SearchRateLimitNum            = 10
 	SearchRateLimitDuration int64 = 60
+
+	// Public registration protection. These defaults are intentionally stricter
+	// than the generic critical endpoint limit because registration is a
+	// high-value, low-frequency operation.
+	RegistrationRateLimitEnable         bool
+	RegistrationRateLimitNum            int
+	RegistrationRateLimitDuration       int64
+	RegistrationGlobalRateLimitEnable   bool
+	RegistrationGlobalRateLimitNum      int
+	RegistrationGlobalRateLimitDuration int64
+	RegisterSubnetLimitEnable           bool
+	RegisterSubnetLimitMaxAccounts      int
+	AffiliateRewardAfterPayment         bool
+	AffiliateRewardMinPayment           float64
+	// New accounts must age before they can claim the daily check-in reward.
+	// Zero keeps the legacy behavior for installations that do not opt in.
+	CheckinMinAccountAgeSeconds int64
 )
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute

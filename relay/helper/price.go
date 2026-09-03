@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -114,10 +116,13 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		ratio := modelRatio * groupRatioInfo.GroupRatio
 		preConsumedQuota = int(float64(preConsumedTokens) * ratio)
 	} else {
-		if meta.ImagePriceRatio != 0 {
-			modelPrice = modelPrice * meta.ImagePriceRatio
+		if imagePriceRatio := effectiveImagePriceRatio(c, info, meta); imagePriceRatio != 0 {
+			modelPrice = modelPrice * imagePriceRatio
 		}
 		preConsumedQuota = int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+		if count := apimartImagePreConsumeCount(c, info); count > 1 {
+			preConsumedQuota *= count
+		}
 	}
 
 	// check if free model pre-consume is disabled
@@ -161,6 +166,34 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	}
 	info.PriceData = priceData
 	return priceData, nil
+}
+
+func effectiveImagePriceRatio(c *gin.Context, info *relaycommon.RelayInfo, meta *types.TokenCountMeta) float64 {
+	ratio := meta.ImagePriceRatio
+	request, ok := info.Request.(*dto.ImageRequest)
+	if !ok || !request.IsAPIMartImageModel() {
+		return ratio
+	}
+
+	baseURL := common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl)
+	if !common.IsAPIMartAPIBaseURL(baseURL) {
+		return ratio
+	}
+	if ratio == 0 {
+		ratio = 1
+	}
+	return ratio * request.APIMartImagePriceRatio()
+}
+
+func apimartImagePreConsumeCount(c *gin.Context, info *relaycommon.RelayInfo) int {
+	request, ok := info.Request.(*dto.ImageRequest)
+	if !ok || !request.IsAPIMartImageModel() || !common.IsAPIMartAPIBaseURL(common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl)) {
+		return 1
+	}
+	if request.N == nil || *request.N < 2 {
+		return 1
+	}
+	return int(*request.N)
 }
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)

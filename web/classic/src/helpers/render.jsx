@@ -947,6 +947,13 @@ export const renderGroupOption = (item) => {
     ...(selected && {
       backgroundColor: 'var(--semi-color-primary-light-default)',
     }),
+    ...(item.recommended && {
+      borderLeft: '3px solid var(--semi-color-warning)',
+      backgroundColor:
+        selected || focused
+          ? 'var(--semi-color-warning-light-hover)'
+          : 'var(--semi-color-warning-light-default)',
+    }),
     '&:hover': {
       backgroundColor: !disabled && 'var(--semi-color-fill-1)',
     },
@@ -971,9 +978,16 @@ export const renderGroupOption = (item) => {
           onMouseEnter={handleMouseEnter}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <Typography.Text strong type={disabled ? 'tertiary' : undefined}>
-            {value}
-          </Typography.Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Typography.Text strong type={disabled ? 'tertiary' : undefined}>
+              {value}
+            </Typography.Text>
+            {item.recommended && (
+              <Tag color='orange' size='small' shape='circle'>
+                {item.recommendedLabel}
+              </Tag>
+            )}
+          </div>
           <Typography.Text type='secondary' size='small'>
             {label}
           </Typography.Text>

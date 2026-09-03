@@ -200,6 +200,8 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
+  AffiliateMilestoneRewardEnabled: boolean
+  RechargeBenefitEnabled: boolean
   QuotaForNewUser: number
   PreConsumedQuota: number
   QuotaForInviter: number
@@ -233,6 +235,8 @@ export type BillingSettings = {
   AutoGroups: string
   SmartGroupRules: string
   DefaultUseAutoGroup: boolean
+  AutoCrossGroupRetryEnabled: boolean
+  MaxTokenAutoGroups: number
   'group_ratio_setting.group_special_usable_group': string
   PayAddress: string
   EpayId: string

@@ -5,249 +5,939 @@ This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
 published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
-  AlertCircle,
+  AlertTriangle,
   BookOpen,
-  CheckCircle2,
+  Check,
+  ChevronRight,
+  Code2,
+  Copy,
+  ExternalLink,
+  Image as ImageIcon,
   KeyRound,
-  LifeBuoy,
-  LockKeyhole,
-  MessageSquare,
-  Route,
+  MessageSquareText,
+  Search,
+  Server,
   ShieldCheck,
-  TerminalSquare,
-  Wallet,
+  Video,
   Zap,
 } from 'lucide-react'
-import {
-  FAST_ANTHROPIC_COMPAT_BASE_URL,
-  FAST_API_BASE_URL,
-  FAST_OPENAI_BASE_URL,
-} from '@/lib/api-routes'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { FAST_API_BASE_URL, FAST_OPENAI_BASE_URL } from '@/lib/api-routes'
 import { PublicLayout } from '@/components/layout'
+import './styles.css'
 
 const siteBaseUrl = 'https://synthapi.asia'
 const openAiBaseUrl = `${siteBaseUrl}/v1`
-const anthropicBaseUrl = siteBaseUrl
-const anthropicCompatBaseUrl = `${siteBaseUrl}/anthropic/v1`
 
-const quickSteps = [
-  {
-    icon: KeyRound,
-    title: '获取 API Key',
-    description:
-      '登录 SynthAPI 控制台，在令牌页面新建密钥。密钥只展示一次，请立即保存。',
-  },
-  {
-    icon: Wallet,
-    title: '确认余额与权限',
-    description:
-      '在钱包和模型页面确认余额、分组、模型权限均可用，否则请求会被网关拦截。',
-  },
-  {
-    icon: Route,
-    title: '选择正确地址',
-    description:
-      'OpenAI 兼容工具使用 /v1；Claude Code 使用站点根地址，由客户端自动拼接路径。',
-  },
-  {
-    icon: CheckCircle2,
-    title: '运行验证请求',
-    description: '先使用模型列表或简单对话测试连通性，再接入真实业务或长任务。',
-  },
-]
+type DocsTopic = 'overview' | 'text' | 'image' | 'video' | 'tasks'
+type DocsSection =
+  | 'overview'
+  | 'authentication'
+  | 'base-url'
+  | 'chat-completions'
+  | 'responses'
+  | 'claude-messages'
+  | 'image-generation'
+  | 'image-gemini'
+  | 'image-seedream'
+  | 'image-flux'
+  | 'image-other'
+  | 'image-task-query'
+  | 'video-api'
+  | 'task-query'
+  | 'billing'
+  | 'errors'
 
-const addressRows = [
+const navGroups = [
   {
-    scene: 'Claude Code / Anthropic 格式',
-    variable: 'ANTHROPIC_BASE_URL',
-    value: anthropicBaseUrl,
-    fastValue: FAST_API_BASE_URL,
-    note: '不带 /v1；客户端会访问 /v1/messages。',
+    title: '开始使用',
+    icon: BookOpen,
+    items: [
+      { id: 'overview', label: '文档概览', topic: 'overview' },
+      { id: 'authentication', label: '身份认证', topic: 'overview' },
+      { id: 'base-url', label: '线路与 Base URL', topic: 'overview' },
+    ],
   },
   {
-    scene: 'Anthropic 兼容别名',
-    variable: '手动 Base URL',
-    value: anthropicCompatBaseUrl,
-    fastValue: FAST_ANTHROPIC_COMPAT_BASE_URL,
-    note: '用于明确指定 Anthropic 路径的客户端。',
+    title: '文字系列',
+    icon: MessageSquareText,
+    items: [
+      { id: 'chat-completions', label: 'Chat Completions', topic: 'text' },
+      { id: 'responses', label: 'Responses', topic: 'text' },
+      { id: 'claude-messages', label: 'Claude Messages', topic: 'text' },
+    ],
   },
   {
-    scene: 'Codex CLI / OpenAI SDK / OpenClaw',
-    variable: 'OPENAI_BASE_URL',
-    value: openAiBaseUrl,
-    fastValue: FAST_OPENAI_BASE_URL,
-    note: '必须带 /v1。',
+    title: '图像系列',
+    icon: ImageIcon,
+    items: [
+      { id: 'image-generation', label: '图像模型聚合', topic: 'image' },
+      { id: 'image-gemini', label: 'Gemini / Imagen', topic: 'image' },
+      { id: 'image-seedream', label: 'Seedream', topic: 'image' },
+      { id: 'image-flux', label: 'FLUX', topic: 'image' },
+      { id: 'image-other', label: 'Qwen / Grok / Wan', topic: 'image' },
+      { id: 'image-task-query', label: '图像任务查询', topic: 'tasks' },
+    ],
   },
   {
-    scene: '浏览器访问与控制台',
-    variable: '站点地址',
-    value: siteBaseUrl,
-    fastValue: null,
-    note: `用于登录、创建 Key、查看钱包和日志；API 大速率调用可改用 ${FAST_API_BASE_URL}。`,
+    title: '视频与任务',
+    icon: Video,
+    items: [
+      { id: 'video-api', label: '视频生成', topic: 'video' },
+      { id: 'task-query', label: '异步任务状态', topic: 'tasks' },
+    ],
   },
-]
+  {
+    title: '平台说明',
+    icon: ShieldCheck,
+    items: [
+      { id: 'billing', label: '计费与使用日志', topic: 'overview' },
+      { id: 'errors', label: '错误与排查', topic: 'overview' },
+    ],
+  },
+] as const satisfies ReadonlyArray<{
+  title: string
+  icon: typeof BookOpen
+  items: ReadonlyArray<{ id: DocsSection; label: string; topic: DocsTopic }>
+}>
 
-const endpoints = [
+const imageParameters = [
   {
-    method: 'POST',
-    path: '/v1/chat/completions',
-    title: '对话补全',
-    description: 'OpenAI Chat Completions 协议，支持流式与非流式响应。',
-  },
-  {
-    method: 'POST',
-    path: '/v1/responses',
-    title: 'Responses',
-    description: 'OpenAI Responses 协议入口，适合支持新版响应结构的客户端。',
-  },
-  {
-    method: 'POST',
-    path: '/v1/messages',
-    title: 'Claude Messages',
+    name: 'model',
+    type: 'string',
+    required: true,
     description:
-      'Anthropic Messages 协议入口，Claude Code 等工具会使用该接口。',
+      '要调用的模型。线路二使用 gpt-image-2；密钥所在分组必须包含该模型。可通过 GET /v1/models 查看可用清单。',
+    example: 'gpt-image-2',
   },
   {
-    method: 'POST',
-    path: '/v1/embeddings',
-    title: '向量生成',
-    description: '用于语义检索、RAG 和相似度计算。',
+    name: 'prompt',
+    type: 'string',
+    required: true,
+    description:
+      '生成要求。把主体、构图、材质、镜头和光线写清楚；不需要的内容也可直接写在提示词中。',
+    example: '一只橘猫坐在窗台上看夕阳，水彩画风格',
   },
   {
+    name: 'n',
+    type: 'integer',
+    required: false,
+    description: '一次生成几张图。请传 JSON 数字；数量上限由所选模型决定。',
+    example: '1',
+  },
+  {
+    name: 'size',
+    type: 'string',
+    required: false,
+    description:
+      '画幅比例。图像聚合线路可传 1:1、16:9、9:16 等比例；部分兼容模型也接受 WIDTHxHEIGHT。',
+    options: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3'],
+  },
+  {
+    name: 'resolution',
+    type: 'string',
+    required: false,
+    description:
+      '输出清晰度或像素档位。可用值随模型变化，例如 0.5K–4K、1MP–4MP 或 1K–3K；size: 16:9 只控制比例。',
+    options: [
+      '0.5k',
+      '1k',
+      '1.5k',
+      '2k',
+      '3k',
+      '4k',
+      '1mp',
+      '2mp',
+      '3mp',
+      '4mp',
+    ],
+  },
+  {
+    name: 'aspect_ratio',
+    type: 'string',
+    required: false,
+    description:
+      'Grok 系模型使用的画幅字段。常用值与 size 相同；工作台会根据所选模型自动选择正确字段。',
+    example: '16:9',
+  },
+  {
+    name: 'quality',
+    type: 'string',
+    required: false,
+    description:
+      '质量档位。当前主要用于 grok-imagine-image-2.0 的 low / medium；带参考图时不要传。',
+    options: ['low', 'medium'],
+  },
+  {
+    name: 'output_format',
+    type: 'string',
+    required: false,
+    description: '支持该字段的模型可输出 JPEG、PNG 或 WEBP。',
+    options: ['jpeg', 'png', 'webp'],
+  },
+  {
+    name: 'seed / negative_prompt',
+    type: 'integer / string',
+    required: false,
+    description:
+      '随机种子用于复现构图；反向提示词用于排除不需要的内容。仅在模型支持时传入。',
+    example: '{ "seed": 1024, "negative_prompt": "模糊、文字" }',
+  },
+  {
+    name: 'model switches',
+    type: 'boolean',
+    required: false,
+    description:
+      '模型专属开关：prompt_extend、prompt_upsampling、google_search、thinking_mode、enable_sequential。',
+    example: '{ "prompt_extend": true }',
+  },
+  {
+    name: 'image_urls',
+    type: 'string[]',
+    required: false,
+    description:
+      '参考图数组。公网 URL 和 data:image/...;base64,... 可以混用。GPT-Image-2 最多 16 张，单张不超过 20 MiB。',
+    example: '["https://example.com/reference.png"]',
+  },
+  {
+    name: 'extra fields',
+    type: 'object',
+    required: false,
+    description:
+      'seed、negative_prompt、steps、水印等模型专属字段。网关不改写字段值，是否生效取决于所选模型。',
+    example: '{ "seed": 1024 }',
+  },
+] as const
+
+const imageFamilies = [
+  {
+    family: 'OpenAI',
+    models: ['gpt-image-2', 'gpt-image-2-official'],
+    accent: 'green',
+  },
+  {
+    family: 'Google',
+    models: [
+      'gemini-2.5-flash-image-preview',
+      'gemini-3-pro-image-preview',
+      'gemini-3.1-flash-image-preview',
+      'gemini-3.1-flash-lite-image',
+      'imagen-4.0-apimart',
+    ],
+    accent: 'blue',
+  },
+  {
+    family: 'Seedream',
+    models: [
+      'seedream-4.0',
+      'seedream-4.5',
+      'seedream-5-0-lite',
+      'seedream-5-0-pro',
+    ],
+    accent: 'orange',
+  },
+  {
+    family: 'FLUX',
+    models: [
+      'flux-kontext-pro',
+      'flux-kontext-max',
+      'flux-2-flex',
+      'flux-2-pro',
+      'flux-2-max',
+    ],
+    accent: 'violet',
+  },
+  {
+    family: 'Qwen / Grok / Wan',
+    models: [
+      'qwen-image-2.0',
+      'qwen-image-2.0-pro',
+      'qwen-image-3.0',
+      'qwen-image-3.0-pro',
+      'grok-imagine-1.5-apimart',
+      'grok-imagine-2.0-ext',
+      'grok-imagine-image',
+      'grok-imagine-image-2.0',
+      'grok-imagine-image-quality',
+      'wan2.7-image',
+      'wan2.7-image-pro',
+      'z-image-turbo',
+    ],
+    accent: 'pink',
+  },
+] as const
+
+const topicMeta: Record<
+  DocsTopic,
+  {
+    label: string
+    eyebrow: string
+    title: string
+    description: string
+    endpoint: string
+    method: 'GET' | 'POST'
+    status: string
+  }
+> = {
+  overview: {
+    label: '文档概览',
+    eyebrow: 'API REFERENCE',
+    title: 'SynthAPI 接口参考',
+    description:
+      '统一接入文字、图像和视频模型。选择左侧主题查看对应的请求示例、响应结构与任务流程。',
+    endpoint: '/v1/models',
     method: 'GET',
-    path: '/v1/models',
-    title: '模型列表',
-    description: '返回当前账号可用模型，受分组、渠道和权限配置影响。',
+    status: '200',
   },
-]
+  text: {
+    label: '文字模型',
+    eyebrow: 'TEXT MODELS',
+    title: '文字模型 API',
+    description:
+      '通过 Chat Completions、Responses 或 Anthropic Messages 调用文字模型，支持流式和非流式响应。',
+    endpoint: '/v1/chat/completions',
+    method: 'POST',
+    status: '200',
+  },
+  image: {
+    label: '图像模型',
+    eyebrow: 'IMAGE MODELS',
+    title: '图像模型 API',
+    description:
+      '统一调用 GPT-Image、Gemini、FLUX、Seedream、Qwen、Grok、Wan 等图像模型，支持生成、编辑和异步任务。',
+    endpoint: '/v1/images/generations',
+    method: 'POST',
+    status: '202',
+  },
+  video: {
+    label: '视频模型',
+    eyebrow: 'VIDEO MODELS',
+    title: '视频模型 API',
+    description:
+      '提交视频生成任务并使用 task_id 查询进度。长任务不会阻塞其他请求，完成后返回可下载的视频地址。',
+    endpoint: '/v1/videos/generations',
+    method: 'POST',
+    status: '202',
+  },
+  tasks: {
+    label: '任务状态',
+    eyebrow: 'ASYNC TASKS',
+    title: '异步任务 API',
+    description:
+      '图像和视频任务提交后返回 task_id。按需查询任务状态、进度、结果地址和失败原因。',
+    endpoint: '/v1/tasks/{task_id}',
+    method: 'GET',
+    status: '200',
+  },
+}
 
-const errorRows = [
-  [
-    '401 Unauthorized',
-    'API Key 错误、过期、被禁用，或请求头未使用 Bearer / x-api-key。',
-  ],
-  ['403 Forbidden', '账号、令牌、模型权限或分组权限不满足当前请求。'],
-  ['429 Too Many Requests', '触发频率限制，请降低并发或检查后台限流配置。'],
-  [
-    '503 No available channel',
-    '当前分组下没有可用渠道，或目标模型未在该分组启用。',
-  ],
-  [
-    'HTTP 200 但响应格式异常',
-    '常见于 Claude Code 地址填错，实际拿到的是网页 HTML 而不是 API JSON。',
-  ],
-  [
-    '余额不足 / quota exceeded',
-    '钱包余额不足、令牌额度耗尽，或预扣费超过可用额度。',
-  ],
-]
+const defaultSectionForTopic: Record<DocsTopic, DocsSection> = {
+  overview: 'overview',
+  text: 'chat-completions',
+  image: 'image-generation',
+  video: 'video-api',
+  tasks: 'task-query',
+}
 
-const pricingNotes = [
-  '模型输入价格对应后台模型倍率，模型输出价格对应补全倍率。',
-  '最终扣费还会叠加用户所在分组倍率，并按实际 token 用量结算。',
-  '使用日志会展示模型、分组、输入 token、输出 token、缓存命中、倍率和扣费结果。',
-  '如果价格页刚修改后未及时刷新，请刷新页面并确认后台保存成功。',
-]
+const allSections = new Set<DocsSection>(
+  navGroups.flatMap((group) => group.items.map((item) => item.id))
+)
 
-const navSections = [
+const topicForSection = (section: DocsSection): DocsTopic => {
+  for (const group of navGroups) {
+    const item = group.items.find((candidate) => candidate.id === section)
+    if (item) return item.topic
+  }
+  return 'overview'
+}
+
+const sectionMeta: Record<
+  DocsSection,
   {
-    title: '开始',
-    items: [
-      { href: '#overview', label: '文档概览' },
-      { href: '#quick-start', label: '新手快速开始' },
-      { href: '#base-url', label: '地址选择' },
-    ],
+    label: string
+    eyebrow: string
+    title: string
+    description: string
+    endpoint: string
+    method: 'GET' | 'POST'
+    status: string
+  }
+> = {
+  overview: topicMeta.overview,
+  authentication: {
+    label: '身份认证',
+    eyebrow: 'AUTHENTICATION',
+    title: '使用 API Key 完成认证',
+    description: '所有模型接口共用 Bearer Token。密钥只应保存在服务端或受保护的客户端配置中。',
+    endpoint: '/v1/models',
+    method: 'GET',
+    status: '200',
   },
-  {
-    title: '客户端',
-    items: [
-      { href: '#claude-code', label: 'Claude Code' },
-      { href: '#codex-cli', label: 'Codex / OpenAI' },
-      { href: '#sdk-examples', label: 'SDK 示例' },
-    ],
+  'base-url': {
+    label: '线路与 Base URL',
+    eyebrow: 'BASE URL',
+    title: '选择合适的接入线路',
+    description: '常规线路与高速线路使用相同的 API Key、模型名称和请求格式，可按网络环境切换。',
+    endpoint: '/v1/models',
+    method: 'GET',
+    status: '200',
   },
-  {
-    title: '接口',
-    items: [
-      { href: '#verify', label: 'curl 验证' },
-      { href: '#endpoints', label: '常用接口' },
-      { href: '#billing', label: '计费日志' },
-    ],
+  'chat-completions': {
+    ...topicMeta.text,
+    label: 'Chat Completions',
+    title: 'OpenAI Chat Completions API',
   },
-]
+  responses: {
+    ...topicMeta.text,
+    label: 'Responses',
+    title: 'OpenAI Responses API',
+    description: '面向推理、工具调用和多轮上下文的统一响应接口，支持 SSE 流式增量事件。',
+    endpoint: '/v1/responses',
+  },
+  'claude-messages': {
+    ...topicMeta.text,
+    label: 'Claude Messages',
+    title: 'Anthropic Messages API',
+    description: '兼容 Claude SDK 与 Anthropic Messages 请求格式，通过 x-api-key 或 Bearer Token 认证。',
+    endpoint: '/v1/messages',
+  },
+  'image-generation': topicMeta.image,
+  'image-gemini': {
+    ...topicMeta.image,
+    label: 'Gemini / Imagen',
+    title: 'Gemini 与 Imagen 图像模型',
+    description: '适合高质量文生图、参考图编辑与多模态构图，参数能力以具体模型为准。',
+  },
+  'image-seedream': {
+    ...topicMeta.image,
+    label: 'Seedream',
+    title: 'Seedream 图像模型',
+    description: '覆盖快速生成与高质量档位，支持常用比例、分辨率和参考图参数。',
+  },
+  'image-flux': {
+    ...topicMeta.image,
+    label: 'FLUX',
+    title: 'FLUX 图像模型',
+    description: '提供 Kontext、Flex、Pro 与 Max 系列，适用于文本渲染、风格控制和图像编辑。',
+  },
+  'image-other': {
+    ...topicMeta.image,
+    label: 'Qwen / Grok / Wan',
+    title: 'Qwen、Grok 与 Wan 图像模型',
+    description: '聚合多种生成路线，可按速度、质量、分辨率和模型专属参数选择。',
+  },
+  'image-task-query': {
+    ...topicMeta.tasks,
+    label: '图像任务查询',
+    title: '查询异步图像任务',
+  },
+  'video-api': topicMeta.video,
+  'task-query': topicMeta.tasks,
+  billing: {
+    label: '计费与使用日志',
+    eyebrow: 'BILLING',
+    title: '计费与使用日志',
+    description: '不同模型按 Token、分辨率、张数或任务规格计费，最终结算可在使用日志中核对。',
+    endpoint: '/api/log/self',
+    method: 'GET',
+    status: '200',
+  },
+  errors: {
+    label: '错误与排查',
+    eyebrow: 'TROUBLESHOOTING',
+    title: '错误码与请求排查',
+    description: '先依据 HTTP 状态、request id 和使用日志定位认证、余额、路由或上游错误。',
+    endpoint: '/api/status',
+    method: 'GET',
+    status: '200',
+  },
+}
 
-function CodeBlock({ children }: { children: string }) {
+const codeSamples = {
+  cURL: `curl --request POST \\
+  --url ${openAiBaseUrl}/images/generations \\
+  --header 'Authorization: Bearer <token>' \\
+  --header 'Content-Type: application/json' \\
+  --data '{
+    "model": "gpt-image-2",
+    "prompt": "一只橘猫坐在窗台上看夕阳，水彩画风格",
+    "n": 1,
+    "size": "16:9",
+    "resolution": "2k"
+  }'`,
+  Python: `from openai import OpenAI
+
+client = OpenAI(
+    api_key="<token>",
+    base_url="${openAiBaseUrl}"
+)
+
+result = client.images.generate(
+    model="gpt-image-2",
+    prompt="一只橘猫坐在窗台上看夕阳，水彩画风格",
+    size="16:9",
+    extra_body={"resolution": "2k"}
+)
+
+print(result)`,
+  JavaScript: `import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: "<token>",
+  baseURL: "${openAiBaseUrl}",
+});
+
+const result = await client.images.generate({
+  model: "gpt-image-2",
+  prompt: "一只橘猫坐在窗台上看夕阳，水彩画风格",
+  size: "16:9",
+  resolution: "2k",
+  n: 1,
+});
+
+console.log(result);`,
+  Go:
+    `payload := strings.NewReader(` +
+    '`' +
+    `{
+  "model": "gpt-image-2",
+  "prompt": "一只橘猫坐在窗台上看夕阳，水彩画风格",
+  "size": "16:9",
+  "resolution": "2k",
+  "n": 1
+}` +
+    '`' +
+    `)
+
+req, _ := http.NewRequest(
+  http.MethodPost,
+  "${openAiBaseUrl}/images/generations",
+  payload,
+)
+req.Header.Set("Authorization", "Bearer <token>")
+req.Header.Set("Content-Type", "application/json")`,
+}
+
+const topicCodeSamples: Record<Exclude<DocsTopic, 'overview'>, typeof codeSamples> = {
+  image: codeSamples,
+  text: {
+    cURL: `curl --request POST \\
+  --url ${openAiBaseUrl}/chat/completions \\
+  --header 'Authorization: Bearer <token>' \\
+  --header 'Content-Type: application/json' \\
+  --data '{
+    "model": "gpt-5.6-sol",
+    "messages": [{"role": "user", "content": "你好，请用一句话介绍 SynthAPI"}],
+    "stream": true
+  }'`,
+    Python: `from openai import OpenAI
+
+client = OpenAI(api_key="<token>", base_url="${openAiBaseUrl}")
+response = client.chat.completions.create(
+    model="gpt-5.6-sol",
+    messages=[{"role": "user", "content": "你好，请用一句话介绍 SynthAPI"}],
+    stream=True,
+)
+for chunk in response:
+    print(chunk.choices[0].delta.content or "", end="")`,
+    JavaScript: `import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: "<token>", baseURL: "${openAiBaseUrl}" });
+const stream = await client.chat.completions.create({
+  model: "gpt-5.6-sol",
+  messages: [{ role: "user", content: "你好，请用一句话介绍 SynthAPI" }],
+  stream: true,
+});
+for await (const chunk of stream) console.log(chunk.choices[0]?.delta?.content || "");`,
+    Go: `payload := strings.NewReader(\`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"你好，请用一句话介绍 SynthAPI"}],"stream":true}\`)
+req, _ := http.NewRequest(http.MethodPost, "${openAiBaseUrl}/chat/completions", payload)
+req.Header.Set("Authorization", "Bearer <token>")
+req.Header.Set("Content-Type", "application/json")`,
+  },
+  video: {
+    cURL: `curl --request POST \\
+  --url ${openAiBaseUrl}/videos/generations \\
+  --header 'Authorization: Bearer <token>' \\
+  --header 'Content-Type: application/json' \\
+  --data '{
+    "model": "sora-2",
+    "prompt": "一艘小船驶过雾中的海湾",
+    "size": "1280x720",
+    "seconds": "8"
+  }'`,
+    Python: `import requests
+
+response = requests.post(
+    "${openAiBaseUrl}/videos/generations",
+    headers={"Authorization": "Bearer <token>"},
+    json={"model": "sora-2", "prompt": "一艘小船驶过雾中的海湾", "seconds": "8"},
+)
+print(response.json()["id"])`,
+    JavaScript: `const response = await fetch("${openAiBaseUrl}/videos/generations", {
+  method: "POST",
+  headers: { Authorization: "Bearer <token>", "Content-Type": "application/json" },
+  body: JSON.stringify({ model: "sora-2", prompt: "一艘小船驶过雾中的海湾", seconds: "8" }),
+});
+console.log(await response.json());`,
+    Go: `payload := strings.NewReader(\`{"model":"sora-2","prompt":"一艘小船驶过雾中的海湾","seconds":"8"}\`)
+req, _ := http.NewRequest(http.MethodPost, "${openAiBaseUrl}/videos/generations", payload)
+req.Header.Set("Authorization", "Bearer <token>")
+req.Header.Set("Content-Type", "application/json")`,
+  },
+  tasks: {
+    cURL: `curl --request GET \\
+  --url ${openAiBaseUrl}/tasks/task_xxxxxxxxxx \\
+  --header 'Authorization: Bearer <token>'`,
+    Python: `import requests
+
+task_id = "task_xxxxxxxxxx"
+result = requests.get(
+    f"${openAiBaseUrl}/tasks/{task_id}",
+    headers={"Authorization": "Bearer <token>"},
+)
+print(result.json())`,
+    JavaScript: `const taskId = "task_xxxxxxxxxx";
+const result = await fetch("${openAiBaseUrl}/tasks/" + taskId, {
+  headers: { Authorization: "Bearer <token>" },
+});
+console.log(await result.json());`,
+    Go: `req, _ := http.NewRequest(http.MethodGet, "${openAiBaseUrl}/tasks/task_xxxxxxxxxx", nil)
+req.Header.Set("Authorization", "Bearer <token>")`,
+  },
+}
+
+const replaceImageModel = (model: string): typeof codeSamples =>
+  Object.fromEntries(
+    Object.entries(codeSamples).map(([language, sample]) => [
+      language,
+      sample.replace(/gpt-image-2/g, model),
+    ])
+  ) as typeof codeSamples
+
+const modelsCodeSamples: typeof codeSamples = {
+  cURL: `curl --request GET \\
+  --url ${openAiBaseUrl}/models \\
+  --header 'Authorization: Bearer <token>'`,
+  Python: `from openai import OpenAI
+
+client = OpenAI(api_key="<token>", base_url="${openAiBaseUrl}")
+for model in client.models.list().data:
+    print(model.id)`,
+  JavaScript: `import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: "<token>", baseURL: "${openAiBaseUrl}" });
+const models = await client.models.list();
+console.log(models.data.map((model) => model.id));`,
+  Go: `req, _ := http.NewRequest(http.MethodGet, "${openAiBaseUrl}/models", nil)
+req.Header.Set("Authorization", "Bearer <token>")
+response, _ := http.DefaultClient.Do(req)`,
+}
+
+const sectionCodeSamples: Partial<Record<DocsSection, typeof codeSamples>> = {
+  overview: modelsCodeSamples,
+  authentication: modelsCodeSamples,
+  'base-url': modelsCodeSamples,
+  responses: {
+    cURL: `curl --request POST \\
+  --url ${openAiBaseUrl}/responses \\
+  --header 'Authorization: Bearer <token>' \\
+  --header 'Content-Type: application/json' \\
+  --data '{"model":"gpt-5.6-sol","input":"用一句话介绍 SynthAPI","stream":true}'`,
+    Python: `from openai import OpenAI
+
+client = OpenAI(api_key="<token>", base_url="${openAiBaseUrl}")
+with client.responses.stream(
+    model="gpt-5.6-sol",
+    input="用一句话介绍 SynthAPI",
+) as stream:
+    for event in stream:
+        print(event)`,
+    JavaScript: `import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: "<token>", baseURL: "${openAiBaseUrl}" });
+const response = await client.responses.create({
+  model: "gpt-5.6-sol",
+  input: "用一句话介绍 SynthAPI",
+});
+console.log(response.output_text);`,
+    Go: `payload := strings.NewReader(\`{"model":"gpt-5.6-sol","input":"用一句话介绍 SynthAPI"}\`)
+req, _ := http.NewRequest(http.MethodPost, "${openAiBaseUrl}/responses", payload)
+req.Header.Set("Authorization", "Bearer <token>")
+req.Header.Set("Content-Type", "application/json")`,
+  },
+  'claude-messages': {
+    cURL: `curl --request POST \\
+  --url ${openAiBaseUrl}/messages \\
+  --header 'x-api-key: <token>' \\
+  --header 'anthropic-version: 2023-06-01' \\
+  --header 'Content-Type: application/json' \\
+  --data '{"model":"claude-opus-5","max_tokens":1024,"messages":[{"role":"user","content":"你好"}]}'`,
+    Python: `import anthropic
+
+client = anthropic.Anthropic(api_key="<token>", base_url="${siteBaseUrl}")
+message = client.messages.create(
+    model="claude-opus-5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "你好"}],
+)
+print(message.content[0].text)`,
+    JavaScript: `import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({ apiKey: "<token>", baseURL: "${siteBaseUrl}" });
+const message = await client.messages.create({
+  model: "claude-opus-5",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "你好" }],
+});
+console.log(message.content);`,
+    Go: `payload := strings.NewReader(\`{"model":"claude-opus-5","max_tokens":1024,"messages":[{"role":"user","content":"你好"}]}\`)
+req, _ := http.NewRequest(http.MethodPost, "${openAiBaseUrl}/messages", payload)
+req.Header.Set("x-api-key", "<token>")
+req.Header.Set("anthropic-version", "2023-06-01")`,
+  },
+  'image-gemini': replaceImageModel('gemini-3.1-flash-image-preview'),
+  'image-seedream': replaceImageModel('seedream-5-0-pro'),
+  'image-flux': replaceImageModel('flux-2-pro'),
+  'image-other': replaceImageModel('qwen-image-3.0-pro'),
+  billing: {
+    ...modelsCodeSamples,
+    cURL: `curl --request GET \\
+  --url ${siteBaseUrl}/api/log/self \\
+  --header 'Authorization: Bearer <token>'`,
+  },
+  errors: {
+    ...modelsCodeSamples,
+    cURL: `curl --request GET \\
+  --url ${siteBaseUrl}/api/status \\
+  --header 'Accept: application/json'`,
+  },
+}
+
+const responseExamples: Record<DocsTopic, string> = {
+  overview: `{
+  "status": "ok",
+  "message": "选择左侧主题查看对应示例"
+}`,
+  text: `{
+  "id": "resp_xxxxxxxxxx",
+  "object": "chat.completion.chunk",
+  "choices": [{"delta": {"content": "你好！"}, "finish_reason": null}]
+}`,
+  image: `{
+  "code": 200,
+  "task_id": "task_xxxxxxxxxx",
+  "status": "submitted",
+  "data": [
+    {
+      "task_id": "task_xxxxxxxxxx",
+      "status": "submitted"
+    }
+  ]
+}`,
+  video: `{
+  "id": "task_xxxxxxxxxx",
+  "status": "submitted",
+  "progress": 0
+}`,
+  tasks: `{
+  "code": 200,
+  "data": {"task_id": "task_xxxxxxxxxx", "status": "completed", "progress": 100}
+}`,
+}
+
+const sectionResponseExamples: Partial<Record<DocsSection, string>> = {
+  responses: `{
+  "id": "resp_xxxxxxxxxx",
+  "object": "response",
+  "status": "completed",
+  "output_text": "SynthAPI 是统一的 AI 模型接口平台。"
+}`,
+  'claude-messages': `{
+  "id": "msg_xxxxxxxxxx",
+  "type": "message",
+  "role": "assistant",
+  "content": [{"type": "text", "text": "你好！"}]
+}`,
+  billing: `{
+  "success": true,
+  "data": [{"model_name": "gpt-5.6-sol", "quota": 1024}]
+}`,
+  errors: `{
+  "success": true,
+  "data": {"status": "ok"}
+}`,
+}
+
+function CopyButton({
+  value,
+  label = '复制',
+}: {
+  value: string
+  label?: string
+}) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(value)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1400)
+  }
+
   return (
-    <pre className='bg-muted overflow-x-auto rounded-md p-4 text-xs leading-6 sm:text-sm'>
-      <code>{children}</code>
-    </pre>
+    <button type='button' className='docs-copy-button' onClick={copy}>
+      {copied ? <Check /> : <Copy />}
+      <span>{copied ? '已复制' : label}</span>
+    </button>
   )
 }
 
-function FastRouteHint(props: { url: string }) {
+function CodeWorkbench({
+  topic = 'text',
+  section = 'chat-completions',
+}: {
+  topic?: DocsTopic
+  section?: DocsSection
+}) {
+  const [language, setLanguage] = useState<keyof typeof codeSamples>('cURL')
+  const samples =
+    sectionCodeSamples[section] ??
+    (topic === 'overview' ? modelsCodeSamples : topicCodeSamples[topic])
+  const sample = samples[language]
+  const responseExample =
+    sectionResponseExamples[section] ?? responseExamples[topic]
+  const meta = sectionMeta[section]
+
   return (
-    <div className='flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2'>
-      <Badge variant='outline' className='gap-1 border-amber-500/40'>
-        <Zap className='size-3 text-amber-500' />
-        高速线路推荐
-      </Badge>
-      <code className='min-w-0 font-mono text-xs break-all'>{props.url}</code>
+    <div className='docs-code-stack'>
+      <section className='docs-code-card'>
+        <header className='docs-code-tabs'>
+          <div className='docs-code-heading'>
+            <strong>{meta.label}</strong>
+            <code>{meta.endpoint}</code>
+          </div>
+          <div className='docs-language-tabs'>
+            {(Object.keys(samples) as Array<keyof typeof codeSamples>).map(
+              (item) => (
+                <button
+                  type='button'
+                  key={item}
+                  className={language === item ? 'is-active' : ''}
+                  onClick={() => setLanguage(item)}
+                >
+                  {item}
+                </button>
+              )
+            )}
+          </div>
+          <CopyButton value={sample} />
+        </header>
+        <pre className='docs-code-body'>
+          <code>{sample}</code>
+        </pre>
+      </section>
+
+      <section className='docs-code-card docs-response-card'>
+        <header className='docs-code-tabs'>
+          <div>
+            <span className='docs-response-title'>响应回执</span>
+            <span className='docs-status-code'>{meta.status}</span>
+          </div>
+          <CopyButton value={responseExample} />
+        </header>
+        <pre className='docs-code-body'>
+          <code>{responseExample}</code>
+        </pre>
+      </section>
     </div>
   )
 }
 
-function DocsSidebar() {
+function DocsSidebar({
+  activeTopic,
+  activeSection,
+  onSectionChange,
+}: {
+  activeTopic: DocsTopic
+  activeSection: DocsSection
+  onSectionChange: (section: DocsSection) => void
+}) {
+  const [query, setQuery] = useState('')
+  const normalized = query.trim().toLowerCase()
+  const groups = useMemo(
+    () =>
+      navGroups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) =>
+            item.label.toLowerCase().includes(normalized)
+          ),
+        }))
+        .filter((group) => !normalized || group.items.length > 0),
+    [normalized]
+  )
+
   return (
-    <aside className='hidden lg:block'>
-      <div className='sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pr-4'>
-        <div className='mb-5 flex items-center gap-2'>
-          <div className='bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md'>
-            <BookOpen className='size-4' />
-          </div>
+    <aside className='docs-reference-sidebar'>
+      <div className='docs-sidebar-inner'>
+        <div className='docs-product-mark'>
+          <span>
+            <BookOpen />
+          </span>
           <div>
-            <div className='text-sm font-semibold'>SynthAPI Docs</div>
-            <div className='text-muted-foreground text-xs'>接口调用手册</div>
+            <strong>SynthAPI 文档</strong>
+            <small>API REFERENCE</small>
           </div>
         </div>
-        <nav className='space-y-6 border-l pl-4'>
-          {navSections.map((section) => (
-            <div key={section.title} className='space-y-2'>
-              <div className='text-muted-foreground text-xs font-medium'>
-                {section.title}
+        <label className='docs-search'>
+          <Search />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder='搜索文档...'
+            aria-label='搜索文档目录'
+          />
+          <kbd>⌘K</kbd>
+        </label>
+        <div className='docs-topic-switcher' aria-label='选择文档主题'>
+          {(['text', 'image', 'video'] as const).map((topic) => (
+            <button
+              type='button'
+              key={topic}
+              className={activeTopic === topic ? 'is-active' : ''}
+              onClick={() => onSectionChange(defaultSectionForTopic[topic])}
+            >
+              {topicMeta[topic].label}
+            </button>
+          ))}
+        </div>
+        <nav aria-label='API 文档目录'>
+          {groups.map((group) => (
+            <div className='docs-nav-group' key={group.title}>
+              <div className='docs-nav-title'>
+                <group.icon />
+                {group.title}
               </div>
-              <div className='space-y-1'>
-                {section.items.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    className='text-muted-foreground hover:text-foreground hover:bg-muted block rounded-md px-2 py-1.5 text-sm transition-colors'
-                  >
-                    {item.label}
-                  </a>
-                ))}
-              </div>
+              {group.items.map((item, index) => (
+                <a
+                  href={`#${item.id}`}
+                  key={item.id}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    onSectionChange(item.id)
+                  }}
+                  className={activeSection === item.id ? 'is-active' : ''}
+                  aria-current={activeSection === item.id ? 'page' : undefined}
+                >
+                  <span>{item.label}</span>
+                  {activeSection === item.id && (
+                    <ChevronRight />
+                  )}
+                  {index === 0 && group.title === '图像系列' && <em>推荐</em>}
+                </a>
+              ))}
             </div>
           ))}
         </nav>
@@ -256,489 +946,430 @@ function DocsSidebar() {
   )
 }
 
-export function Docs() {
+function ParameterRow({
+  parameter,
+}: {
+  parameter: (typeof imageParameters)[number]
+}) {
   return (
-    <PublicLayout>
-      <main className='mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8'>
-        <section
-          id='overview'
-          className='from-muted/60 to-background scroll-mt-24 rounded-xl border bg-gradient-to-b p-6 sm:p-8'
-        >
-          <Badge className='w-fit gap-1.5 rounded-md' variant='secondary'>
-            <BookOpen className='size-3.5' />
-            SynthAPI API Manual
-          </Badge>
-          <div className='mt-5 max-w-3xl space-y-4'>
-            <h1 className='text-foreground text-3xl font-semibold tracking-tight sm:text-4xl'>
-              SynthAPI 接口说明与调用手册
-            </h1>
-            <p className='text-muted-foreground text-base leading-7'>
-              本文档用于帮助用户把 Claude Code、Codex CLI、OpenClaw、OpenAI
-              SDK、Anthropic SDK 以及自己的业务系统接入
-              SynthAPI。核心只需要三步：创建 API Key、填对 Base
-              URL、运行一次验证请求。
-            </p>
+    <div className='docs-parameter-row'>
+      <div className='docs-parameter-key'>
+        <code>{parameter.name}</code>
+        <span>{parameter.type}</span>
+        {parameter.required && <b>必填</b>}
+      </div>
+      <div className='docs-parameter-copy'>
+        <p>{parameter.description}</p>
+        {'options' in parameter && parameter.options && (
+          <div className='docs-enum-list'>
+            {parameter.options.map((option) => (
+              <code key={option}>{option}</code>
+            ))}
           </div>
-          <div className='mt-6 flex flex-wrap gap-3'>
-            <Button render={<Link to='/keys' />}>创建 API Key</Button>
-            <Button variant='outline' render={<Link to='/pricing' />}>
-              查看模型与价格
-            </Button>
-            <Button variant='outline' render={<Link to='/wallet' />}>
-              查看钱包余额
-            </Button>
+        )}
+        {'example' in parameter && parameter.example && (
+          <div className='docs-example-value'>
+            <span>示例</span>
+            <code>{parameter.example}</code>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EndpointBar({
+  method,
+  path,
+}: {
+  method: 'GET' | 'POST'
+  path: string
+}) {
+  const fullPath = path.startsWith('/api/')
+    ? `${siteBaseUrl}${path}`
+    : `${openAiBaseUrl}${path}`
+  return (
+    <div className='docs-endpoint-bar'>
+      <span className={`docs-method docs-method--${method.toLowerCase()}`}>
+        {method}
+      </span>
+      <code>{fullPath}</code>
+      <CopyButton value={fullPath} label='复制地址' />
+    </div>
+  )
+}
+
+function SelectedSection({ section }: { section: DocsSection }) {
+  const meta = sectionMeta[section]
+  const endpoint = meta.endpoint.startsWith('/api/')
+    ? `${siteBaseUrl}${meta.endpoint}`
+    : `${openAiBaseUrl}${meta.endpoint.replace('/v1', '')}`
+  return (
+    <section id='docs-selected' className='docs-selected-section' aria-live='polite'>
+      <div className='docs-selected-kicker'>当前章节 · {meta.eyebrow}</div>
+      <div className='docs-selected-heading'>
+        <div>
+          <h2>{meta.title}</h2>
+          <p>{meta.description}</p>
+        </div>
+        <span className={`docs-method docs-method--${meta.method.toLowerCase()}`}>
+          {meta.method}
+        </span>
+      </div>
+      <div className='docs-selected-route'>
+        <code>{endpoint}</code>
+        <span>{meta.status} · 内容已切换</span>
+      </div>
+    </section>
+  )
+}
+
+function TopicContent({
+  activeSection,
+  onSectionChange,
+}: {
+  activeSection: DocsSection
+  onSectionChange: (section: DocsSection) => void
+}) {
+  const textDetails: Partial<
+    Record<DocsSection, { title: string; summary: string; parameters: string[][] }>
+  > = {
+    'chat-completions': {
+      title: 'Chat Completions 请求结构',
+      summary: '兼容 OpenAI Chat Completions。适用于传统对话客户端，支持流式和非流式输出。',
+      parameters: [
+        ['model', 'string', '模型名称，来自当前 API Key 可用分组。'],
+        ['messages', 'array', '对话消息数组，每项包含 role 和 content。'],
+        ['stream', 'boolean', '设为 true 时以 SSE 返回增量内容。'],
+      ],
+    },
+    responses: {
+      title: 'Responses 请求结构',
+      summary: '使用 input 统一承载文本与多模态输入，适合推理模型、工具调用和响应事件流。',
+      parameters: [
+        ['model', 'string', '支持 Responses 协议的模型名称。'],
+        ['input', 'string | array', '字符串或结构化输入项，可组合文本、图片和历史消息。'],
+        ['tools', 'array', '可选的函数工具定义；模型会返回对应工具调用事件。'],
+        ['stream', 'boolean', '开启后返回 response.* 类型的 SSE 事件。'],
+      ],
+    },
+    'claude-messages': {
+      title: 'Claude Messages 请求结构',
+      summary: '兼容 Anthropic Messages。Claude SDK 可直接使用，system 提示词与 messages 分开传递。',
+      parameters: [
+        ['model', 'string', '可用的 Claude 或 Anthropic 兼容模型。'],
+        ['max_tokens', 'integer', '本次响应允许生成的最大 Token 数。'],
+        ['system', 'string | array', '可选系统提示词，不要放入 messages 的 system 角色。'],
+        ['messages', 'array', 'user 与 assistant 消息列表。'],
+      ],
+    },
+  }
+
+  const familyBySection: Partial<Record<DocsSection, string>> = {
+    'image-gemini': 'Google',
+    'image-seedream': 'Seedream',
+    'image-flux': 'FLUX',
+    'image-other': 'Qwen / Grok / Wan',
+  }
+  const selectedFamily = familyBySection[activeSection]
+
+  return (
+    <div key={activeSection} className='docs-section-panel'>
+      {activeSection === 'authentication' && <section className='docs-section docs-section--compact'>
+        <div className='docs-section-heading'>
+          <div>
+            <span>AUTHENTICATION</span>
+            <h2>身份认证</h2>
+          </div>
+          <span className='docs-section-index'>01</span>
+        </div>
+        <p>
+          在请求头中写入 API Key。密钥可在控制台
+          <Link to='/keys'> API 密钥</Link> 页面创建；请将密钥保存在服务端环境变量中。
+        </p>
+        <div className='docs-callout docs-callout--info'>
+          <KeyRound />
+          <div>
+            <strong>Authorization</strong>
+            <code>Bearer sk-your-api-key</code>
+          </div>
+        </div>
+      </section>}
+
+      {activeSection === 'base-url' && <section className='docs-section docs-section--compact'>
+        <div className='docs-section-heading'>
+          <div>
+            <span>BASE URL</span>
+            <h2>线路与 Base URL</h2>
+          </div>
+          <span className='docs-section-index'>02</span>
+        </div>
+        <p>两条线路共用密钥和接口格式。常规线路适合日常调用，高速线路适合大请求和高吞吐任务。</p>
+        <div className='docs-route-list'>
+          <div>
+            <Server />
+            <span>
+              <strong>常规线路</strong>
+              <code>{openAiBaseUrl}</code>
+            </span>
+          </div>
+          <div className='is-fast'>
+            <Zap />
+            <span>
+              <strong>高速线路</strong>
+              <code>{FAST_OPENAI_BASE_URL}</code>
+            </span>
+            <em>推荐</em>
+          </div>
+        </div>
+      </section>}
+
+      {textDetails[activeSection] && (
+          <section className='docs-section'>
+            <div className='docs-section-heading'>
+              <div>
+                <span>TEXT MODELS</span>
+                <h2>{textDetails[activeSection]?.title}</h2>
+              </div>
+              <span className='docs-section-index'>03</span>
+            </div>
+            <p>{textDetails[activeSection]?.summary}</p>
+            <div className='docs-api-grid'>
+              {([
+                ['chat-completions', '/v1/chat/completions', '传统对话与 SSE 流式输出'],
+                ['responses', '/v1/responses', '推理、工具调用与统一事件流'],
+                ['claude-messages', '/v1/messages', 'Claude SDK 与 Anthropic 协议'],
+              ] as const).map(([section, endpoint, description]) => (
+                <button
+                  type='button'
+                  key={section}
+                  className={activeSection === section ? 'is-active' : ''}
+                  onClick={() => onSectionChange(section)}
+                >
+                  <span className='docs-method docs-method--post'>POST</span>
+                  <code>{endpoint}</code>
+                  <small>{description}</small>
+                </button>
+              ))}
+            </div>
+            <div className='docs-parameter-list docs-parameter-list--text'>
+              {textDetails[activeSection]?.parameters.map(([name, type, description]) => (
+                <div className='docs-parameter-row' key={name}>
+                  <div className='docs-parameter-key'><code>{name}</code><span>{type}</span></div>
+                  <div className='docs-parameter-copy'><p>{description}</p></div>
+                </div>
+              ))}
+            </div>
+            <div className='docs-callout docs-callout--info'><ShieldCheck /><div><strong>协议已切换</strong><span>右侧请求代码和响应回执已同步为当前子栏，不会继续显示其他协议的示例。</span></div></div>
+          </section>
+      )}
+
+      {activeSection === 'image-generation' && (
+        <section className='docs-section'>
+            <div className='docs-section-heading'>
+              <div>
+                <span>IMAGE MODELS</span>
+                <h2>图像模型接口</h2>
+              </div>
+              <span className='docs-section-index'>03</span>
+            </div>
+            <p>统一使用 <code>/v1/images/generations</code> 生成图片；需要编辑或参考图时使用 <code>/v1/images/edits</code>。</p>
+            <div className='docs-parameter-list'>
+              {imageParameters.map((parameter) => <ParameterRow key={parameter.name} parameter={parameter} />)}
+            </div>
+          </section>
+      )}
+
+      {selectedFamily && (
+        <section className='docs-section'>
+          <div className='docs-section-heading'><div><span>MODEL CATALOG</span><h2>{selectedFamily} 模型清单</h2></div><span className='docs-section-index'>04</span></div>
+          <p>以下模型可使用统一图像接口调用。具体支持的分辨率、参考图和专属开关以模型配置为准。</p>
+          <div className='docs-model-family-list'>
+            {imageFamilies.filter((family) => family.family === selectedFamily).map((family) => <div key={family.family} data-accent={family.accent}><strong>{family.family}</strong><div>{family.models.map((model) => <code key={model}>{model}</code>)}</div></div>)}
+          </div>
+          <div className='docs-callout docs-callout--info'><ImageIcon /><div><strong>示例模型已更新</strong><span>右侧代码已选择该系列的代表模型，可直接替换为本栏列出的其他模型。</span></div></div>
+        </section>
+      )}
+
+      {activeSection === 'video-api' && (
+          <section className='docs-section'>
+            <div className='docs-section-heading'>
+              <div><span>VIDEO MODELS</span><h2>视频模型接口</h2></div>
+              <span className='docs-section-index'>03</span>
+            </div>
+            <p>视频生成是异步任务。提交后立即返回 <code>task_id</code>，任务完成后再获取视频地址，不会阻塞其他请求。</p>
+            <div className='docs-api-grid'>
+              <button type='button' className='is-active'><span className='docs-method docs-method--post'>POST</span><code>/v1/videos/generations</code><small>创建视频任务</small></button>
+              <button type='button' onClick={() => onSectionChange('task-query')}><span className='docs-method docs-method--get'>GET</span><code>/v1/tasks/{'{task_id}'}</code><small>查询进度与结果地址</small></button>
+            </div>
+            <div className='docs-callout docs-callout--warning'><AlertTriangle /><div><strong>长任务提示</strong><span>客户端超时不代表任务失败，请保存 task_id 后继续查询。</span></div></div>
+          </section>
+      )}
+
+      {(activeSection === 'task-query' || activeSection === 'image-task-query') && (
+        <section className='docs-section'>
+          <div className='docs-section-heading'><div><span>ASYNC TASKS</span><h2>{activeSection === 'image-task-query' ? '图像任务状态' : '异步任务状态'}</h2></div><span className='docs-section-index'>03</span></div>
+          <p>{activeSection === 'image-task-query' ? '异步图像渠道会先返回 task_id。任务完成后，查询响应中会提供图片结果地址和失败原因。' : '图像和视频任务提交后返回 task_id。查询接口返回进度、结果地址以及失败原因。'}</p>
+          <EndpointBar method='GET' path='/tasks/{task_id}' />
+          <div className='docs-state-flow'><span>submitted</span><ChevronRight /><span>processing</span><ChevronRight /><span className='is-success'>completed</span><span className='docs-state-or'>或</span><span className='is-error'>failed</span></div>
+        </section>
+      )}
+
+      {activeSection === 'overview' && (
+        <section className='docs-section'>
+          <div className='docs-section-heading'><div><span>QUICK START</span><h2>三类模型，统一调用方式</h2></div><span className='docs-section-index'>03</span></div>
+            <div className='docs-overview-grid'>
+            {(['text', 'image', 'video'] as const).map((topic) => <button type='button' key={topic} onClick={() => onSectionChange(defaultSectionForTopic[topic])}><strong>{topicMeta[topic].label}</strong><span>{topic === 'text' ? '流式对话与 Responses' : topic === 'image' ? '生成、编辑与参考图' : '异步生成与任务查询'}</span><ChevronRight /></button>)}
           </div>
         </section>
+      )}
 
-        <section className='grid gap-4 md:grid-cols-2 lg:grid-cols-4'>
-          {quickSteps.map((step) => (
-            <Card key={step.title} className='rounded-lg'>
-              <CardHeader className='space-y-3'>
-                <div className='bg-primary/10 text-primary flex size-10 items-center justify-center rounded-md'>
-                  <step.icon className='size-5' />
-                </div>
-                <CardTitle className='text-base'>{step.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className='leading-6'>
-                  {step.description}
-                </CardDescription>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
+      {activeSection === 'billing' && <section className='docs-section docs-section--compact'>
+        <div className='docs-section-heading'><div><span>BILLING</span><h2>计费与使用日志</h2></div><span className='docs-section-index'>05</span></div>
+        <p>文字按 Token 计费，图像按分辨率和张数计费，视频按任务规格计费；最终费用会乘以分组倍率并记录在使用日志。</p>
+        <div className='docs-check-list'><span><Check />文字请求核对输入、输出与缓存 Token</span><span><Check />图像请求核对模型、分辨率、张数和分组倍率</span><span><Check />异步任务以最终结算日志为准，提交回执不代表已完成计费</span></div>
+      </section>}
 
-        <section className='lg:hidden'>
-          <Card className='rounded-lg'>
-            <CardHeader>
-              <CardTitle className='text-base'>文档目录</CardTitle>
-              <CardDescription>快速跳转到常用接入章节。</CardDescription>
-            </CardHeader>
-            <CardContent className='flex flex-wrap gap-2'>
-              {navSections.flatMap((section) =>
-                section.items.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    className='bg-muted text-muted-foreground hover:text-foreground rounded-md px-3 py-1.5 text-sm transition-colors'
-                  >
-                    {item.label}
-                  </a>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </section>
+      {activeSection === 'errors' && <section className='docs-section docs-section--compact'>
+        <div className='docs-section-heading'><div><span>TROUBLESHOOTING</span><h2>按状态码快速定位</h2></div><span className='docs-section-index'>06</span></div>
+        <div className='docs-error-table'><div><code>400</code><span>请求参数或协议格式错误，先核对模型所需字段。</span></div><div><code>401/403</code><span>检查 API Key、分组权限、余额和渠道访问限制。</span></div><div><code>404</code><span>模型未绑定到当前分组，或请求使用了错误端点。</span></div><div><code>429</code><span>触发上游或本站频率限制，结合 Retry-After 与使用日志判断。</span></div><div><code>5xx</code><span>使用 request id 在日志中查询渠道、上游响应和 Auto 降级状态。</span></div></div>
+      </section>}
+    </div>
+  )
+}
 
-        <section className='grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)_320px]'>
-          <DocsSidebar />
+export function Docs() {
+  const [activeSection, setActiveSection] = useState<DocsSection>(() => {
+    if (typeof window === 'undefined') return 'chat-completions'
+    const hash = window.location.hash.slice(1) as DocsSection
+    return allSections.has(hash) ? hash : 'chat-completions'
+  })
+  const activeTopic = topicForSection(activeSection)
+  const activeMeta = sectionMeta[activeSection]
 
-          <div className='min-w-0 space-y-6'>
-            <Card id='base-url' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>最重要的地址选择</CardTitle>
-                <CardDescription>
-                  新手最容易填错的是 /v1。OpenAI 兼容工具要带 /v1，Claude Code
-                  的 ANTHROPIC_BASE_URL 通常不要带 /v1。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='space-y-3'>
-                {addressRows.map((row) => (
-                  <div
-                    key={row.scene}
-                    className='grid gap-3 rounded-md border p-4 md:grid-cols-[180px_1fr]'
-                  >
-                    <div>
-                      <div className='font-medium'>{row.scene}</div>
-                      <div className='text-muted-foreground mt-1 font-mono text-xs'>
-                        {row.variable}
-                      </div>
-                    </div>
-                    <div className='min-w-0 space-y-1'>
-                      <div className='font-mono text-sm break-all'>
-                        {row.value}
-                      </div>
-                      {row.fastValue && <FastRouteHint url={row.fastValue} />}
-                      <p className='text-muted-foreground text-sm leading-6'>
-                        {row.note}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+  const selectSection = (section: DocsSection) => {
+    setActiveSection(section)
+    window.history.replaceState(null, '', `#${section}`)
+    window.requestAnimationFrame(() => {
+      document.getElementById('docs-selected')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+  }
 
-            <Card id='quick-start' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>新手快速开始</CardTitle>
-                <CardDescription>
-                  第一次接入建议按顺序完成，不要跳过验证步骤。
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ol className='space-y-4'>
-                  <li className='rounded-md border p-4'>
-                    <div className='font-medium'>
-                      1. 登录控制台并创建 API Key
-                    </div>
-                    <p className='text-muted-foreground mt-2 text-sm leading-6'>
-                      进入控制台后打开令牌页面，新建一个用途明确的 Key，例如
-                      claude-code、codex-local、backend-prod。不同工具建议使用不同
-                      Key，方便限额和停用。
-                    </p>
-                  </li>
-                  <li className='rounded-md border p-4'>
-                    <div className='font-medium'>
-                      2. 检查余额、分组和模型权限
-                    </div>
-                    <p className='text-muted-foreground mt-2 text-sm leading-6'>
-                      钱包余额不足、令牌额度不足、模型未开放、分组没有可用渠道，都会导致请求失败。
-                      如果出现
-                      503，请优先检查目标模型在当前用户分组下是否有可用渠道。
-                    </p>
-                  </li>
-                  <li className='rounded-md border p-4'>
-                    <div className='font-medium'>3. 按工具填写 Base URL</div>
-                    <p className='text-muted-foreground mt-2 text-sm leading-6'>
-                      Codex CLI、OpenClaw、OpenAI SDK 填 {openAiBaseUrl}；Claude
-                      Code 填 {anthropicBaseUrl}。填反时常见表现是
-                      404、空响应、Malformed response
-                      或工具无法识别模型。大速率调用优先使用{' '}
-                      {FAST_OPENAI_BASE_URL}（OpenAI）或
-                      {FAST_API_BASE_URL}（Claude）。
-                    </p>
-                  </li>
-                  <li className='rounded-md border p-4'>
-                    <div className='font-medium'>4. 运行最小验证请求</div>
-                    <p className='text-muted-foreground mt-2 text-sm leading-6'>
-                      先请求模型列表或发送一句简单对话，确认鉴权、路由、分组和上游渠道都正常，再运行长上下文任务。
-                    </p>
-                  </li>
-                </ol>
-              </CardContent>
-            </Card>
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1) as DocsSection
+      if (allSections.has(hash)) setActiveSection(hash)
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
 
-            <Card id='claude-code' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>Claude Code 配置</CardTitle>
-                <CardDescription>
-                  Claude Code 使用 Anthropic 协议。Base URL
-                  通常填写站点根地址，不要额外拼接 /v1/messages。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='space-y-4'>
-                <FastRouteHint url={FAST_API_BASE_URL} />
-                <CodeBlock>{`# macOS / Linux 临时配置
-export ANTHROPIC_BASE_URL=${anthropicBaseUrl}
-export ANTHROPIC_API_KEY=sk-your-api-key
-claude`}</CodeBlock>
-                <CodeBlock>{`# Windows PowerShell 临时配置
-$env:ANTHROPIC_BASE_URL="${anthropicBaseUrl}"
-$env:ANTHROPIC_API_KEY="sk-your-api-key"
-claude`}</CodeBlock>
-                <p className='text-muted-foreground text-sm leading-6'>
-                  如果使用 ccswitch，请把 Anthropic URL 设置为
-                  {anthropicBaseUrl}，OpenAI URL 设置为 {openAiBaseUrl}。当
-                  Claude Code 报 API returned an empty or malformed
-                  response，通常说明地址填到了网页路径，或重复拼接了 /v1。
-                </p>
-              </CardContent>
-            </Card>
+  return (
+    <PublicLayout showMainContainer={false}>
+      <div className='docs-reference-page'>
+        <header className='docs-topbar'>
+          <Link to='/docs' className='docs-topbar-brand'>
+            <span><BookOpen /></span>
+            <strong>SynthAPI</strong>
+            <i>Docs</i>
+          </Link>
+          <nav className='docs-topbar-nav' aria-label='文档主导航'>
+            {[
+              ['概览', 'overview'],
+              ['文字模型', 'text'],
+              ['图像模型', 'image'],
+              ['视频模型', 'video'],
+              ['异步任务', 'tasks'],
+            ].map(([label, topic]) => (
+              <button
+                type='button'
+                key={topic}
+                aria-selected={activeTopic === topic}
+                className={activeTopic === topic ? 'is-active' : ''}
+                onClick={() => selectSection(defaultSectionForTopic[topic as DocsTopic])}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className='docs-topbar-actions'>
+            <a href='https://github.com/Sunner-Chao/SynthApi' target='_blank' rel='noreferrer'>GitHub <ExternalLink /></a>
+            <Link to='/keys' className='docs-topbar-cta'>创建密钥</Link>
+          </div>
+        </header>
+        <DocsSidebar
+          activeTopic={activeTopic}
+          activeSection={activeSection}
+          onSectionChange={selectSection}
+        />
 
-            <Card id='codex-cli' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>Codex CLI / OpenAI 兼容工具</CardTitle>
-                <CardDescription>
-                  Codex CLI、OpenClaw、OpenAI SDK 和大多数 OpenAI 兼容客户端使用
-                  /v1 地址。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='space-y-4'>
-                <FastRouteHint url={FAST_OPENAI_BASE_URL} />
-                <CodeBlock>{`# macOS / Linux
-export OPENAI_BASE_URL=${openAiBaseUrl}
-export OPENAI_API_KEY=sk-your-api-key
-codex`}</CodeBlock>
-                <CodeBlock>{`# Windows PowerShell
-$env:OPENAI_BASE_URL="${openAiBaseUrl}"
-$env:OPENAI_API_KEY="sk-your-api-key"
-codex`}</CodeBlock>
-                <CodeBlock>{`# cc-switch 示例
-cc-switch add synthapi \\
-  --anthropic-url ${anthropicBaseUrl} \\
-  --openai-url ${openAiBaseUrl} \\
-  --key sk-your-api-key
-cc-switch use synthapi`}</CodeBlock>
-              </CardContent>
-            </Card>
-
-            <Card id='sdk-examples' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>项目代码接入示例</CardTitle>
-                <CardDescription>
-                  业务项目建议由服务端持有 API Key，不要把 Key
-                  写入浏览器前端代码。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='space-y-4'>
-                <FastRouteHint url={FAST_OPENAI_BASE_URL} />
-                <CodeBlock>{`import OpenAI from "openai";
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: "${openAiBaseUrl}"
-});
-
-const res = await client.chat.completions.create({
-  model: "gpt-5.5",
-  messages: [{ role: "user", content: "Hello" }],
-  stream: false
-});
-
-console.log(res.choices[0].message.content);`}</CodeBlock>
-                <CodeBlock>{`from openai import OpenAI
-
-client = OpenAI(
-    api_key="sk-your-api-key",
-    base_url="${openAiBaseUrl}",
-)
-
-res = client.chat.completions.create(
-    model="gpt-5.5",
-    messages=[{"role": "user", "content": "Hello"}],
-)
-print(res.choices[0].message.content)`}</CodeBlock>
-              </CardContent>
-            </Card>
-
-            <Card id='verify' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>curl 验证命令</CardTitle>
-                <CardDescription>
-                  先验证模型列表，再验证实际对话。把 sk-your-api-key 替换为真实
-                  Key。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='space-y-4'>
-                <FastRouteHint url={FAST_API_BASE_URL} />
-                <CodeBlock>{`curl ${openAiBaseUrl}/models \\
-  -H "Authorization: Bearer sk-your-api-key"`}</CodeBlock>
-                <CodeBlock>{`curl ${openAiBaseUrl}/chat/completions \\
-  -H "Authorization: Bearer sk-your-api-key" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "gpt-5.5",
-    "messages": [
-      {"role": "user", "content": "请用一句话说明当前 API 是否连接成功"}
-    ],
-    "stream": false
-  }'`}</CodeBlock>
-                <CodeBlock>{`curl ${anthropicCompatBaseUrl}/messages \\
-  -H "x-api-key: sk-your-api-key" \\
-  -H "anthropic-version: 2023-06-01" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "claude-ops-4-7",
-    "max_tokens": 256,
-    "messages": [
-      {"role": "user", "content": "Hello"}
-    ]
-  }'`}</CodeBlock>
-              </CardContent>
-            </Card>
-
-            <Card id='endpoints' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>常用接口</CardTitle>
-                <CardDescription>
-                  接口路径保持兼容，具体可用模型以模型广场和账号权限为准。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='space-y-3'>
-                {endpoints.map((endpoint) => (
-                  <div
-                    key={endpoint.path}
-                    className='grid gap-3 rounded-md border p-4 sm:grid-cols-[150px_1fr]'
-                  >
-                    <div className='space-y-2'>
-                      <Badge variant='outline'>{endpoint.method}</Badge>
-                      <div className='font-mono text-xs'>{endpoint.path}</div>
-                    </div>
-                    <div>
-                      <div className='font-medium'>{endpoint.title}</div>
-                      <p className='text-muted-foreground mt-1 text-sm leading-6'>
-                        {endpoint.description}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card id='billing' className='scroll-mt-24 rounded-lg'>
-              <CardHeader>
-                <CardTitle>计费与日志说明</CardTitle>
-                <CardDescription>
-                  扣费结果以后台结算和使用日志为准，前端价格页用于展示当前配置。
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className='text-muted-foreground list-disc space-y-2 pl-5 text-sm leading-6'>
-                  {pricingNotes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+        <article className='docs-reference-content'>
+          <div className='docs-mobile-kicker'>
+            <BookOpen /> SynthAPI API Reference
+          </div>
+          <div className='docs-breadcrumb'>
+            <a href='#overview'>API 文档</a>
+            <ChevronRight />
+            <span>{activeMeta.label}</span>
           </div>
 
-          <aside className='space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto'>
-            <Card className='border-primary/25 rounded-lg'>
-              <CardHeader>
-                <CardTitle className='flex items-center gap-2 text-base'>
-                  <LifeBuoy className='text-primary size-4' />
-                  技术支持
-                </CardTitle>
-                <CardDescription>
-                  接入、配置、充值和调用问题均可联系协助处理。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='space-y-3 text-sm leading-6'>
-                <div className='rounded-md border p-4'>
-                  <div className='text-muted-foreground text-xs'>
-                    QQ 联系方式
-                  </div>
-                  <div className='mt-1 font-mono text-lg font-semibold'>
-                    1639483940
-                  </div>
-                </div>
-                <div className='rounded-md border p-4'>
-                  <div className='text-muted-foreground text-xs'>
-                    微信联系方式
-                  </div>
-                  <div className='mt-1 font-mono text-lg font-semibold'>
-                    a1124602166
-                  </div>
-                </div>
-                <p className='text-primary font-medium'>
-                  免费协助：API Key 创建、Base URL
-                  配置、模型调用测试、错误码排查、Claude Code 与 Codex CLI
-                  接入。
-                </p>
-              </CardContent>
-            </Card>
+          <header id='overview' className='docs-reference-hero'>
+            <div className='docs-eyebrow'>{activeMeta.eyebrow}</div>
+            <h1>{activeMeta.title}</h1>
+            <p>{activeMeta.description}</p>
+            <ul>
+              <li>文字、图像与视频主题使用统一的 API Key 和 Base URL</li>
+              <li>右侧示例会随左侧主题即时切换</li>
+              <li>流式响应和异步任务均可在使用日志中追踪</li>
+            </ul>
+          </header>
 
-            <Card className='rounded-lg'>
-              <CardHeader>
-                <CardTitle className='flex items-center gap-2 text-base'>
-                  <TerminalSquare className='size-4' />
-                  你该看哪一节
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='space-y-3 text-sm leading-6'>
-                <p>
-                  使用 Claude Code：看 Claude Code 配置，地址填{' '}
-                  {anthropicBaseUrl}；高速线路填 {FAST_API_BASE_URL}。
-                </p>
-                <p>
-                  使用 Codex CLI：看 Codex CLI / OpenAI 兼容工具，地址填{' '}
-                  {openAiBaseUrl}；高速线路填 {FAST_OPENAI_BASE_URL}。
-                </p>
-                <p>
-                  写项目代码：看项目代码接入示例，并把 Key
-                  放在服务端环境变量里。
-                </p>
-              </CardContent>
-            </Card>
+          <EndpointBar method={activeMeta.method} path={activeMeta.endpoint.replace('/v1', '')} />
 
-            <Card className='rounded-lg'>
-              <CardHeader>
-                <CardTitle className='flex items-center gap-2 text-base'>
-                  <AlertCircle className='size-4' />
-                  常见错误
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='space-y-3'>
-                {errorRows.map(([code, reason]) => (
-                  <div key={code} className='rounded-md border p-3'>
-                    <div className='font-mono text-xs font-semibold'>
-                      {code}
-                    </div>
-                    <p className='text-muted-foreground mt-1 text-sm leading-6'>
-                      {reason}
-                    </p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+          <SelectedSection section={activeSection} />
 
-            <Card className='rounded-lg'>
-              <CardHeader>
-                <CardTitle className='flex items-center gap-2 text-base'>
-                  <ShieldCheck className='size-4' />
-                  安全建议
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='space-y-3 text-sm leading-6'>
-                <p>
-                  不要在浏览器前端、公开仓库、截图、客户端安装包中暴露 API Key。
-                </p>
-                <p>
-                  生产环境按工具或业务创建不同
-                  Key，并设置额度、模型范围和分组权限。
-                </p>
-                <p>
-                  怀疑泄露时立即禁用旧 Key，重新创建新 Key，并检查最近使用日志。
-                </p>
-              </CardContent>
-            </Card>
+          <TopicContent
+            activeSection={activeSection}
+            onSectionChange={selectSection}
+          />
 
-            <Card className='rounded-lg'>
-              <CardHeader>
-                <CardTitle className='flex items-center gap-2 text-base'>
-                  <LockKeyhole className='size-4' />
-                  请求头速查
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='space-y-3 text-sm leading-6'>
-                <div>
-                  <div className='font-medium'>OpenAI 兼容</div>
-                  <div className='text-muted-foreground font-mono text-xs break-all'>
-                    Authorization: Bearer sk-your-api-key
-                  </div>
-                </div>
-                <div>
-                  <div className='font-medium'>Anthropic 兼容</div>
-                  <div className='text-muted-foreground font-mono text-xs break-all'>
-                    x-api-key: sk-your-api-key
-                  </div>
-                  <div className='text-muted-foreground font-mono text-xs break-all'>
-                    anthropic-version: 2023-06-01
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <footer className='docs-reference-footer'>
+            <div>
+              <Code2 />
+              <span>
+                <strong>准备开始调用？</strong>
+                <small>创建密钥并先发送一条最小验证请求。</small>
+              </span>
+            </div>
+            <Link to='/keys'>
+              前往 API 密钥 <ExternalLink />
+            </Link>
+          </footer>
+        </article>
 
-            <Card className='rounded-lg'>
-              <CardHeader>
-                <CardTitle className='flex items-center gap-2 text-base'>
-                  <MessageSquare className='size-4' />
-                  流式响应
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CodeBlock>{`{
-  "model": "gpt-5.5",
-  "messages": [
-    { "role": "user", "content": "写一个简短标题" }
-  ],
-  "stream": true
-}`}</CodeBlock>
-              </CardContent>
-            </Card>
-          </aside>
-        </section>
-      </main>
+        <aside className='docs-reference-code'>
+          <div className='docs-code-sticky'>
+            <CodeWorkbench topic={activeTopic} section={activeSection} />
+            <div className='docs-code-note'>
+              <ShieldCheck />
+              <p>
+                示例中的 <code>&lt;token&gt;</code>{' '}
+                仅为占位符。请勿把真实密钥发送到群聊、截图或代码仓库。
+              </p>
+            </div>
+            <div className='docs-fast-note'>
+              <Zap />
+              <div>
+                <strong>大速率线路</strong>
+                <code>{FAST_API_BASE_URL}</code>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </PublicLayout>
   )
 }

@@ -25,6 +25,8 @@ import {
 } from './section-registry.tsx'
 
 const defaultBillingSettings: BillingSettings = {
+  AffiliateMilestoneRewardEnabled: true,
+  RechargeBenefitEnabled: true,
   QuotaForNewUser: 0,
   PreConsumedQuota: 0,
   QuotaForInviter: 0,
@@ -58,6 +60,8 @@ const defaultBillingSettings: BillingSettings = {
   AutoGroups: '',
   SmartGroupRules: '{}',
   DefaultUseAutoGroup: false,
+  AutoCrossGroupRetryEnabled: true,
+  MaxTokenAutoGroups: 5,
   'group_ratio_setting.group_special_usable_group': '{}',
   PayAddress: '',
   EpayId: '',

@@ -54,6 +54,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			types.ErrOptionWithSkipRetry(),
 		)
 	}
+	if err := validateResponsesContinuation(responsesReq, info); err != nil {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
 
 	request, err := common.DeepCopy(responsesReq)
 	if err != nil {
@@ -169,4 +172,22 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 
 func shouldUseRawResponsesBody(c *gin.Context, passThroughEnabled bool) bool {
 	return passThroughEnabled && !service.LongContextOptimizationMutated(c)
+}
+
+// validateResponsesContinuation prevents an otherwise opaque upstream error
+// when a client asks to continue a stored response while explicitly disabling
+// response storage.  We do not silently flip the privacy setting to true;
+// callers must opt in to storage (or provide a complete stateless replay).
+func validateResponsesContinuation(request *dto.OpenAIResponsesRequest, info *relaycommon.RelayInfo) error {
+	if request == nil || strings.TrimSpace(request.PreviousResponseID) == "" {
+		return nil
+	}
+	storeDisabled := strings.EqualFold(strings.TrimSpace(string(request.Store)), "false")
+	if info != nil && info.ChannelMeta != nil && info.ChannelOtherSettings.DisableStore {
+		storeDisabled = true
+	}
+	if !storeDisabled {
+		return nil
+	}
+	return fmt.Errorf("previous_response_id requires response storage; send store:true or enable storage for this channel")
 }

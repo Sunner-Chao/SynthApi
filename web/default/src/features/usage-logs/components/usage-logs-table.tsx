@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import {
@@ -30,6 +30,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { useMediaQuery } from '@/hooks'
+import { BadgePercent, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -43,11 +44,15 @@ import {
   LOG_TYPE_ENUM,
 } from '../constants'
 import { useColumnsByCategory } from '../lib/columns'
+import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
-import type { LogCategory } from '../types'
+import { getUserRewardListSummaries } from '../api'
+import type { LogCategory, UsageLog } from '../types'
+import { CommonLogsCommandCenter } from './common-logs-command-center'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
+import { useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
@@ -63,11 +68,59 @@ function deserializeLogTypeFilter(value: unknown): unknown[] {
 
 interface UsageLogsTableProps {
   logCategory: LogCategory
+  commonView?: 'classic' | 'command'
+  viewSwitch?: ReactNode
 }
 
-export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
+interface VisibleTokenRatio {
+  key: string
+  tokenName: string
+  groupName: string
+  ratio: number
+}
+
+function getVisibleTokenRatios(logs: UsageLog[]): VisibleTokenRatio[] {
+  const ratios = new Map<string, VisibleTokenRatio>()
+
+  for (const log of logs) {
+    const other = parseLogOther(log.other)
+    const userGroupRatio = Number(other?.user_group_ratio)
+    const hasUserGroupRatio =
+      other?.user_group_ratio != null &&
+      Number.isFinite(userGroupRatio) &&
+      userGroupRatio >= 0
+    const ratio = hasUserGroupRatio
+      ? userGroupRatio
+      : Number(other?.group_ratio)
+    if (other?.group_ratio == null && !hasUserGroupRatio) continue
+    if (!Number.isFinite(ratio) || ratio < 0) continue
+
+    const tokenName = log.token_name?.trim() || `#${log.token_id || 0}`
+    const groupName = log.group?.trim() || ''
+    const key = `${log.token_id || tokenName}:${groupName}:${ratio}`
+    if (!ratios.has(key)) {
+      ratios.set(key, { key, tokenName, groupName, ratio })
+    }
+  }
+
+  return Array.from(ratios.values())
+}
+
+function formatGroupRatio(ratio: number): string {
+  if (ratio !== 0 && Math.abs(ratio) < 0.0001) {
+    return ratio.toExponential().replace('+', '')
+  }
+  return ratio.toLocaleString(undefined, { maximumFractionDigits: 4 })
+}
+
+export function UsageLogsTable({
+  logCategory,
+  commonView = 'classic',
+  viewSwitch,
+}: UsageLogsTableProps) {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
+  const { sensitiveVisible, setRewardSummaries } = useUsageLogsContext()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
 
@@ -80,7 +133,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   } = useTableUrlState({
     search: route.useSearch(),
     navigate: route.useNavigate(),
-    pagination: { defaultPage: 1, defaultPageSize: isMobile ? 20 : 100 },
+    pagination: {
+      defaultPage: 1,
+      defaultPageSize: isMobile ? 20 : logCategory === 'common' ? 10 : 100,
+    },
     globalFilter: { enabled: false },
     columnFilters: [
       {
@@ -145,7 +201,37 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     },
   })
 
-  const logs = data?.items || []
+  const logs = useMemo(() => data?.items || [], [data?.items])
+  const rewardUserIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (logs as UsageLog[])
+            .map((log) => log.user_id)
+            .filter((userId) => userId > 0)
+        )
+      ).sort((a, b) => a - b),
+    [logs]
+  )
+  const rewardSummaryQuery = useQuery({
+    queryKey: ['usage-log-reward-summaries', rewardUserIds],
+    queryFn: () => getUserRewardListSummaries(rewardUserIds),
+    enabled: isAdmin && logCategory === 'common' && rewardUserIds.length > 0,
+    staleTime: 60_000,
+  })
+  useEffect(() => {
+    if (!isAdmin || logCategory !== 'common') {
+      setRewardSummaries({})
+      return
+    }
+    const response = rewardSummaryQuery.data
+    setRewardSummaries(response?.success ? response.data ?? {} : {})
+  }, [
+    isAdmin,
+    logCategory,
+    rewardSummaryQuery.data,
+    setRewardSummaries,
+  ])
   const columns = useColumnsByCategory(logCategory, isAdmin)
   const isLoadingData = isLoading || (isFetching && !data)
 
@@ -175,8 +261,21 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   }, [pageCount, ensurePageInRange])
 
   const isCommon = logCategory === 'common'
+  const isCommandView = isCommon && commonView === 'command'
+  const commonLogs = useMemo(
+    () => (isCommon ? (logs as UsageLog[]) : []),
+    [isCommon, logs]
+  )
+  const visibleTokenRatios = useMemo(
+    () => getVisibleTokenRatios(commonLogs),
+    [commonLogs]
+  )
+  // Desktop keeps the filter row collapsed so the command-center core shows
+  // more log rows; mobile has no such pressure and stays expanded.
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const commonFiltersVisible = isMobile || filtersOpen || !isCommandView
 
-  return (
+  const tableContent = (
     <DataTablePage
       table={table}
       columns={columns as ColumnDef<Record<string, unknown>>[]}
@@ -188,8 +287,9 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       )}
       skeletonKeyPrefix='usage-log-skeleton'
       tableClassName={cn(
-        'overflow-x-auto',
-        '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]'
+        isCommandView ? 'command-log-table' : 'overflow-x-auto',
+        !isCommandView &&
+          '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]'
       )}
       tableHeaderClassName='bg-muted/30 sticky top-0 z-10'
       mobile={
@@ -201,11 +301,96 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       }
       toolbar={
         isCommon ? (
-          <CommonLogsFilterBar table={table} />
+          isCommandView ? (
+            <div className='command-filter-zone'>
+              {!isMobile && (
+                <div className='command-filter-summary-row'>
+                  <button
+                    type='button'
+                    className='command-filter-toggle'
+                    onClick={() => setFiltersOpen((open) => !open)}
+                    aria-expanded={filtersOpen}
+                    aria-controls='common-logs-filter-panel'
+                  >
+                    <SlidersHorizontal aria-hidden='true' />
+                    <span>
+                      {filtersOpen ? t('Hide Filters') : t('Filters')}
+                    </span>
+                  </button>
+                  {!filtersOpen && (
+                    <div className='command-token-ratio-summary'>
+                      <span className='command-token-ratio-label'>
+                        <BadgePercent aria-hidden='true' />
+                        {t('Current token group ratios')}
+                      </span>
+                      {visibleTokenRatios.length > 0 ? (
+                        <div className='command-token-ratio-list'>
+                          {visibleTokenRatios.slice(0, 6).map((item) => {
+                            const tokenLabel = sensitiveVisible
+                              ? item.tokenName
+                              : '••••'
+                            const details = [
+                              tokenLabel,
+                              item.groupName,
+                              `×${formatGroupRatio(item.ratio)}`,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')
+
+                            return (
+                              <span
+                                key={item.key}
+                                className='command-token-ratio-chip'
+                                title={details}
+                              >
+                                <em>{tokenLabel}</em>
+                                <strong>×{formatGroupRatio(item.ratio)}</strong>
+                              </span>
+                            )
+                          })}
+                          {visibleTokenRatios.length > 6 && (
+                            <span
+                              className='command-token-ratio-more'
+                              title={visibleTokenRatios
+                                .slice(6)
+                                .map((item) =>
+                                  [
+                                    sensitiveVisible ? item.tokenName : '••••',
+                                    item.groupName,
+                                    `×${formatGroupRatio(item.ratio)}`,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ')
+                                )
+                                .join('\n')}
+                            >
+                              +{visibleTokenRatios.length - 6}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className='command-token-ratio-empty'>
+                          {t('No ratio data on this page')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {commonFiltersVisible && (
+                <div id='common-logs-filter-panel'>
+                  <CommonLogsFilterBar table={table} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <CommonLogsFilterBar table={table} />
+          )
         ) : (
           <TaskLogsFilterBar table={table} logCategory={logCategory} />
         )
       }
+      paginationInFooter={!isCommandView}
       renderRow={(row) => {
         const logType = (row.original as Record<string, unknown>).type as
           | number
@@ -216,7 +401,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
         return (
           <TableRow key={row.id} className={cn('transition-colors', tintClass)}>
             {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id} className={isCommon ? 'py-2' : 'py-3.5'}>
+              <TableCell
+                key={cell.id}
+                className={isCommandView ? 'command-log-cell' : 'py-3.5'}
+              >
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </TableCell>
             ))}
@@ -224,5 +412,18 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
         )
       }}
     />
+  )
+
+  if (!isCommandView) return tableContent
+
+  return (
+    <CommonLogsCommandCenter
+      logs={commonLogs}
+      total={data?.total || 0}
+      isFetching={isFetching}
+      viewSwitch={viewSwitch}
+    >
+      {tableContent}
+    </CommonLogsCommandCenter>
   )
 }

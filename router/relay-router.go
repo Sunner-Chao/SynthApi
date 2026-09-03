@@ -15,6 +15,34 @@ func SetRelayRouter(router *gin.Engine) {
 	router.Use(middleware.DecompressRequestMiddleware())
 	router.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	router.Use(middleware.StatsMiddleware())
+	// Older CC Switch imports used the OpenAI endpoint (/v1) as usageBaseUrl,
+	// producing /v1/api/usage/ccswitch/. Keep that exact read-only alias so
+	// existing desktop configurations recover without exposing relay writes.
+	legacyCCSwitchUsageRouter := router.Group("/v1/api/usage/ccswitch")
+	legacyCCSwitchUsageRouter.Use(middleware.RouteTag("api"))
+	legacyCCSwitchUsageRouter.Use(middleware.CriticalRateLimit())
+	legacyCCSwitchUsageRouter.Use(middleware.TokenAuthReadOnly())
+	legacyCCSwitchUsageRouter.GET("", controller.GetCCSwitchTokenUsage)
+	legacyCCSwitchUsageRouter.GET("/", controller.GetCCSwitchTokenUsage)
+
+	// Existing CC Switch providers may still use its built-in general balance
+	// template instead of the SynthAPI import script. Keep those providers
+	// working without requiring users to recreate every Claude configuration.
+	legacyCCSwitchBalanceRouter := router.Group("")
+	legacyCCSwitchBalanceRouter.Use(middleware.RouteTag("api"))
+	legacyCCSwitchBalanceRouter.Use(middleware.CriticalRateLimit())
+	legacyCCSwitchBalanceRouter.Use(middleware.TokenAuthReadOnly())
+	legacyCCSwitchBalanceRouter.GET("/user/balance", controller.GetCCSwitchTokenUsage)
+	legacyCCSwitchBalanceRouter.GET("/v1/user/balance", controller.GetCCSwitchTokenUsage)
+	legacyCCSwitchBalanceRouter.GET("/v1/usage", controller.GetCCSwitchTokenUsage)
+
+	ccSwitchBillingRouter := router.Group("/v1/sub2api/billing")
+	ccSwitchBillingRouter.Use(middleware.RouteTag("api"))
+	ccSwitchBillingRouter.Use(middleware.CriticalRateLimit())
+	ccSwitchBillingRouter.Use(middleware.TokenAuthReadOnly())
+	ccSwitchBillingRouter.GET("", controller.GetCCSwitchBillingInfo)
+	ccSwitchBillingRouter.GET("/", controller.GetCCSwitchBillingInfo)
+
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))
@@ -67,6 +95,15 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundRouter.POST("/chat/completions", middleware.Distribute(), controller.Playground)
 		playgroundRouter.POST("/images/generations", middleware.Distribute(), controller.PlaygroundImage)
 		playgroundRouter.GET("/images/generations/:task_id", controller.FetchImageGenerationTask)
+		playgroundRouter.GET("/images/generations/:task_id/content", controller.ImageProxy)
+		playgroundRouter.POST("/videos/generations", middleware.Distribute(), controller.PlaygroundVideo)
+		playgroundRouter.GET("/videos/generations/:task_id", controller.FetchPlaygroundVideoTask)
+	}
+	imageContentRouter := router.Group("/v1")
+	imageContentRouter.Use(middleware.RouteTag("relay"))
+	imageContentRouter.Use(middleware.TokenOrUserAuth())
+	{
+		imageContentRouter.GET("/images/generations/:task_id/content", controller.ImageProxy)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
@@ -87,6 +124,7 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		taskRouter := relayV1Router.Group("")
 		taskRouter.GET("/images/generations/:task_id", controller.FetchImageGenerationTask)
+		taskRouter.GET("/tasks/:task_id", controller.FetchAPIMartImageTask)
 	}
 	{
 		//http router

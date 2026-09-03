@@ -236,6 +236,50 @@ func TestGetPreferredChannelByAffinity_RequestHeaderKeySource(t *testing.T) {
 	require.Equal(t, buildChannelAffinityKeyHint(affinityValue), meta.KeyHint)
 }
 
+func TestGetPreferredChannelByAffinity_AutoKeepsMetadataButDoesNotOverrideOrder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setting := operation_setting.GetChannelAffinitySetting()
+	require.NotNil(t, setting)
+
+	rule := operation_setting.ChannelAffinityRule{
+		Name:       "auto-order-guard",
+		ModelRegex: []string{"^gpt-.*$"},
+		PathRegex:  []string{"/v1/responses"},
+		KeySources: []operation_setting.ChannelAffinityKeySource{
+			{Type: "request_header", Key: "X-Affinity-Key"},
+		},
+		SkipRetryOnFailure: true,
+		IncludeRuleName:    true,
+		IncludeModelName:   true,
+		IncludeUsingGroup:  true,
+	}
+	affinityValue := fmt.Sprintf("auto-order-%d", time.Now().UnixNano())
+	cacheKeySuffix := buildChannelAffinityCacheKeySuffix(rule, "gpt-5", "auto", affinityValue)
+	cache := getChannelAffinityCache()
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 706, time.Minute))
+	t.Cleanup(func() {
+		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
+	})
+
+	originalRules := setting.Rules
+	setting.Rules = append([]operation_setting.ChannelAffinityRule{rule}, originalRules...)
+	t.Cleanup(func() {
+		setting.Rules = originalRules
+	})
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	ctx.Request.Header.Set("X-Affinity-Key", affinityValue)
+
+	channelID, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "auto")
+	require.False(t, found)
+	require.Zero(t, channelID)
+	meta, ok := getChannelAffinityMeta(ctx)
+	require.True(t, ok)
+	require.Equal(t, "auto", meta.UsingGroup)
+	require.False(t, ShouldSkipRetryAfterChannelAffinityFailure(ctx))
+}
+
 func TestCodexAffinityPrefersSessionHeaderOverBodyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setting := operation_setting.GetChannelAffinitySetting()

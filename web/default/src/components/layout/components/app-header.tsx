@@ -140,6 +140,15 @@ export function AppHeader({
                 onAnnouncementDialogOpenChange={
                   notifications.setAnnouncementDialogOpen
                 }
+                desktopNotificationsSupported={
+                  notifications.desktopNotificationsSupported
+                }
+                desktopNotificationPermission={
+                  notifications.desktopNotificationPermission
+                }
+                onRequestDesktopNotifications={
+                  notifications.requestDesktopNotifications
+                }
                 loading={notifications.loading}
               />
             )}

@@ -33,6 +33,34 @@ func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other
 	}
 }
 
+// appendAutoGroupLogInfo preserves the user's requested route separately from
+// the concrete group stored in Log.Group. Auto requests ultimately log the
+// selected group (for billing and filtering), so this marker is the only
+// reliable way for the UI to show that the request came through Auto.
+func appendAutoGroupLogInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || other == nil || strings.TrimSpace(relayInfo.TokenGroup) != "auto" {
+		return
+	}
+	other["auto_group"] = true
+	other["requested_group"] = "auto"
+}
+
+// AppendAutoGroupLogInfo adds both the requested Auto marker and the current
+// route state used by the usage-log UI.
+func AppendAutoGroupLogInfo(c *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	appendAutoGroupLogInfo(relayInfo, other)
+	if relayInfo == nil || other == nil || strings.TrimSpace(relayInfo.TokenGroup) != "auto" {
+		return
+	}
+	status, priority := GetAutoRouteLogState(c, relayInfo.OriginModelName, relayInfo.UsingGroup)
+	if status != "" {
+		other["auto_route_status"] = status
+	}
+	if priority > 0 {
+		other["auto_route_priority"] = priority
+	}
+}
+
 func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelRatio, groupRatio, completionRatio float64,
 	cacheTokens int, cacheRatio float64, modelPrice float64, userGroupRatio float64) map[string]interface{} {
 	other := make(map[string]interface{})
@@ -81,6 +109,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendStreamStatus(relayInfo, other)
 	appendLongContextOptimizationInfo(ctx, other)
 	AppendRelayTraceLogInfo(ctx, relayInfo, other)
+	AppendAutoGroupLogInfo(ctx, relayInfo, other)
 	return other
 }
 
@@ -276,6 +305,7 @@ func GenerateMjOtherInfo(relayInfo *relaycommon.RelayInfo, priceData types.Price
 		other["user_group_ratio"] = priceData.GroupRatioInfo.GroupSpecialRatio
 	}
 	appendRequestPath(nil, relayInfo, other)
+	AppendAutoGroupLogInfo(nil, relayInfo, other)
 	return other
 }
 

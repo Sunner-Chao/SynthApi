@@ -154,7 +154,7 @@ func OidcAuth(c *gin.Context) {
 			} else {
 				user.DisplayName = "OIDC User"
 			}
-			err := user.Insert(0)
+			err := model.CreatePublicUser(&user, c.ClientIP(), 0)
 			if err != nil {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,

@@ -2,9 +2,9 @@
 Copyright (C) 2023-2026 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -19,31 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import {
   Activity,
-  BookOpen,
-  Clock3,
-  HeartPulse,
+  Globe2,
   KeyRound,
-  RadioTower,
+  Layers3,
   Users,
+  Zap,
+  type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { StatusBadge } from '@/components/status-badge'
 import type { ChannelMonitorItem } from '@/features/dashboard/types'
-import {
-  getAvailabilityRate,
-  getUsageSuccessRate,
-  hasUsageMetrics,
-} from '../lib/metrics'
-import {
-  SuccessRateStrip,
-  successRateColorClass,
-  successRateIntent,
-  successRateSurfaceClass,
-  successRateTextClass,
-  formatSuccessRate,
-} from './success-rate-strip'
+import { RecentRequestStrip, successRateTextClass } from './success-rate-strip'
 
 const CHANNEL_STATUS = {
   ENABLED: 1,
@@ -52,94 +39,77 @@ const CHANNEL_STATUS = {
 } as const
 
 function formatLatency(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return '-'
+  if (!Number.isFinite(ms) || ms <= 0) return '--'
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
   return `${ms}ms`
 }
 
 function formatRelativeTime(timestamp: number): string {
-  if (!timestamp) return '-'
+  if (!timestamp) return '--'
   const diffSeconds = Math.max(0, Math.floor(Date.now() / 1000 - timestamp))
-  if (diffSeconds < 60) return `${diffSeconds}s ago`
-  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`
-  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`
-  return `${Math.floor(diffSeconds / 86400)}d ago`
-}
-
-function getTypeColor(typeId: number): string {
-  // Return a deterministic tailwind-compatible gradient based on type
-  const colors: string[] = [
-    'from-violet-50 to-violet-100 dark:from-violet-500/10 dark:to-violet-500/20 text-violet-600 dark:text-violet-300',
-    'from-emerald-50 to-emerald-100 dark:from-emerald-500/10 dark:to-emerald-500/20 text-emerald-600 dark:text-emerald-300',
-    'from-orange-50 to-amber-100 dark:from-orange-500/10 dark:to-amber-500/20 text-orange-600 dark:text-orange-300',
-    'from-sky-50 to-indigo-100 dark:from-sky-500/10 dark:to-indigo-500/20 text-sky-600 dark:text-sky-300',
-    'from-rose-50 to-pink-100 dark:from-rose-500/10 dark:to-pink-500/20 text-rose-600 dark:text-rose-300',
-    'from-teal-50 to-cyan-100 dark:from-teal-500/10 dark:to-cyan-500/20 text-teal-600 dark:text-teal-300',
-    'from-yellow-50 to-amber-100 dark:from-yellow-500/10 dark:to-amber-500/20 text-yellow-700 dark:text-yellow-300',
-    'from-blue-50 to-indigo-100 dark:from-blue-500/10 dark:to-indigo-500/20 text-blue-600 dark:text-blue-300',
-  ]
-  return colors[Math.abs(typeId) % colors.length]
+  if (diffSeconds < 60) return `${diffSeconds}s`
+  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m`
+  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h`
+  return `${Math.floor(diffSeconds / 86400)}d`
 }
 
 function statusMeta(status: number, t: (key: string) => string) {
   if (status === CHANNEL_STATUS.ENABLED) {
     return {
       label: t('Available'),
-      badge: 'success' as const,
       dot: 'bg-emerald-500',
-      latencyClass: 'text-emerald-600 dark:text-emerald-400',
+      pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+      value: 'text-emerald-600 dark:text-emerald-400',
     }
   }
   if (status === CHANNEL_STATUS.AUTO_DISABLED) {
     return {
       label: t('Auto disabled'),
-      badge: 'warning' as const,
       dot: 'bg-amber-500',
-      latencyClass: 'text-amber-600 dark:text-amber-400',
+      pill: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+      value: 'text-amber-600 dark:text-amber-400',
     }
   }
   return {
     label: t('Manual disabled'),
-    badge: 'neutral' as const,
-    dot: 'bg-muted-foreground',
-    latencyClass: 'text-muted-foreground',
+    dot: 'bg-slate-400',
+    pill: 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
+    value: 'text-slate-500 dark:text-slate-400',
   }
 }
 
 function GroupIcon({ name }: { name: string }) {
-  const colorClass = getTypeColor(name.length)
-  const initial = name?.[0]?.toUpperCase() ?? '#'
+  const initial = name.trim().charAt(0).toUpperCase() || '#'
   return (
     <span
-      className={cn(
-        'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-black/5 dark:ring-white/10',
-        'bg-gradient-to-br',
-        colorClass
-      )}
+      className='flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-emerald-100 text-emerald-600 ring-1 ring-emerald-200/70 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/20'
       aria-hidden='true'
     >
-      <span className='text-sm leading-none font-bold'>{initial}</span>
+      <span className='text-base leading-none font-bold'>{initial}</span>
     </span>
   )
 }
 
-interface MetricBoxProps {
-  icon: React.ComponentType<{ className?: string }>
+function MetricBox({
+  icon: Icon,
+  label,
+  value,
+  valueClass,
+}: {
+  icon: LucideIcon
   label: string
   value: string
   valueClass?: string
-}
-
-function MetricBox({ icon: Icon, label, value, valueClass }: MetricBoxProps) {
+}) {
   return (
-    <div className='rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-white/5 dark:bg-white/5'>
-      <div className='flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-gray-400 uppercase dark:text-gray-500'>
-        <Icon className='size-3 shrink-0' aria-hidden='true' />
+    <div className='rounded-[17px] border border-slate-200/70 bg-white/55 px-4 py-4 dark:border-white/10 dark:bg-white/[0.035]'>
+      <div className='flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.05em] text-slate-400 dark:text-slate-500'>
+        <Icon className='size-3.5 shrink-0' aria-hidden='true' />
         <span className='truncate'>{label}</span>
       </div>
       <div
         className={cn(
-          'mt-1.5 font-mono text-lg leading-none font-bold text-gray-900 tabular-nums dark:text-gray-100',
+          'mt-3 flex items-baseline gap-1 font-mono text-[22px] leading-none font-bold tracking-tight text-slate-800 tabular-nums dark:text-slate-100',
           valueClass
         )}
       >
@@ -149,202 +119,157 @@ function MetricBox({ icon: Icon, label, value, valueClass }: MetricBoxProps) {
   )
 }
 
-function successStatusLabel(
-  intent: 'danger' | 'warning' | 'success',
-  t: (key: string) => string
-) {
-  if (intent === 'success') return t('Healthy')
-  if (intent === 'warning') return t('Watch')
-  return t('Degraded')
+function recentRate(item: ChannelMonitorItem): number | null {
+  const requests = item.recent_requests ?? []
+  if (requests.length > 0) {
+    return (
+      (requests.filter((request) => request.success).length / requests.length) *
+      100
+    )
+  }
+  if (
+    item.success_rate_source === 'usage' &&
+    Number.isFinite(item.success_rate)
+  ) {
+    return item.success_rate ?? null
+  }
+  if (Number.isFinite(item.availability_rate)) {
+    return item.availability_rate ?? null
+  }
+  return null
 }
 
-function SuccessRateStatCard(props: { item: ChannelMonitorItem }) {
-  const { t } = useTranslation()
-  const hasUsage = hasUsageMetrics(props.item)
-  const usageRate = getUsageSuccessRate(props.item)
-  const availabilityRate = getAvailabilityRate(props.item)
-  const displayRate = hasUsage ? usageRate : availabilityRate
-  const intent = successRateIntent(displayRate)
-  const statusColor = successRateColorClass(displayRate)
-  const hint = hasUsage
-    ? t('{{success}}/{{total}} successful requests in the last 24 hours', {
-        success: props.item.usage_success_count ?? 0,
-        total: props.item.usage_request_count ?? 0,
-      })
-    : t('No 24h usage data; availability {{rate}}', {
-        rate: formatSuccessRate(availabilityRate),
-      })
-
-  return (
-    <div
-      className={cn(
-        'mt-4 flex flex-col gap-2 rounded-lg border p-3',
-        hasUsage
-          ? successRateSurfaceClass(displayRate)
-          : 'border-border bg-muted/30'
-      )}
-    >
-      <div className='flex min-w-0 items-center justify-between gap-3'>
-        <span className='text-muted-foreground inline-flex items-center gap-1.5 text-[10px] font-medium tracking-wider uppercase'>
-          <HeartPulse className='size-3' aria-hidden='true' />
-          {t('24h usage success rate')}
-        </span>
-        <span
-          className={cn(
-            'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-            hasUsage &&
-              intent === 'success' &&
-              'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-            hasUsage &&
-              intent === 'warning' &&
-              'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-            hasUsage &&
-              intent === 'danger' &&
-              'bg-rose-500/10 text-rose-700 dark:text-rose-300',
-            !hasUsage && 'bg-muted text-muted-foreground'
-          )}
-        >
-          <span
-            className={cn(
-              'size-1.5 rounded-full',
-              hasUsage ? statusColor : 'bg-muted-foreground/50'
-            )}
-          />
-          {hasUsage ? successStatusLabel(intent, t) : t('No data')}
-        </span>
-      </div>
-      <SuccessRateStrip
-        rate={usageRate}
-        source={hasUsage ? 'usage' : 'availability'}
-        series={props.item.success_series}
-        availabilityRate={availabilityRate}
-        enabledCount={props.item.enabled_count}
-        totalCount={props.item.channel_count}
-        emptyLabel={t('No data')}
-      />
-      <div className='flex min-w-0 items-center justify-between gap-2'>
-        <span className='text-muted-foreground/70 truncate text-[11px]'>
-          {hint}
-        </span>
-      </div>
-    </div>
-  )
+function formatAvailability(rate: number | null): string {
+  if (rate == null || !Number.isFinite(rate)) return '--'
+  return `${rate.toFixed(2)}%`
 }
 
 export interface MonitorChannelCardProps {
   item: ChannelMonitorItem
+  refreshRemainingSeconds?: number
 }
 
-export function MonitorChannelCard({ item }: MonitorChannelCardProps) {
+/** A group card intentionally mirrors the compact monitoring reference UI. */
+export function MonitorChannelCard({
+  item,
+  refreshRemainingSeconds,
+}: MonitorChannelCardProps) {
   const { t } = useTranslation()
   const meta = statusMeta(item.status, t)
-  const groupName = item.group || item.name
+  const groupName = item.group || item.name || t('Unnamed group')
   const channelCount = item.channel_count ?? 0
   const enabledCount = item.enabled_count ?? 0
-  const availabilityRate = getAvailabilityRate(item)
+  const modelCount = item.model_count ?? 0
+  const availability = recentRate(item)
+  const refreshLabel =
+    refreshRemainingSeconds == null
+      ? null
+      : `${refreshRemainingSeconds}s ${t('Auto refresh')}`
 
   return (
-    <div className='group flex flex-col rounded-2xl border border-gray-200/80 bg-white/70 p-5 shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20'>
-      {/* Header */}
-      <div className='flex items-start gap-3'>
+    <article className='group relative flex min-h-[372px] flex-col overflow-hidden rounded-[23px] border border-slate-200/80 bg-[#f8fcfb] p-6 shadow-[0_8px_28px_rgba(40,92,86,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-[0_14px_34px_rgba(40,92,86,0.12)] dark:border-white/10 dark:bg-slate-950/45 dark:shadow-none dark:hover:border-emerald-400/25'>
+      <header className='flex min-w-0 items-start gap-3'>
         <GroupIcon name={groupName} />
         <div className='min-w-0 flex-1'>
-          <div className='flex min-w-0 items-center gap-1.5'>
-            <span
-              className={cn('size-2 shrink-0 rounded-full', meta.dot)}
-              aria-hidden='true'
-            />
-            <span className='truncate text-sm font-semibold text-gray-900 dark:text-gray-100'>
-              {groupName}
+          <h3 className='truncate text-[19px] leading-tight font-bold tracking-tight text-slate-800 dark:text-slate-100'>
+            {groupName}
+          </h3>
+          <div className='mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-xs'>
+            <span className='rounded-lg bg-emerald-100 px-2 py-1 font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'>
+              {item.type_name || t('Group')}
             </span>
-          </div>
-          <div className='mt-0.5 flex flex-wrap items-center gap-1'>
-            <StatusBadge
-              label={t('{{count}} channel(s)', { count: channelCount })}
-              variant='neutral'
-              size='sm'
-              copyable={false}
-              showDot={false}
-            />
-            <span className='inline-flex items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-white/10 dark:text-gray-300'>
-              {t('{{enabled}} available', { enabled: enabledCount })}
+            <span className='truncate font-mono text-slate-400 dark:text-slate-500'>
+              {t('All models')}
+            </span>
+            <span className='max-w-full truncate rounded-lg bg-slate-100 px-2 py-1 text-slate-500 dark:bg-white/10 dark:text-slate-300'>
+              {t('{{count}} models', { count: modelCount })}
             </span>
           </div>
         </div>
-        <StatusBadge
-          label={meta.label}
-          variant={meta.badge}
-          size='sm'
-          copyable={false}
-          showDot={false}
-          className='shrink-0'
-        />
-      </div>
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold',
+            meta.pill
+          )}
+        >
+          <span className={cn('size-1.5 rounded-full', meta.dot)} />
+          {meta.label}
+        </span>
+      </header>
 
-      <SuccessRateStatCard item={item} />
-
-      {/* Metrics */}
-      <div className='mt-4 grid grid-cols-2 gap-2'>
+      <div className='mt-7 grid grid-cols-2 gap-3'>
         <MetricBox
-          icon={Activity}
+          icon={Zap}
           label={t('Latency')}
           value={formatLatency(item.response_time)}
-          valueClass={meta.latencyClass}
+          valueClass={meta.value}
         />
         <MetricBox
-          icon={BookOpen}
-          label={t('Models')}
-          value={String(item.model_count)}
-        />
-        <MetricBox
-          icon={RadioTower}
-          label={t('Available')}
-          value={`${enabledCount}/${channelCount}`}
-          valueClass={successRateTextClass(availabilityRate)}
-        />
-        <MetricBox
-          icon={Users}
-          label={t('Active users')}
-          value={String(item.active_users ?? 0)}
+          icon={Globe2}
+          label={t('Endpoint PING')}
+          value={formatLatency(item.response_time)}
+          valueClass={meta.value}
         />
       </div>
 
-      {/* Footer */}
-      <div className='mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-white/5'>
-        <div className='min-w-0'>
-          <div className='flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500'>
-            <Clock3 className='size-3' aria-hidden='true' />
-            <span className='font-mono'>
-              {formatRelativeTime(item.test_time)}
-            </span>
-          </div>
-          <div className='mt-1 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500'>
-            <Users className='size-3' aria-hidden='true' />
-            <span
-              className={cn(
-                'font-mono font-semibold',
-                (item.active_users ?? 0) > 0
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : ''
-              )}
-            >
-              {item.active_users ?? 0}
-            </span>
-            <span>{t('active')}</span>
-          </div>
+      <div className='my-6 h-px shrink-0 bg-slate-200/70 dark:bg-white/10' />
+
+      <div className='flex items-end justify-between gap-3'>
+        <div className='flex min-w-0 items-center gap-2 text-sm font-medium text-slate-400 dark:text-slate-500'>
+          <Activity className='size-4 shrink-0' aria-hidden='true' />
+          <span className='truncate'>{t('Availability')} · 24h</span>
+        </div>
+        <div
+          className={cn(
+            'shrink-0 font-mono text-[40px] leading-[0.9] font-bold tracking-[-0.04em] tabular-nums',
+            availability == null
+              ? 'text-slate-400 dark:text-slate-500'
+              : successRateTextClass(availability)
+          )}
+        >
+          {formatAvailability(availability)}
+        </div>
+      </div>
+
+      <div className='mt-6 flex min-w-0 items-center justify-between gap-3'>
+        <span className='truncate text-sm font-semibold tracking-[0.04em] text-slate-400 dark:text-slate-500'>
+          {t('Recent requests')}
+        </span>
+        <span className='shrink-0 font-mono text-sm font-semibold tabular-nums text-slate-400 dark:text-slate-500'>
+          {refreshLabel ??
+            `${t('Last checked')} ${formatRelativeTime(item.test_time)}`}
+        </span>
+      </div>
+      <RecentRequestStrip
+        requests={item.recent_requests}
+        emptyLabel={t('No recent requests')}
+        className='mt-3'
+      />
+
+      <footer className='mt-auto flex items-center justify-between gap-3 pt-4 text-xs text-slate-400 dark:text-slate-500'>
+        <div className='flex min-w-0 items-center gap-3'>
+          <span className='inline-flex items-center gap-1.5 truncate'>
+            <Layers3 className='size-3.5' aria-hidden='true' />
+            {enabledCount}/{channelCount} {t('Available').toLowerCase()}
+          </span>
+          <span className='inline-flex items-center gap-1.5 truncate'>
+            <Users className='size-3.5' aria-hidden='true' />
+            {item.active_users ?? 0}
+          </span>
         </div>
         <Button
           size='sm'
-          variant='outline'
-          className='ml-auto'
+          variant='ghost'
+          className='h-7 shrink-0 px-2 text-xs opacity-70 transition-opacity group-hover:opacity-100'
+          aria-label={t('Create API Key')}
           render={
             <Link to='/keys' search={{ create: true, group: groupName }} />
           }
         >
           <KeyRound className='size-3.5' aria-hidden='true' />
-          {t('Create API Key')}
+          <span className='hidden sm:inline'>{t('Create API Key')}</span>
         </Button>
-      </div>
-    </div>
+      </footer>
+    </article>
   )
 }

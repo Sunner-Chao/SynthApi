@@ -618,7 +618,7 @@ func completeAlipayLocalOrder(local *alipayLocalOrder, providerTradeNo string, t
 		if err != nil {
 			return err
 		}
-		return model.CompleteAlipayDirectSubscriptionOrder(local.TradeNo, string(payload), paidMoney)
+		return model.CompleteAlipayDirectSubscriptionOrder(local.TradeNo, string(payload), paidMoney, callerIP)
 	default:
 		return errAlipayOrderNotFound
 	}

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
+import type { AdminUserRewardListSummary } from '@/features/reward-center/types'
 
 // ============================================================================
 // User Schema & Types
@@ -60,6 +61,9 @@ export const userSchema = z.object({
   model_request_max_concurrency: z.number().int().min(0).max(1000).optional(),
 })
 export type User = z.infer<typeof userSchema>
+export type UserWithRewardSummary = User & {
+  reward_summary?: AdminUserRewardListSummary
+}
 
 export const userListSchema = z.array(userSchema)
 

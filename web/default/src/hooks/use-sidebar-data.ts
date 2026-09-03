@@ -18,14 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  BrainCircuit,
   Box,
   CreditCard,
   FileText,
   FlaskConical,
+  ImageIcon,
   Key,
   KeyRound,
   LayoutDashboard,
-  ListTodo,
   MessageSquare,
   Radio,
   Receipt,
@@ -33,6 +34,7 @@ import {
   Ticket,
   User,
   Users,
+  Video,
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -46,7 +48,6 @@ import { type SidebarData } from '@/components/layout/types'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
-
   return {
     navGroups: [
       {
@@ -85,6 +86,11 @@ export function useSidebarData(): SidebarData {
             icon: Activity,
           },
           {
+            title: t('Model Intelligence Radar'),
+            url: '/intelligence-radar',
+            icon: BrainCircuit,
+          },
+          {
             title: t('API Keys'),
             url: '/keys',
             icon: Key,
@@ -95,11 +101,14 @@ export function useSidebarData(): SidebarData {
             icon: FileText,
           },
           {
-            title: t('Task Logs'),
-            url: '/usage-logs/task',
-            activeUrls: ['/usage-logs/drawing'],
-            configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-            icon: ListTodo,
+            title: t('Image Workbench'),
+            url: '/image-workbench',
+            icon: ImageIcon,
+          },
+          {
+            title: t('Video Workbench'),
+            url: '/video-workbench',
+            icon: Video,
           },
         ],
       },

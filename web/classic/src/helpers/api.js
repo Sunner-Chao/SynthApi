@@ -34,6 +34,7 @@ export let API = axios.create({
     'New-API-User': getUserIdFromLocalStorage(),
     'Cache-Control': 'no-store',
   },
+  timeout: 10000,
 });
 
 
@@ -89,6 +90,7 @@ export function updateAPI() {
       'New-API-User': getUserIdFromLocalStorage(),
       'Cache-Control': 'no-store',
     },
+    timeout: 10000,
   });
 
   patchAPIInstance(API);

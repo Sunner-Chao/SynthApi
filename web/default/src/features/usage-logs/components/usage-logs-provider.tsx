@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import type { ChannelAffinityInfo } from '../types'
+import type { ChannelAffinityInfo, UsageLogRewardSummaries } from '../types'
 
 interface UsageLogsContextValue {
   selectedUserId: number | null
@@ -31,6 +31,8 @@ interface UsageLogsContextValue {
   setAffinityDialogOpen: (open: boolean) => void
   sensitiveVisible: boolean
   setSensitiveVisible: (visible: boolean) => void
+  rewardSummaries: UsageLogRewardSummaries
+  setRewardSummaries: (summaries: UsageLogRewardSummaries) => void
 }
 
 const UsageLogsContext = createContext<UsageLogsContextValue | undefined>(
@@ -44,6 +46,8 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
     useState<ChannelAffinityInfo | null>(null)
   const [affinityDialogOpen, setAffinityDialogOpen] = useState(false)
   const [sensitiveVisible, setSensitiveVisible] = useState(true)
+  const [rewardSummaries, setRewardSummaries] =
+    useState<UsageLogRewardSummaries>({})
 
   return (
     <UsageLogsContext.Provider
@@ -58,6 +62,8 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
         setAffinityDialogOpen,
         sensitiveVisible,
         setSensitiveVisible,
+        rewardSummaries,
+        setRewardSummaries,
       }}
     >
       {children}

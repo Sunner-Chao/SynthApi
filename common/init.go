@@ -120,6 +120,10 @@ func InitEnv() {
 	ModelRequestDefaultChannelMaxConcurrencyPerUser = GetEnvOrDefault("MODEL_REQUEST_DEFAULT_CHANNEL_MAX_CONCURRENCY_PER_USER", 6)
 	ModelRequestLargeBodyThresholdMB = GetEnvOrDefault("MODEL_REQUEST_LARGE_BODY_THRESHOLD_MB", 10)
 	ModelRequestMaxLargeConcurrencyPerUser = GetEnvOrDefault("MODEL_REQUEST_MAX_LARGE_CONCURRENCY_PER_USER", 2)
+	ModelRequestConcurrencyLeaseSeconds = GetEnvOrDefault("MODEL_REQUEST_CONCURRENCY_LEASE_SECONDS", 7200)
+	if ModelRequestConcurrencyLeaseSeconds < 60 {
+		ModelRequestConcurrencyLeaseSeconds = 60
+	}
 	ModelRequestConcurrencyExemptUserIDs = make(map[int]struct{})
 	for _, rawUserID := range strings.Split(os.Getenv("MODEL_REQUEST_CONCURRENCY_EXEMPT_USER_IDS"), ",") {
 		userID, err := strconv.Atoi(strings.TrimSpace(rawUserID))
@@ -150,6 +154,38 @@ func InitEnv() {
 	SearchRateLimitEnable = GetEnvOrDefaultBool("SEARCH_RATE_LIMIT_ENABLE", true)
 	SearchRateLimitNum = GetEnvOrDefault("SEARCH_RATE_LIMIT", 10)
 	SearchRateLimitDuration = int64(GetEnvOrDefault("SEARCH_RATE_LIMIT_DURATION", 60))
+
+	// Registration is deliberately rate-limited separately from login and
+	// password-reset traffic. The subnet limit is a conservative /24 (IPv4)
+	// guard; IPv6 uses exact-IP checks unless a future network prefix is added.
+	RegistrationRateLimitEnable = GetEnvOrDefaultBool("REGISTER_RATE_LIMIT_ENABLE", true)
+	RegistrationRateLimitNum = GetEnvOrDefault("REGISTER_RATE_LIMIT", 5)
+	RegistrationRateLimitDuration = int64(GetEnvOrDefault("REGISTER_RATE_LIMIT_DURATION", 3600))
+	RegistrationGlobalRateLimitEnable = GetEnvOrDefaultBool("REGISTER_GLOBAL_RATE_LIMIT_ENABLE", true)
+	RegistrationGlobalRateLimitNum = GetEnvOrDefault("REGISTER_GLOBAL_RATE_LIMIT", 5)
+	RegistrationGlobalRateLimitDuration = int64(GetEnvOrDefault("REGISTER_GLOBAL_RATE_LIMIT_DURATION", 3600))
+	RegisterSubnetLimitEnable = GetEnvOrDefaultBool("REGISTER_SUBNET_LIMIT_ENABLE", true)
+	RegisterSubnetLimitMaxAccounts = GetEnvOrDefault("REGISTER_SUBNET_LIMIT", 3)
+	if RegisterSubnetLimitMaxAccounts < 1 {
+		RegisterSubnetLimitMaxAccounts = 1
+	}
+	CheckinMinAccountAgeSeconds = int64(GetEnvOrDefault("CHECKIN_MIN_ACCOUNT_AGE_SECONDS", 0))
+	if CheckinMinAccountAgeSeconds < 0 {
+		CheckinMinAccountAgeSeconds = 0
+	}
+	AffiliateRewardAfterPayment = GetEnvOrDefaultBool("AFFILIATE_REWARD_AFTER_PAYMENT", true)
+	// Rewards require a real payment by default. Set to 0 only when the
+	// operator explicitly wants the old zero-value threshold.
+	if raw := os.Getenv("AFFILIATE_REWARD_MIN_PAYMENT"); raw != "" {
+		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 0 {
+			AffiliateRewardMinPayment = value
+		} else {
+			AffiliateRewardMinPayment = 1
+			SysError(fmt.Sprintf("failed to parse AFFILIATE_REWARD_MIN_PAYMENT: %q, using default value: %.2f", raw, AffiliateRewardMinPayment))
+		}
+	} else {
+		AffiliateRewardMinPayment = 1
+	}
 	initConstantEnv()
 }
 

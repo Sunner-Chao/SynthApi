@@ -54,7 +54,7 @@ export function useAuthRedirect() {
    * @param redirectTo - Redirect path after login
    */
   const handleLoginSuccess = async (
-    userData?: { id?: number } | null,
+    userData?: Partial<User> | null,
     redirectTo?: string
   ) => {
     // Save user ID if available
@@ -62,32 +62,49 @@ export function useAuthRedirect() {
       saveUserId(userData.id)
     }
 
-    // Fetch and set user data
-    try {
-      const self = await getSelf()
-      if (self?.success && self.data) {
-        const user = self.data as User
-        auth.setUser(user)
+	// The login response already proves the session and contains the fields
+	// needed by route guards. Do not keep the user on the sign-in page while a
+	// second control-plane request is waiting behind unrelated API traffic.
+	if (userData?.id) {
+		const existing = auth.user
+		auth.setUser({
+			...(existing ?? {}),
+			...userData,
+			id: userData.id,
+			username: userData.username ?? existing?.username ?? '',
+			display_name: userData.display_name ?? existing?.display_name ?? '',
+			role: userData.role ?? existing?.role ?? 1,
+			status: userData.status ?? existing?.status ?? 1,
+			group: userData.group ?? existing?.group ?? 'default',
+			quota: userData.quota ?? existing?.quota ?? 0,
+			used_quota: userData.used_quota ?? existing?.used_quota ?? 0,
+			request_count: userData.request_count ?? existing?.request_count ?? 0,
+		} as User)
+		auth.setSessionVerified(true)
+	}
 
-        // Update user ID if not already set
-        if (user.id) {
-          saveUserId(user.id)
-        }
-
-        // Restore saved language preference
-        const savedLang = getSavedLanguage(user)
-        if (savedLang && savedLang !== i18n.language) {
-          i18n.changeLanguage(savedLang)
-        }
-      }
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to fetch user data:', error)
-    }
-
-    // Navigate to target page
     const targetPath = redirectTo || '/dashboard'
-    navigate({ to: targetPath, replace: true })
+	await navigate({ to: targetPath, replace: true })
+
+	// Refresh the complete profile after navigation. A transient failure leaves
+	// the authenticated session usable and is retried by normal page queries.
+	void getSelf()
+		.then((self) => {
+			if (!self?.success || !self.data) return
+			const user = self.data as User
+			auth.setUser(user)
+			if (user.id) saveUserId(user.id)
+			const savedLang = getSavedLanguage(user)
+			if (savedLang && savedLang !== i18n.language) {
+				void i18n.changeLanguage(savedLang)
+			}
+		})
+		.catch((error: unknown) => {
+			if (import.meta.env.DEV) {
+				// eslint-disable-next-line no-console
+				console.warn('Failed to refresh user data after login', error)
+			}
+		})
   }
 
   /**

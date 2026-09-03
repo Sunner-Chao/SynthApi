@@ -38,7 +38,11 @@ import type { LogCategory, UsageLog } from '../types'
 import { LOG_TYPE_ENUM } from '../constants'
 import { parseLogOther } from '../lib/format'
 import { getLogTypeConfig, isTimingLogType } from '../lib/utils'
-import { ApiLineBadge } from './api-line-badge'
+import {
+  ApiLineBadge,
+  ChannelConcurrencyBadge,
+  WorkerNodeBadge,
+} from './api-line-badge'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]: 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/30',
@@ -208,11 +212,17 @@ function CommonLogsCard<TData>({
             type={rowData?.type}
           />
           {rowData && isTimingLogType(rowData.type) && (
-            <ApiLineBadge
-              line={other?.ingress_line}
-              host={other?.ingress_host}
-              className='mt-1'
-            />
+            <div className='mt-1 flex flex-wrap gap-1'>
+              <ApiLineBadge
+                line={other?.ingress_line}
+                host={other?.ingress_host}
+              />
+              <WorkerNodeBadge node={other?.worker_node} />
+              <ChannelConcurrencyBadge
+                active={other?.channel_concurrency_active}
+                limit={other?.channel_concurrency_limit}
+              />
+            </div>
           )}
         </div>
         <SummaryField

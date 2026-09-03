@@ -57,6 +57,7 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 }
 
 func Record(sample Sample) {
+	recordRecentRequestStatus(sample)
 	setting := perf_metrics_setting.GetSetting()
 	if !setting.Enabled || sample.Model == "" {
 		return
@@ -123,7 +124,7 @@ func Query(params QueryParams) (QueryResult, error) {
 
 	hotBuckets.Range(func(key, value any) bool {
 		k := key.(bucketKey)
-		if k.model != params.Model || k.bucketTs < startTs || k.bucketTs > endTs {
+		if params.Model != "" && k.model != params.Model || k.bucketTs < startTs || k.bucketTs > endTs {
 			return true
 		}
 		if params.Group != "" && k.group != params.Group {

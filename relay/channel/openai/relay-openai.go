@@ -3,9 +3,11 @@ package openai
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -13,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
+	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -124,11 +127,20 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var usage = &dto.Usage{}
 	var lastStreamData string
 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
+	var streamErr *types.NewAPIError
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		var streamResponse dto.OpenAITextResponse
+		if err := common.UnmarshalJsonStr(data, &streamResponse); err == nil {
+			if capacityErr := newRecognizedAutoRouteError(streamResponse.GetOpenAIError(), http.StatusServiceUnavailable); capacityErr != nil {
+				streamErr = capacityErr
+				sr.Stop(streamErr)
+				return
+			}
+		}
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -148,6 +160,12 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 		}
 	})
+	if streamErr != nil {
+		return nil, streamErr
+	}
+	if streamFailure := newUpstreamStreamFailure(info); streamFailure != nil {
+		return nil, streamFailure
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -222,8 +240,13 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil {
+		if capacityErr := newRecognizedAutoRouteError(oaiError, resp.StatusCode); capacityErr != nil {
+			return nil, capacityErr
+		}
+		if oaiError.Type != "" {
+			return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		}
 	}
 
 	for _, choice := range simpleResponse.Choices {
@@ -569,9 +592,12 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	// 写入新的 response body
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	clientResponseBody := normalizeOpenAIImageTaskResponse(responseBody)
+	// Persist before responding so an immediate client poll can always find the
+	// task. Persistence failure is logged and does not hide a valid upstream
+	// response from the caller.
 	maybePersistOpenAIImageTask(c, info, responseBody)
+	service.IOCopyBytesGracefully(c, resp, clientResponseBody)
 
 	// Once we've written to the client, we should not return errors anymore
 	// because the upstream has already consumed resources and returned content
@@ -591,42 +617,61 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	return &usageResp.Usage, nil
 }
 
+func normalizeOpenAIImageTaskResponse(responseBody []byte) []byte {
+	details, ok := parseOpenAIImageTaskResponse(responseBody)
+	if !ok || details.TaskID == "" {
+		return responseBody
+	}
+
+	var payload map[string]any
+	if err := common.Unmarshal(responseBody, &payload); err != nil || payload == nil {
+		return responseBody
+	}
+	payload["task_id"] = details.TaskID
+	payload["id"] = details.TaskID
+	if details.Status != "" {
+		payload["status"] = details.Status
+	}
+	normalized, err := common.Marshal(payload)
+	if err != nil {
+		return responseBody
+	}
+	return normalized
+}
+
 func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, responseBody []byte) {
-	if info == nil || info.RelayMode != relayconstant.RelayModeImagesGenerations {
+	if info == nil || (info.RelayMode != relayconstant.RelayModeImagesGenerations && info.RelayMode != relayconstant.RelayModeImagesEdits) {
 		return
 	}
 
-	var response struct {
-		ID   string `json:"id"`
-		Data []struct {
-			TaskID string `json:"task_id"`
-			Status string `json:"status"`
-			URL    string `json:"url"`
-			B64    string `json:"b64_json"`
-		} `json:"data"`
-	}
-	if err := common.Unmarshal(responseBody, &response); err != nil || len(response.Data) == 0 {
+	details, ok := parseOpenAIImageTaskResponse(responseBody)
+	if !ok {
 		return
 	}
 
-	item := response.Data[0]
-	taskID := strings.TrimSpace(item.TaskID)
+	taskID := details.TaskID
 	if taskID == "" {
-		taskID = strings.TrimSpace(response.ID)
-	}
-	if taskID == "" || item.URL != "" || item.B64 != "" {
 		return
 	}
 
-	status := strings.ToLower(strings.TrimSpace(item.Status))
+	status := strings.ToLower(strings.TrimSpace(details.Status))
 	if status == "" {
-		status = "submitted"
+		// APIMart task replies are asynchronous. A few compatible gateways omit
+		// status while still returning a task_xxx id; do not mistake those for a
+		// completed OpenAI image response.
+		if strings.HasPrefix(strings.ToLower(taskID), "task_") {
+			status = "submitted"
+		} else {
+			status = "succeeded"
+		}
 	}
-	if status != "submitted" && status != "queued" && status != "processing" && status != "in_progress" {
+	isSuccess := status == "succeeded" || status == "completed" || status == "success"
+	isPending := status == "submitted" || status == "queued" || status == "processing" || status == "in_progress" || status == "pending"
+	if !isSuccess && !isPending {
 		return
 	}
 
-	if _, exists, err := model.GetByTaskId(info.UserId, taskID); err != nil {
+	if _, exists, err := model.GetByOnlyTaskId(taskID); err != nil {
 		logger.LogWarn(c, fmt.Sprintf("check image task %s failed: %s", taskID, err.Error()))
 		return
 	} else if exists {
@@ -639,22 +684,191 @@ func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, re
 	task.PrivateData.BillingSource = info.BillingSource
 	task.PrivateData.SubscriptionId = info.SubscriptionId
 	task.PrivateData.TokenId = info.TokenId
+	imageCount := uint(1)
+	if imageRequest, ok := info.Request.(*dto.ImageRequest); ok {
+		task.Properties.Input = imageRequest.Prompt
+		task.Properties.ImageSize = imageRequest.Size
+		task.Properties.ImageResolution = imageRequest.GetResolution()
+		task.Properties.ImageQuality = imageRequest.Quality
+		task.Properties.ImageWatermark = imageRequest.Watermark != nil && *imageRequest.Watermark
+		if imageRequest.N != nil && *imageRequest.N > 0 {
+			imageCount = *imageRequest.N
+		}
+		task.Properties.ImageCount = imageCount
+	}
+	otherRatios := make(map[string]float64, len(info.PriceData.OtherRatios)+1)
+	for key, value := range info.PriceData.OtherRatios {
+		otherRatios[key] = value
+	}
+	if imageCount > 1 {
+		otherRatios["n"] = float64(imageCount)
+	}
+	isAPIMartTask := common.IsAPIMartAPIBaseURL(info.ChannelBaseUrl)
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
 		ModelPrice:      info.PriceData.ModelPrice,
 		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
 		ModelRatio:      info.PriceData.ModelRatio,
-		OtherRatios:     info.PriceData.OtherRatios,
+		OtherRatios:     otherRatios,
 		OriginModelName: info.OriginModelName,
-		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
+		PerCallBilling:  !isAPIMartTask && (common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice),
 	}
-	task.Quota = 0
+	if info.PriceData.UsePrice {
+		task.Quota = int(math.Round(
+			info.PriceData.ModelPrice * common.QuotaPerUnit *
+				info.PriceData.GroupRatioInfo.GroupRatio * float64(imageCount),
+		))
+	}
 	task.Data = responseBody
-	task.Action = constant.TaskActionGenerate
-	task.Status = model.TaskStatusSubmitted
-	task.Progress = "10%"
-	if err := task.Insert(); err != nil {
-		logger.LogWarn(c, fmt.Sprintf("insert image task %s failed: %s", taskID, err.Error()))
+	task.Action = constant.TaskActionImageGenerate
+	if isSuccess {
+		task.Status = model.TaskStatusSuccess
+		task.Progress = "100%"
+		if details.URL != "" {
+			task.PrivateData.ResultURL = details.URL
+		} else if details.B64 != "" {
+			task.PrivateData.ResultURL = taskcommon.BuildImageProxyURL(taskID)
+		}
+		task.FinishTime = time.Now().Unix()
+	} else {
+		task.Status = model.TaskStatusSubmitted
+		task.Progress = "10%"
 	}
+	if err := task.Insert(); err != nil {
+		logger.LogWarn(c, fmt.Sprintf("persist APIMart image task failed task_id=%s user_id=%d channel_id=%d status=%s: %s", taskID, info.UserId, info.ChannelId, task.Status, err.Error()))
+	} else {
+		logger.LogInfo(c, fmt.Sprintf("persisted APIMart image task task_id=%s user_id=%d channel_id=%d status=%s", taskID, info.UserId, info.ChannelId, task.Status))
+	}
+}
+
+type openAIImageTaskDetails struct {
+	TaskID string
+	Status string
+	URL    string
+	B64    string
+}
+
+// parseOpenAIImageTaskResponse accepts both the OpenAI-compatible data[] shape
+// and APIMart's {code,data:{...}} wrapper.
+func parseOpenAIImageTaskResponse(responseBody []byte) (openAIImageTaskDetails, bool) {
+	var payload map[string]any
+	if err := common.Unmarshal(responseBody, &payload); err != nil || payload == nil {
+		return openAIImageTaskDetails{}, false
+	}
+
+	item := firstImageObject(payload["data"])
+	// Some APIMart-compatible responses wrap the task under data.task or
+	// data.result. Prefer the object carrying the task id/status.
+	if nested := firstImageObject(item["task"]); firstString(nested, "task_id", "id") != "" {
+		item = nested
+	}
+	taskID := firstString(item, "task_id", "id")
+	if taskID == "" {
+		taskID = firstString(payload, "task_id", "id")
+	}
+
+	status := firstString(item, "status")
+	if status == "" {
+		status = firstString(payload, "status")
+	}
+
+	url := firstStringValue(item["url"])
+	if url == "" {
+		url = firstImageURL(item["result"])
+	}
+	if url == "" {
+		url = firstStringValue(payload["url"])
+	}
+	if url == "" {
+		url = firstImageURL(payload["result"])
+	}
+
+	b64 := firstString(item, "b64_json", "base64")
+	if b64 == "" {
+		b64 = firstString(payload, "b64_json", "base64")
+	}
+
+	if taskID == "" || (status == "" && url == "" && b64 == "") {
+		return openAIImageTaskDetails{}, false
+	}
+	if status == "" && (url != "" || b64 != "") {
+		status = "succeeded"
+	}
+
+	return openAIImageTaskDetails{
+		TaskID: strings.TrimSpace(taskID),
+		Status: strings.TrimSpace(status),
+		URL:    strings.TrimSpace(url),
+		B64:    strings.TrimSpace(b64),
+	}, true
+}
+
+func firstImageObject(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed
+	case []any:
+		for _, item := range typed {
+			if object, ok := item.(map[string]any); ok {
+				return object
+			}
+		}
+	}
+	return map[string]any{}
+}
+
+func firstString(object map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := object[key]; ok {
+			if result := firstStringValue(value); result != "" {
+				return result
+			}
+		}
+	}
+	return ""
+}
+
+func firstStringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case []any:
+		for _, item := range typed {
+			if result := firstStringValue(item); result != "" {
+				return result
+			}
+		}
+	case []string:
+		for _, item := range typed {
+			if result := strings.TrimSpace(item); result != "" {
+				return result
+			}
+		}
+	}
+	return ""
+}
+
+func firstImageURL(value any) string {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return ""
+	}
+	images, ok := object["images"]
+	if !ok {
+		return ""
+	}
+	switch typed := images.(type) {
+	case []any:
+		for _, image := range typed {
+			if imageObject, ok := image.(map[string]any); ok {
+				if result := firstStringValue(imageObject["url"]); result != "" {
+					return result
+				}
+			}
+		}
+	case map[string]any:
+		return firstStringValue(typed["url"])
+	}
+	return ""
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {

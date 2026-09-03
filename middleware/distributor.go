@@ -124,11 +124,16 @@ func Distribute() func(c *gin.Context) {
 							service.ClearChannelAffinityCacheForContext(c)
 						} else if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := service.GetUserAutoGroup(userGroup)
+							autoGroups := service.GetRequestAutoGroups(c, userGroup)
+							failedGroups := service.GetAutoRouteFailedGroups(c, modelRequest.Model)
 							for _, g := range autoGroups {
+								if _, failed := failedGroups[g]; failed {
+									continue
+								}
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
+									service.MarkAutoRouteSelection(c, modelRequest.Model, g)
 									channel = preferred
 									service.MarkChannelAffinityUsed(c, g, preferred.Id)
 									break
@@ -149,7 +154,7 @@ func Distribute() func(c *gin.Context) {
 						ModelName:  modelRequest.Model,
 						TokenGroup: usingGroup,
 						Retry:      common.GetPointer(0),
-					}, time.Duration(common.ModelRequestChannelCapacityQueueTimeoutMs)*time.Millisecond)
+					}, 0)
 					common.SetContextKey(c, constant.ContextKeyChannelCapacityQueue, capacityQueue)
 					if err != nil {
 						if errors.Is(err, service.ErrAllChannelsAtCapacity) {
@@ -334,7 +339,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		relayMode := relayconstant.RelayModeVideoSubmit
 		c.Set("relay_mode", relayMode)
 		shouldSelectChannel = false
-	} else if strings.Contains(c.Request.URL.Path, "/v1/videos") {
+	} else if strings.Contains(c.Request.URL.Path, "/v1/videos") || strings.Contains(c.Request.URL.Path, "/pg/videos") {
 		//curl https://api.openai.com/v1/videos \
 		//  -H "Authorization: Bearer $OPENAI_API_KEY" \
 		//  -F "model=sora-2" \
@@ -356,7 +361,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = getTaskOriginModelName(c)
 		}
 		c.Set("relay_mode", relayMode)
-	} else if strings.Contains(c.Request.URL.Path, "/v1/video/generations") {
+	} else if strings.Contains(c.Request.URL.Path, "/v1/video/generations") || strings.Contains(c.Request.URL.Path, "/pg/video/generations") {
 		relayMode := relayconstant.RelayModeUnknown
 		if c.Request.Method == http.MethodPost {
 			req, err := getModelFromRequest(c)

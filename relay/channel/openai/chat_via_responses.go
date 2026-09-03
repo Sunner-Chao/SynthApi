@@ -55,8 +55,13 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil {
+		if capacityErr := newRecognizedAutoRouteError(oaiError, resp.StatusCode); capacityErr != nil {
+			return nil, capacityErr
+		}
+		if oaiError.Type != "" {
+			return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		}
 	}
 
 	chatId := helper.GetResponseID(c)
@@ -102,13 +107,14 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	model := info.UpstreamModelName
 
 	var (
-		usage       = &dto.Usage{}
-		outputText  strings.Builder
-		usageText   strings.Builder
-		sentStart   bool
-		sentStop    bool
-		sawToolCall bool
-		streamErr   *types.NewAPIError
+		usage           = &dto.Usage{}
+		outputText      strings.Builder
+		usageText       strings.Builder
+		sentStart       bool
+		sentStop        bool
+		streamCompleted bool
+		sawToolCall     bool
+		streamErr       *types.NewAPIError
 	)
 
 	toolCallIndexByID := make(map[string]int)
@@ -308,6 +314,18 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			sr.Error(err)
 			return
 		}
+		if capacityErr := newRecognizedAutoRouteError(streamResp.Error, http.StatusServiceUnavailable); capacityErr != nil {
+			streamErr = capacityErr
+			sr.Stop(streamErr)
+			return
+		}
+		if streamResp.Response != nil {
+			if capacityErr := newRecognizedAutoRouteError(streamResp.Response.Error, http.StatusServiceUnavailable); capacityErr != nil {
+				streamErr = capacityErr
+				sr.Stop(streamErr)
+				return
+			}
+		}
 
 		switch streamResp.Type {
 		case "response.created":
@@ -443,6 +461,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		case "response.function_call_arguments.done":
 
 		case "response.completed":
+			streamCompleted = true
 			if streamResp.Response != nil {
 				if streamResp.Response.Model != "" {
 					model = streamResp.Response.Model
@@ -494,6 +513,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				}
 				sentStop = true
 			}
+			// The upstream response is complete; no trailing transport data is
+			// needed and waiting for it can turn a successful response into a
+			// scanner_error when a proxy closes the stream.
+			sr.Done()
 
 		case "response.error", "response.failed":
 			if streamResp.Response != nil {
@@ -513,6 +536,11 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 	if streamErr != nil {
 		return nil, streamErr
+	}
+	if !streamCompleted {
+		if streamFailure := newUpstreamStreamFailure(info); streamFailure != nil {
+			return nil, streamFailure
+		}
 	}
 
 	if usage.TotalTokens == 0 {
@@ -565,6 +593,7 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 	var reasoningText strings.Builder
 	var usageText strings.Builder
 	var streamErr *types.NewAPIError
+	streamCompleted := false
 
 	toolCallIndexByID := make(map[string]int)
 	toolCallNameByID := make(map[string]string)
@@ -643,6 +672,16 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 			streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			break
 		}
+		if capacityErr := newRecognizedAutoRouteError(streamResp.Error, http.StatusServiceUnavailable); capacityErr != nil {
+			streamErr = capacityErr
+			break
+		}
+		if streamResp.Response != nil {
+			if capacityErr := newRecognizedAutoRouteError(streamResp.Response.Error, http.StatusServiceUnavailable); capacityErr != nil {
+				streamErr = capacityErr
+				break
+			}
+		}
 
 		switch streamResp.Type {
 		case "response.created":
@@ -698,6 +737,7 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 			usageText.WriteString(streamResp.Delta)
 
 		case "response.completed":
+			streamCompleted = true
 			updateUsageFromResponses(streamResp.Response)
 
 		case "response.error", "response.failed":
@@ -720,6 +760,12 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	if !streamCompleted {
+		return nil, newAutoRouteFailureFromText(
+			"stream disconnected before completion: upstream stream ended unexpectedly",
+			http.StatusBadGateway,
+		)
 	}
 
 	if usage.TotalTokens == 0 {
