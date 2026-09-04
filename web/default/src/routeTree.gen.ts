@@ -39,6 +39,7 @@ import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-p
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
+import { Route as AuthenticatedVideoWorkbenchIndexRouteImport } from './routes/_authenticated/video-workbench/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedTopupOrdersIndexRouteImport } from './routes/_authenticated/topup-orders/index'
@@ -227,6 +228,12 @@ const AuthenticatedWalletIndexRoute =
   AuthenticatedWalletIndexRouteImport.update({
     id: '/wallet/',
     path: '/wallet/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedVideoWorkbenchIndexRoute =
+  AuthenticatedVideoWorkbenchIndexRouteImport.update({
+    id: '/video-workbench/',
+    path: '/video-workbench/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
@@ -512,6 +519,7 @@ export interface FileRoutesByFullPath {
   '/topup-orders/': typeof AuthenticatedTopupOrdersIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
+  '/video-workbench/': typeof AuthenticatedVideoWorkbenchIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -580,6 +588,7 @@ export interface FileRoutesByTo {
   '/topup-orders': typeof AuthenticatedTopupOrdersIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
+  '/video-workbench': typeof AuthenticatedVideoWorkbenchIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -652,6 +661,7 @@ export interface FileRoutesById {
   '/_authenticated/topup-orders/': typeof AuthenticatedTopupOrdersIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/video-workbench/': typeof AuthenticatedVideoWorkbenchIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -723,6 +733,7 @@ export interface FileRouteTypes {
     | '/topup-orders/'
     | '/usage-logs/'
     | '/users/'
+    | '/video-workbench/'
     | '/wallet/'
     | '/pricing/$modelId/'
     | '/system-settings/auth/$section'
@@ -791,6 +802,7 @@ export interface FileRouteTypes {
     | '/topup-orders'
     | '/usage-logs'
     | '/users'
+    | '/video-workbench'
     | '/wallet'
     | '/pricing/$modelId'
     | '/system-settings/auth/$section'
@@ -862,6 +874,7 @@ export interface FileRouteTypes {
     | '/_authenticated/topup-orders/'
     | '/_authenticated/usage-logs/'
     | '/_authenticated/users/'
+    | '/_authenticated/video-workbench/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
     | '/_authenticated/system-settings/auth/$section'
@@ -1113,6 +1126,13 @@ declare module '@tanstack/react-router' {
       path: '/wallet'
       fullPath: '/wallet/'
       preLoaderRoute: typeof AuthenticatedWalletIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/video-workbench/': {
+      id: '/_authenticated/video-workbench/'
+      path: '/video-workbench'
+      fullPath: '/video-workbench/'
+      preLoaderRoute: typeof AuthenticatedVideoWorkbenchIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/users/': {
@@ -1500,6 +1520,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTopupOrdersIndexRoute: typeof AuthenticatedTopupOrdersIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
+  AuthenticatedVideoWorkbenchIndexRoute: typeof AuthenticatedVideoWorkbenchIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
 
@@ -1532,6 +1553,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTopupOrdersIndexRoute: AuthenticatedTopupOrdersIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
+  AuthenticatedVideoWorkbenchIndexRoute: AuthenticatedVideoWorkbenchIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
 
