@@ -91,6 +91,8 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 		Mode:     formData.Get("mode"),
 		Image:    formData.Get("image"),
 		Size:     formData.Get("size"),
+		Resolution: formData.Get("resolution"),
+		AspectRatio: formData.Get("aspect_ratio"),
 		Metadata: make(map[string]interface{}),
 	}
 
@@ -102,6 +104,9 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 
 	if images := formData["images"]; len(images) > 0 {
 		req.Images = images
+	}
+	if imageURLs := formData["image_urls"]; len(imageURLs) > 0 {
+		req.ImageURLs = imageURLs
 	}
 
 	for key, values := range formData {
@@ -188,8 +193,20 @@ func isKnownTaskField(field string) bool {
 		"mode":            true,
 		"image":           true,
 		"images":          true,
+		"image_urls":      true,
+		"video_urls":      true,
+		"audio_urls":      true,
+		"first_frame_image": true,
+		"last_frame_image":  true,
+		"video_url":       true,
 		"size":            true,
+		"resolution":      true,
+		"aspect_ratio":    true,
 		"duration":        true,
+		"seconds":         true,
+		"generate_audio":  true,
+		"seed":            true,
+		"negative_prompt": true,
 		"input_reference": true, // Sora 特有字段
 	}
 	return knownFields[field]

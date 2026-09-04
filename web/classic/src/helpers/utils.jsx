@@ -54,7 +54,23 @@ export function getSystemName() {
 
 export function getLogo() {
   let logo = localStorage.getItem('logo');
-  if (!logo) return '/logo.png';
+  if (!logo) return '/logo.png?v=synthapi-logo-root-20260828';
+  return logo;
+}
+
+export function getFavicon() {
+  const logo = getLogo();
+  try {
+    const parsed = new URL(logo, window.location.origin);
+    if (
+      parsed.origin === window.location.origin &&
+      parsed.pathname === '/logo.png'
+    ) {
+      return '/favicon.png?v=synthapi-logo-from-root-20260828';
+    }
+  } catch (e) {
+    // Keep malformed/custom values unchanged; the image loader will handle it.
+  }
   return logo;
 }
 

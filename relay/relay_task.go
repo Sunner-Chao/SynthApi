@@ -376,7 +376,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
+	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/") || strings.HasPrefix(c.Request.RequestURI, "/pg/videos/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
 	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
@@ -423,13 +423,14 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if err != nil {
 		return nil
 	}
-	if channelModel.Type != constant.ChannelTypeVertexAi && channelModel.Type != constant.ChannelTypeGemini {
-		return nil
-	}
-
+	modelName := strings.TrimSpace(task.Properties.OriginModelName)
 	baseURL := constant.ChannelBaseURLs[channelModel.Type]
 	if channelModel.GetBaseURL() != "" {
 		baseURL = channelModel.GetBaseURL()
+	}
+	isAPIMartVideo := (channelModel.Type == constant.ChannelTypeOpenAI || channelModel.Type == constant.ChannelTypeSora) && common.IsAPIMartAPIBaseURL(baseURL)
+	if channelModel.Type != constant.ChannelTypeVertexAi && channelModel.Type != constant.ChannelTypeGemini && !isAPIMartVideo {
+		return nil
 	}
 	proxy := channelModel.GetSetting().Proxy
 	adaptor := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(channelModel.Type)))
@@ -440,6 +441,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	resp, err := adaptor.FetchTask(baseURL, channelModel.Key, map[string]any{
 		"task_id": task.GetUpstreamTaskID(),
 		"action":  task.Action,
+		"origin_model": modelName,
 	}, proxy)
 	if err != nil || resp == nil {
 		return nil

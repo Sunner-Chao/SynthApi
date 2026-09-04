@@ -56,11 +56,11 @@ function BrandLogo({
       className='flex items-center gap-2 text-xl font-bold'
       onClick={onClick}
     >
-      <div className='relative h-6 w-6'>
+      <div className='relative h-6 w-20'>
         {loading || !logoLoaded ? (
           <Skeleton className='absolute inset-0 rounded-full' />
         ) : null}
-        {displayLogo}
+        <div className='h-full w-full'>{displayLogo}</div>
       </div>
       {loading ? <Skeleton className='h-5 w-20' /> : displaySiteName}
     </Link>

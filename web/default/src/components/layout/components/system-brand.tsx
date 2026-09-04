@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { LogoFull, LogoMark } from './logo-mark'
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -50,7 +51,6 @@ export function SystemBrand(props: SystemBrandProps) {
   const { logo } = useSystemConfig()
 
   const variant = props.variant ?? 'sidebar'
-  const name = status?.system_name || props.defaultName || 'SynthAPI'
   const version =
     status?.version || props.defaultVersion || t('Unknown version')
 
@@ -64,14 +64,7 @@ export function SystemBrand(props: SystemBrandProps) {
           'hover:bg-accent focus-visible:ring-ring/40 focus-visible:ring-2'
         )}
       >
-        <div className='flex size-5 items-center justify-center overflow-hidden rounded-md'>
-          <img
-            src={logo}
-            alt={t('Logo')}
-            className='size-full rounded-md object-cover'
-          />
-        </div>
-        <span className='max-w-[12rem] truncate'>{name}</span>
+        <LogoFull src={logo} alt={t('Logo')} className='h-9 w-[11rem]' />
       </Link>
     )
   }
@@ -84,15 +77,17 @@ export function SystemBrand(props: SystemBrandProps) {
           className='hover:text-sidebar-foreground active:text-sidebar-foreground cursor-default hover:bg-transparent active:bg-transparent'
           render={<div />}
         >
-          <div className='flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg'>
-            <img
-              src={logo}
-              alt={t('Logo')}
-              className='size-full rounded-lg object-cover'
-            />
-          </div>
+          <LogoFull
+            src={logo}
+            alt={t('Logo')}
+            className='h-10 w-[12.5rem] group-data-[collapsible=icon]:hidden'
+          />
+          <LogoMark
+            src={logo}
+            alt={t('Logo')}
+            className='hidden h-8 w-8 rounded-md group-data-[collapsible=icon]:inline-flex'
+          />
           <div className='grid flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden'>
-            <span className='truncate font-semibold'>{name}</span>
             <span className='truncate text-xs'>{version}</span>
           </div>
         </SidebarMenuButton>

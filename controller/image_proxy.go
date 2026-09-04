@@ -18,12 +18,16 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -36,7 +40,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const imageHistoryRetention = 7 * 24 * time.Hour
+
+var imageHistoryCleanupOnce sync.Once
+
 func ImageProxy(c *gin.Context) {
+	startImageHistoryCleanup()
+
 	taskID := strings.TrimSpace(c.Param("task_id"))
 	if taskID == "" {
 		imageProxyError(c, http.StatusBadRequest, "task_id is required")
@@ -58,9 +68,12 @@ func ImageProxy(c *gin.Context) {
 			fmt.Sprintf("task is not completed yet, current status: %s", task.Status))
 		return
 	}
+	if serveCachedImage(c, taskID) {
+		return
+	}
 
 	if dataURL := extractImageDataURL(task); dataURL != "" {
-		if err := writeImageDataURL(c, dataURL); err != nil {
+		if err := writeImageDataURL(c, dataURL, taskID); err != nil {
 			logger.LogError(c, fmt.Sprintf("failed to decode image task %s: %s", taskID, err.Error()))
 			imageProxyError(c, http.StatusBadGateway, "failed to decode image content")
 		}
@@ -138,7 +151,155 @@ func ImageProxy(c *gin.Context) {
 	} else {
 		c.Header("Content-Disposition", "inline")
 	}
-	_, _ = io.Copy(c.Writer, resp.Body)
+	cacheFile, cachePath := createImageCacheFile(taskID)
+	if cacheFile == nil {
+		_, _ = io.Copy(c.Writer, resp.Body)
+		return
+	}
+	cacheWriter := &imageCacheWriter{file: cacheFile, remaining: 64 << 20}
+	_, copyErr := io.Copy(c.Writer, io.TeeReader(resp.Body, cacheWriter))
+	closeErr := cacheFile.Close()
+	if copyErr != nil || closeErr != nil || cacheWriter.overflow {
+		_ = os.Remove(cacheFile.Name())
+		return
+	}
+	if err := os.Rename(cacheFile.Name(), cachePath); err != nil {
+		_ = os.Remove(cacheFile.Name())
+	}
+}
+
+type imageCacheWriter struct {
+	file      *os.File
+	remaining int64
+	overflow  bool
+}
+
+func (w *imageCacheWriter) Write(data []byte) (int, error) {
+	if w.overflow || w.file == nil {
+		return len(data), nil
+	}
+	writeData := data
+	if int64(len(writeData)) > w.remaining {
+		writeData = writeData[:w.remaining]
+		w.overflow = true
+	}
+	if len(writeData) > 0 {
+		if _, err := w.file.Write(writeData); err != nil {
+			w.overflow = true
+			w.file = nil
+			return len(data), nil
+		}
+		w.remaining -= int64(len(writeData))
+	}
+	return len(data), nil
+}
+
+func imageHistoryDir() string {
+	// Keep generated images outside the generic request-body cache. When the
+	// administrator has configured a disk-cache path, reuse that persistent
+	// volume; otherwise resolve relative to the service working directory
+	// instead of the operating system temporary directory.
+	basePath := strings.TrimSpace(common.GetDiskCachePath())
+	if basePath == "" {
+		basePath = filepath.Join("data", "cache")
+	}
+	return filepath.Join(basePath, "synthapi-image-history")
+}
+
+func imageCachePath(taskID string) string {
+	hash := sha256.Sum256([]byte(taskID))
+	return filepath.Join(imageHistoryDir(), fmt.Sprintf("%x.img", hash[:]))
+}
+
+func legacyImageCachePath(taskID string) string {
+	hash := sha256.Sum256([]byte(taskID))
+	return filepath.Join(common.GetDiskCacheDir(), "images", fmt.Sprintf("%x.img", hash[:]))
+}
+
+func createImageCacheFile(taskID string) (*os.File, string) {
+	cachePath := imageCachePath(taskID)
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+		return nil, ""
+	}
+	file, err := os.CreateTemp(filepath.Dir(cachePath), ".image-*.tmp")
+	if err != nil {
+		return nil, ""
+	}
+	return file, cachePath
+}
+
+func startImageHistoryCleanup() {
+	imageHistoryCleanupOnce.Do(func() {
+		cleanupImageHistory()
+		go func() {
+			ticker := time.NewTicker(6 * time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				cleanupImageHistory()
+			}
+		}()
+	})
+}
+
+func cleanupImageHistory() {
+	dir := imageHistoryDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.LogWarn(nil, fmt.Sprintf("failed to scan image history directory: %s", err))
+		}
+		return
+	}
+
+	cutoff := time.Now().Add(-imageHistoryRetention)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".img") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
+			logger.LogWarn(nil, fmt.Sprintf("failed to remove expired image history %s: %s", entry.Name(), err))
+		}
+	}
+}
+
+func serveCachedImage(c *gin.Context, taskID string) bool {
+	cachePath := imageCachePath(taskID)
+	file, err := os.Open(cachePath)
+	if err != nil {
+		// Keep older deployments readable. Their image cache was already on the
+		// configured disk volume, but used the generic cache/images directory.
+		cachePath = legacyImageCachePath(taskID)
+		file, err = os.Open(cachePath)
+		if err != nil {
+			return false
+		}
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.Size() <= 0 {
+		return false
+	}
+	header := make([]byte, 512)
+	n, _ := file.Read(header)
+	_, _ = file.Seek(0, io.SeekStart)
+	contentType := http.DetectContentType(header[:n])
+	if !strings.HasPrefix(contentType, "image/") {
+		return false
+	}
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Length", fmt.Sprintf("%d", info.Size()))
+	c.Header("Cache-Control", "private, max-age=604800")
+	if c.Query("download") == "1" {
+		c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="image-%s"`, taskID))
+	} else {
+		c.Header("Content-Disposition", "inline")
+	}
+	_, _ = io.Copy(c.Writer, file)
+	return true
 }
 
 func contextWithImageTimeout(c *gin.Context) (context.Context, context.CancelFunc) {
@@ -154,7 +315,7 @@ func imageProxyError(c *gin.Context, status int, message string) {
 	})
 }
 
-func writeImageDataURL(c *gin.Context, dataURL string) error {
+func writeImageDataURL(c *gin.Context, dataURL string, taskID string) error {
 	parts := strings.SplitN(dataURL, ",", 2)
 	if len(parts) != 2 || !strings.HasPrefix(parts[0], "data:") || !strings.Contains(parts[0], ";base64") {
 		return fmt.Errorf("unsupported image data URL")
@@ -181,8 +342,31 @@ func writeImageDataURL(c *gin.Context, dataURL string) error {
 		c.Header("Content-Disposition", "inline")
 	}
 	c.Header("Content-Length", fmt.Sprintf("%d", len(payload)))
+	persistImageHistory(payload, taskID)
 	_, err = c.Writer.Write(payload)
 	return err
+}
+
+func persistImageHistory(payload []byte, taskID string) {
+	if taskID == "" || len(payload) == 0 || len(payload) > 64<<20 {
+		return
+	}
+	cacheFile, cachePath := createImageCacheFile(taskID)
+	if cacheFile == nil {
+		return
+	}
+	if _, err := cacheFile.Write(payload); err != nil {
+		_ = cacheFile.Close()
+		_ = os.Remove(cacheFile.Name())
+		return
+	}
+	if err := cacheFile.Close(); err != nil {
+		_ = os.Remove(cacheFile.Name())
+		return
+	}
+	if err := os.Rename(cacheFile.Name(), cachePath); err != nil {
+		_ = os.Remove(cacheFile.Name())
+	}
 }
 
 func extractImageDataURL(task *model.Task) string {

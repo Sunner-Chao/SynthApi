@@ -34,6 +34,7 @@ import {
   Ticket,
   User,
   Users,
+  Video,
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -103,6 +104,11 @@ export function useSidebarData(): SidebarData {
             title: t('Image Workbench'),
             url: '/image-workbench',
             icon: ImageIcon,
+          },
+          {
+            title: t('Video Workbench'),
+            url: '/video-workbench',
+            icon: Video,
           },
         ],
       },

@@ -48,7 +48,7 @@ func compactAnnouncementImages(announcements []map[string]interface{}) []map[str
 func GetAnnouncementImage(c *gin.Context) {
 	hash := strings.ToLower(strings.TrimSpace(c.Param("hash")))
 	if !announcementImageHashPattern.MatchString(hash) {
-		c.Status(http.StatusNotFound)
+		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
 
@@ -71,15 +71,15 @@ func GetAnnouncementImage(c *gin.Context) {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		c.Header("Content-Disposition", "inline")
 		c.Header("Content-Length", strconv.Itoa(len(payload)))
-		if strings.TrimSpace(c.GetHeader("If-None-Match")) == etag {
-			c.Status(http.StatusNotModified)
+		if c.Request != nil && strings.TrimSpace(c.GetHeader("If-None-Match")) == etag {
+				c.AbortWithStatus(http.StatusNotModified)
 			return
 		}
 		c.Data(http.StatusOK, contentType, payload)
 		return
 	}
 
-	c.Status(http.StatusNotFound)
+	c.AbortWithStatus(http.StatusNotFound)
 }
 
 func decodeAnnouncementImageDataURL(imageURL string) (string, []byte, bool) {

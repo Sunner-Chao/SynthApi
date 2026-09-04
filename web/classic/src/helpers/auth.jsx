@@ -56,7 +56,7 @@ export function AdminRoute({ children }) {
   }
   try {
     const user = JSON.parse(raw);
-    if (user && typeof user.role === 'number' && user.role >= 10) {
+    if (user && Number(user.role) >= 10) {
       return children;
     }
   } catch (e) {

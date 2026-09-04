@@ -96,6 +96,8 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundRouter.POST("/images/generations", middleware.Distribute(), controller.PlaygroundImage)
 		playgroundRouter.GET("/images/generations/:task_id", controller.FetchImageGenerationTask)
 		playgroundRouter.GET("/images/generations/:task_id/content", controller.ImageProxy)
+		playgroundRouter.POST("/videos/generations", middleware.Distribute(), controller.PlaygroundVideo)
+		playgroundRouter.GET("/videos/generations/:task_id", controller.FetchPlaygroundVideoTask)
 	}
 	imageContentRouter := router.Group("/v1")
 	imageContentRouter.Use(middleware.RouteTag("relay"))
@@ -122,6 +124,7 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		taskRouter := relayV1Router.Group("")
 		taskRouter.GET("/images/generations/:task_id", controller.FetchImageGenerationTask)
+		taskRouter.GET("/tasks/:task_id", controller.FetchAPIMartImageTask)
 	}
 	{
 		//http router

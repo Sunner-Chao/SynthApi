@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
 import { Skeleton } from '@/components/ui/skeleton'
+import { LogoFull } from '@/components/layout/components/logo-mark'
 import { ErrorState } from '@/components/error-state'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { LoadingState } from '@/components/loading-state'
@@ -283,15 +284,11 @@ export function SetupWizard() {
       </div>
       <div className='container mx-auto flex max-w-5xl flex-col gap-8 px-4 sm:px-6'>
         <div className='flex flex-col items-center gap-3'>
-          <div className='relative h-12 w-12'>
+          <div className='relative h-12 w-[11rem]'>
             {systemConfigLoading ? (
               <Skeleton className='absolute inset-0 rounded-full' />
             ) : (
-              <img
-                src={logo}
-                alt={t('System logo')}
-                className='h-12 w-12 rounded-full object-cover shadow-sm'
-              />
+              <LogoFull src={logo} alt={t('System logo')} className='h-12 w-full shadow-sm' />
             )}
           </div>
           {systemConfigLoading ? (

@@ -172,6 +172,26 @@ export interface ImageGenerationResponse {
   }
 }
 
+export interface ImageGenerationHistoryItem {
+  id: number
+  task_id: string
+  status: string
+  progress?: string
+  result_url?: string
+  submit_time?: number
+  finish_time?: number
+  properties?: {
+    input?: string
+    origin_model_name?: string
+    upstream_model_name?: string
+    image_size?: string
+    image_resolution?: string
+    image_quality?: string
+    image_count?: number
+    image_watermark?: boolean
+  }
+}
+
 // Configuration types
 export interface PlaygroundConfig {
   model: string
@@ -220,4 +240,51 @@ export interface GroupOption {
   ratio: number
   desc?: string
   supportsResolutionPricing?: boolean
+  supportsCustomImageParameters?: boolean
+  supportsCustomVideoParameters?: boolean
+  models?: string[]
+}
+
+export interface VideoGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  duration?: number
+  seconds?: string
+  resolution?: string
+  size?: string
+  aspect_ratio?: string
+  image_urls?: string[]
+  video_urls?: string[]
+  audio_urls?: string[]
+  first_frame_image?: string
+  last_frame_image?: string
+  generate_audio?: boolean
+  seed?: number
+  negative_prompt?: string
+  [key: string]: unknown
+}
+
+export interface VideoGenerationResponse {
+  id?: string
+  task_id?: string
+  status?: string
+  progress?: string | number
+  error?: { message?: string; code?: string; type?: string }
+  data?: unknown
+}
+
+export interface VideoGenerationHistoryItem {
+  id: number
+  task_id: string
+  status: string
+  progress?: string
+  result_url?: string
+  submit_time?: number
+  finish_time?: number
+  properties?: {
+    input?: string
+    origin_model_name?: string
+    upstream_model_name?: string
+  }
 }

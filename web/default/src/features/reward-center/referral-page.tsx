@@ -24,6 +24,7 @@ import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { transferAffiliateQuota } from '@/features/wallet/api'
+import { getPublicSiteOrigin } from '@/features/wallet/lib/affiliate'
 import { RewardCenterShell } from './reward-center-shell'
 import './styles.css'
 import type { AffiliateRewardStage } from './types'
@@ -79,7 +80,7 @@ export function ReferralPage() {
       toast.error('邀请码尚未生成，请先进入钱包刷新邀请信息')
       return
     }
-    const link = `${window.location.origin}/register?aff=${code}`
+    const link = `${getPublicSiteOrigin()}/register?aff=${encodeURIComponent(code)}`
     await navigator.clipboard.writeText(link)
     toast.success('邀请链接已复制')
   }, [user?.aff_code])

@@ -2,13 +2,16 @@ package sora
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -72,12 +75,19 @@ type responseImageTask struct {
 		Images []struct {
 			URL any `json:"url"`
 		} `json:"images,omitempty"`
+		Videos []struct {
+			URL any `json:"url"`
+		} `json:"videos,omitempty"`
 	} `json:"result,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
 	Message string `json:"message,omitempty"`
+	Cost    float64 `json:"cost,omitempty"`
+	Usage   struct {
+		TotalTokens int `json:"total_tokens,omitempty"`
+	} `json:"usage,omitempty"`
 }
 
 type apimartImageTaskResponse struct {
@@ -88,6 +98,33 @@ type apimartImageTaskResponse struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+}
+
+type apimartTaskSubmissionResponse struct {
+	Code    int               `json:"code"`
+	Data    []responseTask    `json:"data"`
+	Message string            `json:"message,omitempty"`
+	Error   *struct {
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	} `json:"error,omitempty"`
+}
+
+func (r *apimartTaskSubmissionResponse) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Code int `json:"code"`
+		Data json.RawMessage `json:"data"`
+		Message string `json:"message,omitempty"`
+		Error *struct { Message string `json:"message"`; Code string `json:"code"` } `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil { return err }
+	r.Code, r.Message, r.Error = raw.Code, raw.Message, raw.Error
+	if len(raw.Data) == 0 || string(raw.Data) == "null" { return nil }
+	if err := json.Unmarshal(raw.Data, &r.Data); err == nil { return nil }
+	var single responseTask
+	if err := json.Unmarshal(raw.Data, &single); err != nil { return err }
+	r.Data = []responseTask{single}
+	return nil
 }
 
 // ============================
@@ -138,6 +175,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil
 	}
+	if common.IsAPIMartAPIBaseURL(a.baseURL) && isAPIMartVideoModel(info.OriginModelName) {
+		return apimartVideoBillingRatios(info.OriginModelName, req)
+	}
 
 	seconds, _ := strconv.Atoi(req.Seconds)
 	if seconds == 0 {
@@ -166,6 +206,9 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	if info.Action == constant.TaskActionRemix {
 		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
 	}
+	if common.IsAPIMartAPIBaseURL(a.baseURL) && isAPIMartVideoModel(info.OriginModelName) {
+		return fmt.Sprintf("%s/v1/videos/generations", a.baseURL), nil
+	}
 	return fmt.Sprintf("%s/v1/videos", a.baseURL), nil
 }
 
@@ -191,6 +234,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
+			if common.IsAPIMartAPIBaseURL(a.baseURL) && isAPIMartVideoModel(info.OriginModelName) {
+				bodyMap = normalizeAPIMartVideoPayload(bodyMap)
+			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
 				return bytes.NewReader(newBody), nil
 			}
@@ -252,6 +298,105 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return common.ReaderOnly(storage), nil
 }
 
+// normalizeAPIMartVideoPayload converts the OpenAI-compatible task fields
+// accepted by the gateway into APIMart's video-generation schema. Unknown
+// model-specific options are deliberately retained so new APIMart models do
+// not require a gateway release for every parameter addition.
+func normalizeAPIMartVideoPayload(body map[string]interface{}) map[string]interface{} {
+	if body == nil {
+		body = make(map[string]interface{})
+	}
+	if _, ok := body["duration"]; !ok {
+		if value, ok := body["seconds"]; ok {
+			switch v := value.(type) {
+			case string:
+				if duration, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && duration > 0 {
+					body["duration"] = duration
+				}
+			case float64:
+				if v > 0 {
+					body["duration"] = int(v)
+				}
+			}
+		}
+	}
+	if _, ok := body["duration"]; !ok {
+		body["duration"] = 5
+	}
+
+	resolution, aspectRatio := normalizeAPIMartVideoDimensions(body)
+	if resolution != "" {
+		body["resolution"] = resolution
+	}
+	if aspectRatio != "" {
+		body["aspect_ratio"] = aspectRatio
+	}
+
+	// The gateway accepts all common reference aliases. APIMart expects a
+	// URL array, so flatten them into image_urls without losing video/audio
+	// references used by models that support them.
+	if _, ok := body["image_urls"]; !ok {
+		refs := make([]string, 0)
+		for _, key := range []string{"image", "input_reference"} {
+			if value, ok := body[key].(string); ok && strings.TrimSpace(value) != "" {
+				refs = append(refs, strings.TrimSpace(value))
+			}
+		}
+		if values, ok := body["images"].([]interface{}); ok {
+			for _, value := range values {
+				if ref, ok := value.(string); ok && strings.TrimSpace(ref) != "" {
+					refs = append(refs, strings.TrimSpace(ref))
+				}
+			}
+		}
+		if len(refs) > 0 {
+			body["image_urls"] = refs
+		}
+	}
+	delete(body, "seconds")
+	delete(body, "size")
+	delete(body, "image")
+	delete(body, "images")
+	delete(body, "input_reference")
+	return body
+}
+
+func normalizeAPIMartVideoDimensions(body map[string]interface{}) (string, string) {
+	resolution, _ := body["resolution"].(string)
+	resolution = strings.ToLower(strings.TrimSpace(resolution))
+	aspectRatio, _ := body["aspect_ratio"].(string)
+	aspectRatio = strings.TrimSpace(aspectRatio)
+	size, _ := body["size"].(string)
+	size = strings.ToLower(strings.TrimSpace(size))
+	if strings.Contains(size, "x") {
+		parts := strings.SplitN(size, "x", 2)
+		if len(parts) == 2 {
+			width, _ := strconv.Atoi(parts[0])
+			height, _ := strconv.Atoi(parts[1])
+			if width > 0 && height > 0 {
+				aspectRatio = fmt.Sprintf("%d:%d", width/gcd(width, height), height/gcd(width, height))
+			}
+		}
+		if resolution == "" {
+			resolution = resolutionFromVideoSize(size)
+		}
+	}
+	if resolution == "" {
+		resolution = "720p"
+	}
+	return resolution, aspectRatio
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	if a < 1 {
+		return 1
+	}
+	return a
+}
+
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
@@ -265,6 +410,32 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 	_ = resp.Body.Close()
+	if common.IsAPIMartAPIBaseURL(a.baseURL) && isAPIMartVideoModel(info.OriginModelName) {
+		var submission apimartTaskSubmissionResponse
+		if err := common.Unmarshal(responseBody, &submission); err != nil {
+			return "", nil, service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		}
+		if submission.Error != nil && strings.TrimSpace(submission.Error.Message) != "" {
+			return "", nil, service.TaskErrorWrapper(fmt.Errorf("%s", submission.Error.Message), submission.Error.Code, http.StatusBadGateway)
+		}
+		if len(submission.Data) == 0 {
+			return "", nil, service.TaskErrorWrapper(fmt.Errorf("task data is empty: %s", submission.Message), "invalid_response", http.StatusBadGateway)
+		}
+		upstreamID := strings.TrimSpace(submission.Data[0].TaskID)
+		if upstreamID == "" {
+			upstreamID = strings.TrimSpace(submission.Data[0].ID)
+		}
+		if upstreamID == "" {
+			return "", nil, service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusBadGateway)
+		}
+		video := dto.NewOpenAIVideo()
+		video.ID = info.PublicTaskID
+		video.TaskID = info.PublicTaskID
+		video.Model = info.OriginModelName
+		video.CreatedAt = time.Now().Unix()
+		c.JSON(http.StatusOK, video)
+		return upstreamID, responseBody, nil
+	}
 
 	// Parse Sora response
 	var dResp responseTask
@@ -297,10 +468,8 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 
 	modelName, _ := body["origin_model"].(string)
-	uri := fmt.Sprintf("%s/v1/videos/%s", baseUrl, taskID)
-	if isOpenAIImageTaskModel(modelName) {
-		uri = fmt.Sprintf("%s/v1/tasks/%s", baseUrl, taskID)
-	}
+	action, _ := body["action"].(string)
+	uri := buildTaskFetchURL(baseUrl, taskID, modelName, action)
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -316,6 +485,17 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	return client.Do(req)
 }
 
+// buildTaskFetchURL keeps task polling on the same provider endpoint used for
+// submission. APIMart exposes both image and video jobs through /v1/tasks;
+// other Sora-compatible providers continue using /v1/videos.
+func buildTaskFetchURL(baseURL, taskID, modelName, action string) string {
+	if common.IsAPIMartAPIBaseURL(baseURL) &&
+		(action == constant.TaskActionImageGenerate || isOpenAIImageTaskModel(modelName) || isAPIMartVideoModel(modelName)) {
+		return fmt.Sprintf("%s/v1/tasks/%s", strings.TrimRight(baseURL, "/"), taskID)
+	}
+	return fmt.Sprintf("%s/v1/videos/%s", strings.TrimRight(baseURL, "/"), taskID)
+}
+
 func (a *TaskAdaptor) GetModelList() []string {
 	return ModelList
 }
@@ -325,7 +505,7 @@ func (a *TaskAdaptor) GetChannelName() string {
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
-	if taskResult, ok := parseOpenAIImageTaskResult(respBody); ok {
+	if taskResult, ok := parseAPIMartTaskResult(respBody); ok {
 		return taskResult, nil
 	}
 
@@ -362,25 +542,96 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return &taskResult, nil
 }
 
-func isOpenAIImageTaskModel(modelName string) bool {
-	modelName = strings.ToLower(strings.TrimSpace(modelName))
-	return strings.HasPrefix(modelName, "gpt-image-") || strings.HasPrefix(modelName, "chatgpt-image-")
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	if task == nil || taskResult == nil || taskResult.SourceCostUSD <= 0 {
+		return 0
+	}
+	if !common.IsAPIMartAPIBaseURL(a.baseURL) {
+		return 0
+	}
+	const sellingMarkup = 1.15
+	return int(math.Round(taskResult.SourceCostUSD * sellingMarkup * common.QuotaPerUnit))
 }
 
-func parseOpenAIImageTaskResult(respBody []byte) (*relaycommon.TaskInfo, bool) {
-	var wrapped apimartImageTaskResponse
-	if err := common.Unmarshal(respBody, &wrapped); err == nil {
-		if wrapped.Code == 200 && strings.TrimSpace(wrapped.Data.Status) != "" {
-			return buildOpenAIImageTaskInfo(wrapped.Data)
+func isOpenAIImageTaskModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	if strings.HasPrefix(modelName, "gpt-image-") || strings.HasPrefix(modelName, "chatgpt-image-") {
+		return true
+	}
+	_, ok := apimartImageTaskModels[modelName]
+	return ok
+}
+
+var apimartImageTaskModels = map[string]struct{}{
+	"flux-2-flex":                    {},
+	"flux-2-max":                     {},
+	"flux-2-pro":                     {},
+	"flux-kontext-max":               {},
+	"flux-kontext-pro":               {},
+	"gemini-2.5-flash-image-preview": {},
+	"gemini-3-pro-image-preview":     {},
+	"gemini-3.1-flash-image-preview": {},
+	"gemini-3.1-flash-lite-image":    {},
+	"grok-imagine-1.5-apimart":       {},
+	"grok-imagine-2.0-ext":           {},
+	"grok-imagine-image":             {},
+	"grok-imagine-image-2.0":         {},
+	"grok-imagine-image-quality":     {},
+	"imagen-4.0-apimart":             {},
+	"qwen-image-2.0":                 {},
+	"qwen-image-2.0-pro":             {},
+	"qwen-image-3.0":                 {},
+	"qwen-image-3.0-pro":             {},
+	"seedream-4.0":                   {},
+	"seedream-4.5":                   {},
+	"seedream-5-0-lite":              {},
+	"seedream-5-0-pro":               {},
+	"wan2.7-image":                   {},
+	"wan2.7-image-pro":               {},
+	"z-image-turbo":                  {},
+}
+
+func parseAPIMartTaskResult(respBody []byte) (*relaycommon.TaskInfo, bool) {
+	// APIMart uses {code,data:{...}} for task queries, while some compatible
+	// gateways return data as a one-item array. Decode the envelope separately
+	// so an array cannot make the whole response look invalid.
+	var envelope struct {
+		Code    int             `json:"code"`
+		Data    json.RawMessage `json:"data"`
+		Error   *struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"error,omitempty"`
+		Message string `json:"message,omitempty"`
+	}
+	if err := common.Unmarshal(respBody, &envelope); err == nil && len(envelope.Data) > 0 {
+		var task responseImageTask
+		if err := common.Unmarshal(envelope.Data, &task); err != nil {
+			var items []responseImageTask
+			if arrayErr := common.Unmarshal(envelope.Data, &items); arrayErr == nil && len(items) > 0 {
+				task = items[0]
+			} else {
+				var generic map[string]any
+				if common.Unmarshal(envelope.Data, &generic) == nil {
+					if nested, ok := generic["task"].(map[string]any); ok {
+						if nestedBytes, marshalErr := common.Marshal(nested); marshalErr == nil {
+							_ = common.Unmarshal(nestedBytes, &task)
+						}
+					}
+				}
+			}
 		}
-		if wrapped.Error != nil && strings.TrimSpace(wrapped.Error.Message) != "" {
-			return &relaycommon.TaskInfo{
-				Code:     0,
-				Status:   model.TaskStatusFailure,
-				Progress: "100%",
-				Reason:   strings.TrimSpace(wrapped.Error.Message),
-			}, true
+		if result, ok := buildOpenAIImageTaskInfo(task); ok {
+			return result, true
 		}
+	}
+	if envelope.Error != nil && strings.TrimSpace(envelope.Error.Message) != "" {
+		return &relaycommon.TaskInfo{
+			Code:     0,
+			Status:   model.TaskStatusFailure,
+			Progress: "100%",
+			Reason:   strings.TrimSpace(envelope.Error.Message),
+		}, true
 	}
 
 	var resTask responseImageTask
@@ -396,7 +647,11 @@ func buildOpenAIImageTaskInfo(resTask responseImageTask) (*relaycommon.TaskInfo,
 		return nil, false
 	}
 
-	taskResult := relaycommon.TaskInfo{Code: 0}
+	taskResult := relaycommon.TaskInfo{
+		Code:          0,
+		SourceCostUSD: resTask.Cost,
+		TotalTokens:   resTask.Usage.TotalTokens,
+	}
 	switch status {
 	case "submitted", "queued", "pending":
 		taskResult.Status = model.TaskStatusQueued
@@ -419,6 +674,9 @@ func buildOpenAIImageTaskInfo(resTask responseImageTask) (*relaycommon.TaskInfo,
 		}
 		if taskResult.Url == "" {
 			taskResult.Url = firstImageResultURL(resTask.Result.Images)
+		}
+		if taskResult.Url == "" {
+			taskResult.Url = firstVideoResultURL(resTask.Result.Videos)
 		}
 	case "failed", "cancelled", "canceled":
 		taskResult.Status = model.TaskStatusFailure
@@ -467,11 +725,68 @@ func firstImageResultURL(images []struct {
 	return ""
 }
 
+func firstVideoResultURL(videos []struct {
+	URL any `json:"url"`
+}) string {
+	for _, video := range videos {
+		switch value := video.URL.(type) {
+		case string:
+			if strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		case []any:
+			for _, item := range value {
+				if url, ok := item.(string); ok && strings.TrimSpace(url) != "" {
+					return strings.TrimSpace(url)
+				}
+			}
+		case []string:
+			for _, url := range value {
+				if strings.TrimSpace(url) != "" {
+					return strings.TrimSpace(url)
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+	if isAPIMartVideoTask(task) {
+		video := dto.NewOpenAIVideo()
+		video.ID = task.TaskID
+		video.TaskID = task.TaskID
+		video.Model = task.Properties.OriginModelName
+		video.CreatedAt = task.SubmitTime
+		video.Status = task.Status.ToVideoStatus()
+		video.SetProgressStr(task.Progress)
+		if task.Status == model.TaskStatusSuccess {
+			video.SetMetadata("url", task.GetResultURL())
+		}
+		if task.Status == model.TaskStatusFailure {
+			video.Error = &dto.OpenAIVideoError{Message: task.FailReason, Code: "task_failed"}
+		}
+		return common.Marshal(video)
+	}
 	data := task.Data
 	var err error
 	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {
 		return nil, errors.Wrap(err, "set id failed")
 	}
 	return data, nil
+}
+
+func isAPIMartVideoTask(task *model.Task) bool {
+	if task == nil {
+		return false
+	}
+	modelName := strings.ToLower(strings.TrimSpace(task.Properties.OriginModelName))
+	if isAPIMartVideoModel(modelName) {
+		return true
+	}
+	var envelope struct {
+		Code int `json:"code"`
+		Data json.RawMessage `json:"data"`
+	}
+	return common.Unmarshal(task.Data, &envelope) == nil && envelope.Code == 200 && len(envelope.Data) > 0 && strings.Contains(strings.ToLower(string(envelope.Data)), "video")
 }

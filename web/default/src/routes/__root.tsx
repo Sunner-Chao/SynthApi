@@ -21,7 +21,8 @@ import { type QueryClient } from '@tanstack/react-query'
 import {
   createRootRouteWithContext,
   Outlet,
-  redirect,
+  useLocation,
+  useNavigate,
 } from '@tanstack/react-router'
 import { ThemeCustomizationProvider } from '@/context/theme-customization-provider'
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -35,6 +36,8 @@ import { getSetupStatus } from '@/features/setup/api'
 function RootComponent() {
   // Load system configuration (logo, system name, etc.) from backend
   useSystemConfig({ autoLoad: true })
+  const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     const aff = new URLSearchParams(window.location.search).get('aff')?.trim()
@@ -42,6 +45,33 @@ function RootComponent() {
       saveAffiliateCode(aff)
     }
   }, [])
+
+  useEffect(() => {
+    // Do not make public auth screens wait for setup status. The check runs
+    // after the shell is painted and only redirects when the server explicitly
+    // reports an uninitialized instance. Network errors leave the current page
+    // usable and can be retried on the next navigation.
+    const pathname = location.pathname || '/'
+    if (setupStatusChecked || pathname.startsWith('/setup')) return
+
+    let active = true
+    void getSetupStatus()
+      .then((status) => {
+        if (!active) return
+        setupStatusChecked = true
+        setSetupStatusCache(true)
+        if (status?.success && status.data && !status.data.status) {
+          void navigate({ to: '/setup', replace: true })
+        }
+      })
+      .catch(() => {
+        // A transient tunnel failure must not blank the login page.
+      })
+
+    return () => {
+      active = false
+    }
+  }, [location.pathname, navigate])
 
   return (
     <ThemeCustomizationProvider>
@@ -98,22 +128,10 @@ export const Route = createRootRouteWithContext<{
     // 如果 auth.user 为 null，说明用户未登录，直接让 _authenticated 路由处理重定向
     // 不再调用 getSelf() API，避免不必要的网络请求和等待
 
-    // 只检查 setup 状态（如果需要）
-    if (needsSetupCheck) {
-      const status = await getSetupStatus().catch((error) => {
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.warn('[root.beforeLoad] setup status check failed', error)
-        }
-        return null
-      })
-
-      if (status?.success && status.data && !status.data.status) {
-        throw redirect({ to: '/setup' })
-      }
-      setupStatusChecked = true
-      setSetupStatusCache(true)
-    }
+    // Setup detection is intentionally performed by RootComponent after the
+    // first paint. Keeping beforeLoad synchronous prevents a slow tunnel from
+    // blocking sign-in, registration, or public pages.
+    if (needsSetupCheck) return
     // 用户认证状态完全依赖 localStorage 缓存
     // 如果用户有有效 session 但 localStorage 被清空，会被重定向到登录页重新登录
   },

@@ -50,7 +50,7 @@ function createUnreadFavicon(): string {
   canvas.width = 64
   canvas.height = 64
   const context = canvas.getContext('2d')
-  if (!context) return '/favicon.ico'
+  if (!context) return '/favicon.png?v=synthapi-logo-from-root-20260828'
 
   context.fillStyle = '#dc2626'
   context.beginPath()
@@ -249,7 +249,7 @@ export function useNotifications() {
     const baseTitle = systemName || document.title
     const originalFavicon =
       document.querySelector<HTMLLinkElement>('link[rel~="icon"]')?.href ||
-      '/favicon.ico'
+      '/favicon.png?v=synthapi-logo-from-root-20260828'
     const unreadFavicon = createUnreadFavicon()
     let showAlertState = true
 
@@ -302,8 +302,8 @@ export function useNotifications() {
     try {
       const notification = new window.Notification(title, {
         body: getAnnouncementPlainText(latest),
-        icon: String(status?.logo || '/favicon.ico'),
-        badge: '/favicon.ico',
+        icon: '/logo-mark.png?v=synthapi-logo-from-root-20260828',
+        badge: '/logo-mark.png?v=synthapi-logo-from-root-20260828',
         tag: 'synthapi-system-announcements',
         requireInteraction: true,
         silent: false,

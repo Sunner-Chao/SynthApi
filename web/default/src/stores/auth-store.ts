@@ -21,6 +21,7 @@ import { create } from 'zustand'
 export type UserPermissions = {
   sidebar_settings?: boolean
   sidebar_modules?: Record<string, unknown>
+  model_management?: boolean
 }
 
 export interface AuthUser {
@@ -54,6 +55,8 @@ interface AuthState {
   auth: {
     user: AuthUser | null
     setUser: (user: AuthUser | null) => void
+    sessionVerified: boolean
+    setSessionVerified: (verified: boolean) => void
     reset: () => void
   }
 }
@@ -78,6 +81,7 @@ export const useAuthStore = create<AuthState>()((set) => {
   return {
     auth: {
       user: initUser,
+      sessionVerified: false,
       setUser: (user) =>
         set((state) => {
           // Persist user to localStorage
@@ -90,6 +94,11 @@ export const useAuthStore = create<AuthState>()((set) => {
           }
           return { ...state, auth: { ...state.auth, user } }
         }),
+      setSessionVerified: (verified) =>
+		set((state) => ({
+			...state,
+			auth: { ...state.auth, sessionVerified: verified },
+		})),
       reset: () =>
         set((state) => {
           if (typeof window !== 'undefined') {
@@ -97,7 +106,7 @@ export const useAuthStore = create<AuthState>()((set) => {
           }
           return {
             ...state,
-            auth: { ...state.auth, user: null },
+			auth: { ...state.auth, user: null, sessionVerified: false },
           }
         }),
     },

@@ -21,9 +21,29 @@ For commercial licensing, please contact support@quantumnous.com
 // ============================================================================
 
 /**
+ * Resolve the public site origin used in links shared with end users.
+ * The admin dashboard is hosted on a separate subdomain, but invitations
+ * must always land on the public registration page.
+ */
+export function getPublicSiteOrigin(): string {
+  if (typeof window === 'undefined') return ''
+
+  try {
+    const url = new URL(window.location.origin)
+    if (url.hostname.toLowerCase().startsWith('admin.')) {
+      url.hostname = url.hostname.slice('admin.'.length)
+    }
+    return url.origin
+  } catch {
+    return window.location.origin
+  }
+}
+
+/**
  * Generate affiliate registration link
  */
 export function generateAffiliateLink(affCode: string): string {
-  if (typeof window === 'undefined') return ''
-  return `${window.location.origin}/sign-up?aff=${affCode}`
+  const origin = getPublicSiteOrigin()
+  if (!origin) return ''
+  return `${origin}/sign-up?aff=${encodeURIComponent(affCode)}`
 }

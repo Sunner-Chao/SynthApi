@@ -51,6 +51,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     midjourney: true,
     task: true,
     image_workbench: true,
+    video_workbench: true,
   },
   personal: {
     enabled: true,
@@ -110,6 +111,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/usage-logs/drawing': { section: 'console', module: 'midjourney' },
   '/usage-logs/task': { section: 'console', module: 'task' },
   '/image-workbench': { section: 'console', module: 'image_workbench' },
+  '/video-workbench': { section: 'console', module: 'video_workbench' },
   '/wallet': { section: 'personal', module: 'topup' },
   '/topup-orders': { section: 'personal', module: 'topup' },
   '/rewards/referral': { section: 'personal', module: 'rewards' },

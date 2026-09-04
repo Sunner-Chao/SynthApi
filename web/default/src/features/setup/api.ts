@@ -25,6 +25,8 @@ export async function getSetupStatus(): Promise<SetupResponse> {
     params: {
       t: Date.now(),
     },
+    timeout: 5000,
+    skipErrorHandler: true,
   })
   return res.data
 }

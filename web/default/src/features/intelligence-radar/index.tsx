@@ -450,13 +450,15 @@ export function IntelligenceRadar() {
   })
   const data =
     query.data?.success && query.data.data ? query.data.data : FALLBACK_DATA
-  const rankings = data.rankings.length ? data.rankings : FALLBACK_POINTS
+  const rankings = data.rankings?.length ? data.rankings : FALLBACK_POINTS
   const topPoints = useMemo(
-    () => [...data.points].sort((a, b) => b.iq - a.iq),
+    () => [...(data.points || [])].sort((a, b) => b.iq - a.iq),
     [data.points]
   )
   const community =
-    data.community.rating_count > 0 ? data.community : FALLBACK_DATA.community
+    data.community?.rating_count > 0
+      ? data.community
+      : FALLBACK_DATA.community
   const stale = data.stale || query.isError
   const sampleCards = [
     {

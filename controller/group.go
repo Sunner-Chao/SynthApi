@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,6 +50,7 @@ func GetTopupGroups(c *gin.Context) {
 
 func GetUserGroups(c *gin.Context) {
 	imageOnly := strings.EqualFold(strings.TrimSpace(c.Query("image")), "true")
+	videoOnly := strings.EqualFold(strings.TrimSpace(c.Query("video")), "true")
 	usableGroups := make(map[string]map[string]interface{})
 	userGroup := ""
 	userId := c.GetInt("id")
@@ -112,6 +114,20 @@ func GetUserGroups(c *gin.Context) {
 				continue
 			}
 			usableGroups[groupName]["supports_resolution_pricing"] = capability.SupportsResolutionPricing
+			usableGroups[groupName]["supports_custom_image_parameters"] = capability.SupportsCustomImageParameters
+			usableGroups[groupName]["models"] = capability.Models
+		}
+	}
+	if videoOnly {
+		capabilities := getVideoGroupCapabilities()
+		for groupName := range usableGroups {
+			capability, ok := capabilities[groupName]
+			if !ok {
+				delete(usableGroups, groupName)
+				continue
+			}
+			usableGroups[groupName]["supports_custom_video_parameters"] = capability.SupportsCustomVideoParameters
+			usableGroups[groupName]["models"] = capability.Models
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -122,12 +138,19 @@ func GetUserGroups(c *gin.Context) {
 }
 
 type imageGroupCapability struct {
-	SupportsResolutionPricing bool
+	SupportsResolutionPricing      bool
+	SupportsCustomImageParameters bool
+	Models                         []string
 }
 
 type imageAbilityWithChannel struct {
 	model.Ability
 	ChannelBaseURL string `gorm:"column:channel_base_url"`
+}
+
+type videoGroupCapability struct {
+	SupportsCustomVideoParameters bool
+	Models                        []string
 }
 
 func getImageGroupCapabilities() map[string]imageGroupCapability {
@@ -145,12 +168,61 @@ func getImageGroupCapabilities() map[string]imageGroupCapability {
 			continue
 		}
 		capability := capabilities[row.Group]
-		if (modelName == "gpt-image-2" || modelName == "gpt-image-2-ext") && common.IsAPIMartAPIBaseURL(row.ChannelBaseURL) {
-			capability.SupportsResolutionPricing = true
+		if !containsString(capability.Models, modelName) {
+			capability.Models = append(capability.Models, modelName)
+		}
+		if common.IsAPIMartAPIBaseURL(row.ChannelBaseURL) {
+			capability.SupportsCustomImageParameters = true
+			if strings.TrimSpace(modelName) != "" {
+				capability.SupportsResolutionPricing = true
+			}
 		}
 		capabilities[row.Group] = capability
 	}
+	for groupName, capability := range capabilities {
+		sort.Strings(capability.Models)
+		capabilities[groupName] = capability
+	}
 	return capabilities
+}
+
+func getVideoGroupCapabilities() map[string]videoGroupCapability {
+	var rows []imageAbilityWithChannel
+	model.DB.Table("abilities").
+		Select("abilities.*, channels.base_url AS channel_base_url").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
+		Scan(&rows)
+
+	capabilities := make(map[string]videoGroupCapability)
+	for _, row := range rows {
+		modelName := strings.ToLower(strings.TrimSpace(row.Model))
+		if !isVideoGenerationProbeModel(modelName) {
+			continue
+		}
+		capability := capabilities[row.Group]
+		if !containsString(capability.Models, modelName) {
+			capability.Models = append(capability.Models, modelName)
+		}
+		if common.IsAPIMartAPIBaseURL(row.ChannelBaseURL) {
+			capability.SupportsCustomVideoParameters = true
+		}
+		capabilities[row.Group] = capability
+	}
+	for groupName, capability := range capabilities {
+		sort.Strings(capability.Models)
+		capabilities[groupName] = capability
+	}
+	return capabilities
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 type groupChannelStatusSummary struct {
@@ -414,14 +486,44 @@ func isImageGenerationProbeModel(modelName string) bool {
 		"chatgpt-image",
 		"dall-e",
 		"imagen",
+		"grok-imagine",
 		"seedream",
 		"flux",
+		"z-image",
 		"stable-diffusion",
 		"stabilityai/",
 		"black-forest-labs/",
 		"midjourney",
 	}
 	for _, marker := range imageModelMarkers {
+		if strings.Contains(name, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func isVideoGenerationProbeModel(modelName string) bool {
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	if name == "" {
+		return false
+	}
+	// Several image models share a vendor/model prefix with video models
+	// (notably wan2.7-image). Exclude those before applying broad video
+	// markers so image-only groups never appear in the video workbench.
+	for _, marker := range []string{
+		"image", "imagen", "seedream", "z-image", "flux-2", "flux-kontext",
+	} {
+		if strings.Contains(name, marker) {
+			return false
+		}
+	}
+	videoModelMarkers := []string{
+		"video", "sora", "veo", "kling", "vidu", "hailuo", "minimax-h3",
+		"seedance", "skyreels", "pixverse", "happyhorse", "omni-flash",
+		"wan2.5", "wan2.6", "wan2.7", "wan3.0",
+	}
+	for _, marker := range videoModelMarkers {
 		if strings.Contains(name, marker) {
 			return true
 		}

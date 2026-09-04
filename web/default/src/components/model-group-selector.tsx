@@ -429,7 +429,9 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
                     </span>
                     {(group.desc || group.description) && (
                       <div className='text-muted-foreground text-[9px] leading-tight break-words whitespace-normal'>
-                        {group.desc || group.description}
+                        {group.value === '图像模型聚合(可自定义图像参数)'
+                          ? t('图像参数可自定义 · 支持多种图像模型')
+                          : group.desc || group.description}
                         {showRatio && group.ratio != null && (
                           <>
                             {' · '}
@@ -491,7 +493,9 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
                           </span>
                           {(group.desc || group.description) && (
                             <div className='text-muted-foreground mt-0.5 text-xs'>
-                              {group.desc || group.description}
+                              {group.value === '图像模型聚合(可自定义图像参数)'
+                                ? t('图像参数可自定义 · 支持多种图像模型')
+                                : group.desc || group.description}
                               {showRatio && group.ratio != null && (
                                 <>
                                   {' · '}

@@ -5,9 +5,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/rewards/admin')({
   beforeLoad: () => {
-    if (
-      Number(useAuthStore.getState().auth.user?.role) !== ROLE.SUPER_ADMIN
-    ) {
+    if (Number(useAuthStore.getState().auth.user?.role) < ROLE.ADMIN) {
       throw redirect({ to: '/403' })
     }
   },

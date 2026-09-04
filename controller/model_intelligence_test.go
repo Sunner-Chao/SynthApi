@@ -43,6 +43,24 @@ func TestBuildModelIntelligencePayload(t *testing.T) {
 	require.Equal(t, "GPT-5.6 Sol high", payload.Insights[0].ModelLabel)
 }
 
+func TestBuildModelIntelligencePayloadUsesPassedAndTotal(t *testing.T) {
+	metrics := codexRadarMetrics{
+		Mode: "equal_latest_3",
+		Points: []codexRadarMetricPoint{{
+			Model:  "gpt-5.6-sol",
+			Effort: "high",
+			IQ:     90,
+			Passed: 90,
+			Total:  100,
+		}},
+	}
+
+	payload := buildModelIntelligencePayload(metrics, codexRadarRatings{}, codexRadarInsights{}, time.Unix(100, 0))
+	require.Len(t, payload.Points, 1)
+	require.Equal(t, 90.0, payload.Points[0].Passed)
+	require.Equal(t, 100.0, payload.Points[0].Total)
+}
+
 func TestBuildModelIntelligencePayloadFromPublished(t *testing.T) {
 	published := codexRadarPublishedSnapshot{
 		Schema:          2,

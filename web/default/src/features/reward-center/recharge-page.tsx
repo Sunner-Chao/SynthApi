@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import {
   Ban,
   Check,
@@ -9,7 +9,6 @@ import {
   Coins,
   KeyRound,
   LockKeyhole,
-  Orbit,
   ShieldCheck,
   Sparkles,
   Zap,
@@ -25,9 +24,9 @@ import {
   reviewRechargeBenefitClaim,
 } from './api'
 import { RewardCenterShell } from './reward-center-shell'
-import { useRewardOverview } from './use-reward-overview'
-import type { RechargeBenefitClaim } from './types'
 import './styles.css'
+import type { RechargeBenefitClaim } from './types'
+import { useRewardOverview } from './use-reward-overview'
 
 function formatTime(timestamp: number) {
   if (!timestamp) return '--'
@@ -109,7 +108,9 @@ export function RechargePage() {
       reviewRechargeBenefitClaim(input.id, input.action),
     onSuccess: async (response) => {
       if (!response.success) return
-      toast.success(response.data.status === 'granted' ? '福利已发放' : '申请已驳回')
+      toast.success(
+        response.data.status === 'granted' ? '福利已发放' : '申请已驳回'
+      )
       await queryClient.invalidateQueries({ queryKey: ['reward-admin-claims'] })
       await queryClient.invalidateQueries({
         queryKey: ['reward-program-overview', 'recharge'],
@@ -125,7 +126,10 @@ export function RechargePage() {
   }, [recharge])
 
   useEffect(() => {
-    if (!rechargeEnabled && status?.affiliate_milestone_reward_enabled !== false) {
+    if (
+      !rechargeEnabled &&
+      status?.affiliate_milestone_reward_enabled !== false
+    ) {
       void navigate({ to: '/rewards/referral', replace: true })
     }
   }, [navigate, rechargeEnabled, status?.affiliate_milestone_reward_enabled])
@@ -147,9 +151,12 @@ export function RechargePage() {
         <div className='station-grid' aria-hidden='true' />
         <section className='recharge-heading'>
           <span>ENERGY BENEFIT PROGRAM</span>
-          <h1>千元充能计划 <Zap aria-hidden='true' /></h1>
+          <h1>
+            千元充能计划 <Zap aria-hidden='true' />
+          </h1>
           <p>
-            每累计净充值 <strong>¥1,000</strong>，解锁 <strong>¥50</strong> API 限制额度
+            每累计净充值 <strong>¥1,000</strong>，解锁 <strong>¥50</strong> API
+            限制额度
           </p>
         </section>
 
@@ -209,8 +216,12 @@ export function RechargePage() {
               </span>
               <div className='gauge-ring__inner'>
                 <span>累计净充值</span>
-                <strong>¥{(recharge?.total_recharge_cny ?? 0).toLocaleString()}</strong>
-                <small>/ ¥{recharge?.next_threshold_cny.toLocaleString() ?? '1,000'}</small>
+                <strong>
+                  ¥{(recharge?.total_recharge_cny ?? 0).toLocaleString()}
+                </strong>
+                <small>
+                  / ¥{recharge?.next_threshold_cny.toLocaleString() ?? '1,000'}
+                </small>
                 <b className='gauge-percent'>{progress.toFixed(0)}% 充能</b>
                 <div className='gauge-line' />
                 <em>
@@ -235,8 +246,7 @@ export function RechargePage() {
             <Button
               className='claim-button'
               disabled={
-                (recharge?.available_count ?? 0) <= 0 ||
-                claimMutation.isPending
+                (recharge?.available_count ?? 0) <= 0 || claimMutation.isPending
               }
               onClick={() => claimMutation.mutate()}
             >
@@ -248,9 +258,15 @@ export function RechargePage() {
               <ChevronRight aria-hidden='true' />
             </Button>
             <div className='benefit-facts'>
-              <span><LockKeyhole /> 已解锁 {recharge?.unlocked_count ?? 0} 次</span>
-              <span><Coins /> 额度自动累计</span>
-              <span><Ban /> 不可提现或转赠</span>
+              <span>
+                <LockKeyhole /> 已解锁 {recharge?.unlocked_count ?? 0} 次
+              </span>
+              <span>
+                <Coins /> 额度自动累计
+              </span>
+              <span>
+                <Ban /> 不可提现或转赠
+              </span>
             </div>
           </aside>
         </section>
@@ -264,18 +280,26 @@ export function RechargePage() {
                 <small>每个千元里程碑均有独立审计记录</small>
               </span>
             </div>
-            <span className='history-total'>已发放 {recharge?.granted_count ?? 0} 份</span>
+            <span className='history-total'>
+              已发放 {recharge?.granted_count ?? 0} 份
+            </span>
           </div>
           <div className='claim-list'>
             {(recharge?.recent_claims ?? []).length === 0 ? (
-              <div className='claim-empty'>完成首个 ¥1,000 充能里程碑后，记录将在这里点亮。</div>
+              <div className='claim-empty'>
+                完成首个 ¥1,000 充能里程碑后，记录将在这里点亮。
+              </div>
             ) : (
               recharge?.recent_claims.map((claim) => (
                 <article className='claim-row' key={claim.id}>
-                  <span className='claim-check'><Check aria-hidden='true' /></span>
+                  <span className='claim-check'>
+                    <Check aria-hidden='true' />
+                  </span>
                   <div>
                     <strong>解锁 ¥{claim.reward_cny} API 限制额度</strong>
-                    <small>累计净充值达 ¥{claim.threshold_cny.toLocaleString()}</small>
+                    <small>
+                      累计净充值达 ¥{claim.threshold_cny.toLocaleString()}
+                    </small>
                   </div>
                   <time>{formatTime(claim.requested_at)}</time>
                   <ClaimStatus status={claim.status} />
@@ -288,7 +312,9 @@ export function RechargePage() {
         {isAdmin && (
           <section className='admin-claim-console'>
             <div className='admin-console__header'>
-              <div><ShieldCheck /> 管理员发放台</div>
+              <div>
+                <ShieldCheck /> 管理员发放台
+              </div>
               <div className='admin-status-tabs'>
                 {(['pending', 'granted', 'rejected'] as const).map((status) => (
                   <button
@@ -297,7 +323,13 @@ export function RechargePage() {
                     className={adminStatus === status ? 'is-active' : ''}
                     onClick={() => setAdminStatus(status)}
                   >
-                    {{ pending: '待审核', granted: '已发放', rejected: '已驳回' }[status]}
+                    {
+                      {
+                        pending: '待审核',
+                        granted: '已发放',
+                        rejected: '已驳回',
+                      }[status]
+                    }
                   </button>
                 ))}
               </div>
@@ -306,20 +338,32 @@ export function RechargePage() {
               {(adminClaimsQuery.data?.items ?? []).map((claim) => (
                 <article key={claim.id}>
                   <span>用户 #{claim.user_id}</span>
-                  <strong>¥{claim.threshold_cny.toLocaleString()} 里程碑</strong>
+                  <strong>
+                    ¥{claim.threshold_cny.toLocaleString()} 里程碑
+                  </strong>
                   <ClaimStatus status={claim.status} />
                   {claim.status === 'pending' && (
                     <div>
                       <Button
                         size='sm'
-                        onClick={() => reviewMutation.mutate({ id: claim.id, action: 'grant' })}
+                        onClick={() =>
+                          reviewMutation.mutate({
+                            id: claim.id,
+                            action: 'grant',
+                          })
+                        }
                       >
                         <Check /> 发放
                       </Button>
                       <Button
                         size='sm'
                         variant='outline'
-                        onClick={() => reviewMutation.mutate({ id: claim.id, action: 'reject' })}
+                        onClick={() =>
+                          reviewMutation.mutate({
+                            id: claim.id,
+                            action: 'reject',
+                          })
+                        }
                       >
                         <Ban /> 驳回
                       </Button>

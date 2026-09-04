@@ -36,6 +36,8 @@ const (
 type codexRadarMetricPoint struct {
 	Model             string  `json:"model"`
 	Effort            string  `json:"effort"`
+	Passed            float64 `json:"passed"`
+	Total             float64 `json:"total"`
 	WeightedPassed    float64 `json:"weighted_passed"`
 	WeightedTotal     float64 `json:"weighted_total"`
 	IQ                float64 `json:"iq"`
@@ -313,7 +315,15 @@ func buildModelIntelligencePayload(
 ) ModelIntelligencePayload {
 	points := make([]ModelIntelligencePoint, 0, len(metrics.Points))
 	for _, point := range metrics.Points {
-		if point.IQ <= 0 || point.WeightedTotal <= 0 {
+		passed := point.WeightedPassed
+		if passed <= 0 {
+			passed = point.Passed
+		}
+		total := point.WeightedTotal
+		if total <= 0 {
+			total = point.Total
+		}
+		if point.IQ <= 0 || total <= 0 {
 			continue
 		}
 		points = append(points, ModelIntelligencePoint{
@@ -322,8 +332,8 @@ func buildModelIntelligencePayload(
 			Model:             point.Model,
 			Effort:            point.Effort,
 			IQ:                roundTo(point.IQ, 2),
-			Passed:            roundTo(point.WeightedPassed, 1),
-			Total:             roundTo(point.WeightedTotal, 1),
+			Passed:            roundTo(passed, 1),
+			Total:             roundTo(total, 1),
 			AveragePriceUSD:   roundTo(point.AveragePriceUSD, 4),
 			AverageMinutes:    roundTo(point.AverageMinutes, 2),
 			CombinedCostIndex: roundTo(point.CombinedCostIndex, 3),
@@ -521,12 +531,37 @@ func loadModelIntelligence(ctx context.Context) (ModelIntelligencePayload, error
 	}
 
 	payload := buildModelIntelligencePayload(metrics, ratings, insights, now)
-	modelIntelligenceCache.payload = &payload
-	modelIntelligenceCache.fetchedAt = now
-	if err := writeModelIntelligenceSnapshot(payload); err != nil {
-		common.SysError(fmt.Sprintf("failed to persist model intelligence snapshot: %v", err))
+	if len(payload.Points) == 0 {
+		metricsErr = fmt.Errorf("codexradar returned no usable metric points")
+	} else {
+		modelIntelligenceCache.payload = &payload
+		modelIntelligenceCache.fetchedAt = now
+		if err := writeModelIntelligenceSnapshot(payload); err != nil {
+			common.SysError(fmt.Sprintf("failed to persist model intelligence snapshot: %v", err))
+		}
+		return payload, nil
 	}
-	return payload, nil
+	// Fall through to the published/local snapshot path below when the live
+	// response is structurally valid JSON but contains no usable points.
+	var published codexRadarPublishedSnapshot
+	if publishedErr := fetchCodexRadarJSONWithLimit(ctx, codexRadarPublishedURL, &published, modelIntelligencePublishedMax); publishedErr == nil {
+		fallback := buildModelIntelligencePayloadFromPublished(published, ratings, insights, now)
+		if len(fallback.Points) > 0 {
+			modelIntelligenceCache.payload = &fallback
+			modelIntelligenceCache.fetchedAt = now
+			modelIntelligenceCache.publishedFetchedAt = now
+			if err := writeModelIntelligenceSnapshot(fallback); err != nil {
+				common.SysError(fmt.Sprintf("failed to persist published model intelligence snapshot: %v", err))
+			}
+			return fallback, nil
+		}
+	}
+	if snapshot, snapshotErr := readModelIntelligenceSnapshot(); snapshotErr == nil {
+		modelIntelligenceCache.payload = &snapshot
+		modelIntelligenceCache.fetchedAt = now
+		return snapshot, nil
+	}
+	return ModelIntelligencePayload{}, metricsErr
 }
 
 func GetModelIntelligence(c *gin.Context) {
@@ -535,6 +570,14 @@ func GetModelIntelligence(c *gin.Context) {
 
 	payload, err := loadModelIntelligence(ctx)
 	if err != nil {
+		// The radar is an auxiliary view. Keep the dashboard usable when its
+		// upstream is temporarily unavailable, as long as a last-known snapshot
+		// is present on disk.
+		if snapshot, snapshotErr := readModelIntelligenceSnapshot(); snapshotErr == nil {
+			c.Header("Cache-Control", "private, max-age=30")
+			common.ApiSuccess(c, snapshot)
+			return
+		}
 		common.ApiErrorMsg(c, "模型智力数据暂时不可用")
 		return
 	}

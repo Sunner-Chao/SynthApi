@@ -55,6 +55,9 @@ export default defineConfig(({ envMode }) => {
     },
     html: {
       template: './index.html',
+      // Inject the square mark instead of the legacy horizontal favicon.ico.
+      favicon:
+        '//synthapi.asia/favicon.png?v=synthapi-logo-from-root-20260828',
     },
     server: {
       host: '0.0.0.0',

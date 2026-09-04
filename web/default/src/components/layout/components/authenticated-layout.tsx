@@ -51,6 +51,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
     normalizedPathname === '/intelligence-radar' ||
     normalizedPathname === '/rewards/referral' ||
     normalizedPathname === '/rewards/recharge'
+  const isImageWorkbench = normalizedPathname === '/image-workbench'
 
   return (
     <LayoutProvider>
@@ -58,7 +59,14 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
         <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
           <SkipToMain />
           <RewardBenefitNotice />
-          {isImmersive ? (
+          {isImageWorkbench ? (
+            <div className='flex h-svh min-h-0 w-full flex-1 overflow-hidden'>
+              <AppSidebar />
+              <main className='relative flex h-svh min-h-0 min-w-0 flex-1 flex-col overflow-hidden'>
+                {props.children ?? <AnimatedOutlet />}
+              </main>
+            </div>
+          ) : isImmersive ? (
             <div className='flex h-svh min-h-0 w-full flex-1 overflow-hidden'>
               <AppSidebar />
               <main className='@container/content relative flex h-svh min-h-0 min-w-0 flex-1 flex-col overflow-hidden'>

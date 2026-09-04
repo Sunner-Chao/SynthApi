@@ -15,6 +15,35 @@ type rechargeBenefitReviewRequest struct {
 	Remark string `json:"remark"`
 }
 
+type rewardProgramSettingsUpdateRequest struct {
+	Key   string `json:"key"`
+	Value bool   `json:"value"`
+}
+
+func AdminGetRewardProgramSettings(c *gin.Context) {
+	common.ApiSuccess(c, gin.H{
+		"AffiliateMilestoneRewardEnabled": setting.IsAffiliateMilestoneRewardEnabled(),
+		"RechargeBenefitEnabled":          setting.IsRechargeBenefitEnabled(),
+	})
+}
+
+func AdminUpdateRewardProgramSettings(c *gin.Context) {
+	var req rewardProgramSettingsUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.Key != "AffiliateMilestoneRewardEnabled" && req.Key != "RechargeBenefitEnabled" {
+		common.ApiError(c, errors.New("unsupported reward program setting"))
+		return
+	}
+	if err := model.UpdateOption(req.Key, strconv.FormatBool(req.Value)); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	AdminGetRewardProgramSettings(c)
+}
+
 func GetRewardProgramOverview(c *gin.Context) {
 	program := strings.TrimSpace(c.Query("program"))
 	if program == "affiliate" && !setting.IsAffiliateMilestoneRewardEnabled() {

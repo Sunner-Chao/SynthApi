@@ -23,8 +23,12 @@ import type {
   ChatCompletionResponse,
   ImageGenerationRequest,
   ImageGenerationResponse,
+  ImageGenerationHistoryItem,
   ModelOption,
   GroupOption,
+  VideoGenerationRequest,
+  VideoGenerationResponse,
+  VideoGenerationHistoryItem,
 } from './types'
 
 /**
@@ -37,6 +41,60 @@ export async function sendChatCompletion(
     skipErrorHandler: true,
   } as Record<string, unknown>)
   return res.data
+}
+
+export async function sendVideoGeneration(
+  payload: VideoGenerationRequest,
+  signal?: AbortSignal
+): Promise<VideoGenerationResponse> {
+  const res = await api.post('/pg/videos/generations', payload, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function getVideoGenerationTask(
+  taskId: string,
+  signal?: AbortSignal
+): Promise<VideoGenerationResponse> {
+  const res = await api.get(`/pg/videos/generations/${encodeURIComponent(taskId)}`, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function getVideoGenerationHistory(): Promise<
+  VideoGenerationHistoryItem[]
+> {
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60
+  const res = await api.get('/api/task/self', {
+    params: {
+      p: 1,
+      page_size: 50,
+      action: 'videoGenerate',
+      start_timestamp: sevenDaysAgo,
+    },
+  })
+  const items = res.data?.data?.items
+  return Array.isArray(items) ? items : []
+}
+
+export async function getImageGenerationHistory(): Promise<
+  ImageGenerationHistoryItem[]
+> {
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60
+  const res = await api.get('/api/task/self', {
+    params: {
+      p: 1,
+      page_size: 50,
+      action: 'imageGenerate',
+      start_timestamp: sevenDaysAgo,
+    },
+  })
+  const items = res.data?.data?.items
+  return Array.isArray(items) ? items : []
 }
 
 export async function sendImageGeneration(
@@ -84,10 +142,15 @@ export async function getUserModels(): Promise<ModelOption[]> {
 /**
  * Get user groups
  */
-export async function getUserGroups(imageOnly = false): Promise<GroupOption[]> {
+export async function getUserGroups(
+  imageOnly = false,
+  videoOnly = false
+): Promise<GroupOption[]> {
   const endpoint = imageOnly
     ? `${API_ENDPOINTS.USER_GROUPS}?image=true`
-    : API_ENDPOINTS.USER_GROUPS
+    : videoOnly
+      ? `${API_ENDPOINTS.USER_GROUPS}?video=true`
+      : API_ENDPOINTS.USER_GROUPS
   const res = await api.get(endpoint)
   const { data } = res
 
@@ -97,7 +160,14 @@ export async function getUserGroups(imageOnly = false): Promise<GroupOption[]> {
 
   const groupData = data.data as Record<
     string,
-    { desc: string; ratio: number; supports_resolution_pricing?: boolean }
+    {
+      desc: string
+      ratio: number
+      supports_resolution_pricing?: boolean
+      supports_custom_image_parameters?: boolean
+      supports_custom_video_parameters?: boolean
+      models?: string[]
+    }
   >
 
   // label is for button display (name only); desc is for dropdown content
@@ -107,5 +177,8 @@ export async function getUserGroups(imageOnly = false): Promise<GroupOption[]> {
     ratio: info.ratio,
     desc: info.desc,
     supportsResolutionPricing: info.supports_resolution_pricing,
+    supportsCustomImageParameters: info.supports_custom_image_parameters,
+    supportsCustomVideoParameters: info.supports_custom_video_parameters,
+    models: info.models,
   }))
 }

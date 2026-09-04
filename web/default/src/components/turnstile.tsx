@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 const TURNSTILE_SCRIPT_ID = 'cf-turnstile'
-const TURNSTILE_SCRIPT_TIMEOUT_MS = 10_000
+const TURNSTILE_SCRIPT_TIMEOUT_MS = 6_000
 
 let turnstileScriptPromise: Promise<void> | null = null
 

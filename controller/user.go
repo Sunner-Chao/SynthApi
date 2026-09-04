@@ -458,9 +458,13 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 		// 超级管理员不需要边栏设置功能
 		permissions["sidebar_settings"] = false
 		permissions["sidebar_modules"] = map[string]interface{}{}
+		permissions["model_management"] = true
 	} else if userRole == common.RoleAdminUser {
 		// 管理员可以设置边栏，但不包含系统设置功能
 		permissions["sidebar_settings"] = true
+		// Model metadata, vendor metadata and deployment pages are available to
+		// regular administrators; system settings remain root-only.
+		permissions["model_management"] = true
 		permissions["sidebar_modules"] = map[string]interface{}{
 			"admin": map[string]interface{}{
 				"setting": false, // 管理员不能访问系统设置

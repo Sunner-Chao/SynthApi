@@ -78,6 +78,11 @@ type Properties struct {
 	Input             string `json:"input"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 	OriginModelName   string `json:"origin_model_name,omitempty"`
+	ImageSize         string `json:"image_size,omitempty"`
+	ImageResolution   string `json:"image_resolution,omitempty"`
+	ImageQuality      string `json:"image_quality,omitempty"`
+	ImageCount        uint   `json:"image_count,omitempty"`
+	ImageWatermark    bool   `json:"image_watermark,omitempty"`
 }
 
 func (m *Properties) Scan(val interface{}) error {
@@ -214,12 +219,24 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 
 	// 初始化查询构建器
 	query := DB.Where("user_id = ?", userId)
+	// Image history is a rolling archive by default. Callers may still pass an
+	// explicit start timestamp when they need a different window.
+	if queryParams.Action == constant.TaskActionImageGenerate && queryParams.StartTimestamp == 0 {
+		queryParams.StartTimestamp = time.Now().Add(-7 * 24 * time.Hour).Unix()
+	}
+	if queryParams.Action == constant.TaskActionVideoGenerate && queryParams.StartTimestamp == 0 {
+		queryParams.StartTimestamp = time.Now().Add(-7 * 24 * time.Hour).Unix()
+	}
 
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}
 	if queryParams.Action != "" {
-		query = query.Where("action = ?", queryParams.Action)
+		if queryParams.Action == constant.TaskActionVideoGenerate {
+			query = query.Where("action IN ?", []string{constant.TaskActionVideoGenerate, constant.TaskActionGenerate, constant.TaskActionTextGenerate})
+		} else {
+			query = query.Where("action = ?", queryParams.Action)
+		}
 	}
 	if queryParams.Status != "" {
 		query = query.Where("status = ?", queryParams.Status)
@@ -268,7 +285,11 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}
 	if queryParams.Action != "" {
-		query = query.Where("action = ?", queryParams.Action)
+		if queryParams.Action == constant.TaskActionVideoGenerate {
+			query = query.Where("action IN ?", []string{constant.TaskActionVideoGenerate, constant.TaskActionGenerate, constant.TaskActionTextGenerate})
+		} else {
+			query = query.Where("action = ?", queryParams.Action)
+		}
 	}
 	if queryParams.Status != "" {
 		query = query.Where("status = ?", queryParams.Status)
@@ -485,11 +506,21 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	var total int64
 	query := DB.Model(&Task{}).Where("user_id = ?", userId)
+	if queryParams.Action == constant.TaskActionImageGenerate && queryParams.StartTimestamp == 0 {
+		queryParams.StartTimestamp = time.Now().Add(-7 * 24 * time.Hour).Unix()
+	}
+	if queryParams.Action == constant.TaskActionVideoGenerate && queryParams.StartTimestamp == 0 {
+		queryParams.StartTimestamp = time.Now().Add(-7 * 24 * time.Hour).Unix()
+	}
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}
 	if queryParams.Action != "" {
-		query = query.Where("action = ?", queryParams.Action)
+		if queryParams.Action == constant.TaskActionVideoGenerate {
+			query = query.Where("action IN ?", []string{constant.TaskActionVideoGenerate, constant.TaskActionGenerate, constant.TaskActionTextGenerate})
+		} else {
+			query = query.Where("action = ?", queryParams.Action)
+		}
 	}
 	if queryParams.Status != "" {
 		query = query.Where("status = ?", queryParams.Status)

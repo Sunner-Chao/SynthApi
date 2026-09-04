@@ -120,6 +120,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			modelPrice = modelPrice * imagePriceRatio
 		}
 		preConsumedQuota = int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+		if count := apimartImagePreConsumeCount(c, info); count > 1 {
+			preConsumedQuota *= count
+		}
 	}
 
 	// check if free model pre-consume is disabled
@@ -168,7 +171,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 func effectiveImagePriceRatio(c *gin.Context, info *relaycommon.RelayInfo, meta *types.TokenCountMeta) float64 {
 	ratio := meta.ImagePriceRatio
 	request, ok := info.Request.(*dto.ImageRequest)
-	if !ok || !request.IsAPIMartGPTImage2() {
+	if !ok || !request.IsAPIMartImageModel() {
 		return ratio
 	}
 
@@ -179,7 +182,18 @@ func effectiveImagePriceRatio(c *gin.Context, info *relaycommon.RelayInfo, meta 
 	if ratio == 0 {
 		ratio = 1
 	}
-	return ratio * dto.APIMartGPTImage2ResolutionPriceRatio(request.GetResolution())
+	return ratio * request.APIMartImagePriceRatio()
+}
+
+func apimartImagePreConsumeCount(c *gin.Context, info *relaycommon.RelayInfo) int {
+	request, ok := info.Request.(*dto.ImageRequest)
+	if !ok || !request.IsAPIMartImageModel() || !common.IsAPIMartAPIBaseURL(common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl)) {
+		return 1
+	}
+	if request.N == nil || *request.N < 2 {
+		return 1
+	}
+	return int(*request.N)
 }
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)

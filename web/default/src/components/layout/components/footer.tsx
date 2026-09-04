@@ -20,6 +20,7 @@ import { Fragment, useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { LogoFull } from './logo-mark'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 
@@ -152,12 +153,11 @@ export function Footer(props: FooterProps) {
   const { t } = useTranslation()
   const {
     systemName,
-    logo: systemLogo,
     footerHtml,
     demoSiteEnabled,
   } = useSystemConfig()
 
-  const displayLogo = systemLogo || props.logo || '/logo.png'
+  const displayLogo = '/logo.png?v=synthapi-logo-root-20260828'
   const displayName = systemName || props.name || 'SynthAPI'
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
@@ -254,14 +254,7 @@ export function Footer(props: FooterProps) {
           {/* Brand column */}
           <div className='shrink-0'>
             <Link to='/' className='group flex items-center gap-2.5'>
-              <img
-                src={displayLogo}
-                alt={displayName}
-                className='size-7 rounded-lg object-contain'
-              />
-              <span className='text-sm font-semibold tracking-tight'>
-                {displayName}
-              </span>
+              <LogoFull src={displayLogo} alt={displayName} className='h-7 w-[7.2rem]' />
             </Link>
             <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
               {t('Powerful API Management Platform')}

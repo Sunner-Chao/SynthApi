@@ -3,6 +3,7 @@ package openai
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -591,9 +592,12 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	// 写入新的 response body
-	service.IOCopyBytesGracefully(c, resp, responseBody)
+	clientResponseBody := normalizeOpenAIImageTaskResponse(responseBody)
+	// Persist before responding so an immediate client poll can always find the
+	// task. Persistence failure is logged and does not hide a valid upstream
+	// response from the caller.
 	maybePersistOpenAIImageTask(c, info, responseBody)
+	service.IOCopyBytesGracefully(c, resp, clientResponseBody)
 
 	// Once we've written to the client, we should not return errors anymore
 	// because the upstream has already consumed resources and returned content
@@ -613,8 +617,30 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	return &usageResp.Usage, nil
 }
 
+func normalizeOpenAIImageTaskResponse(responseBody []byte) []byte {
+	details, ok := parseOpenAIImageTaskResponse(responseBody)
+	if !ok || details.TaskID == "" {
+		return responseBody
+	}
+
+	var payload map[string]any
+	if err := common.Unmarshal(responseBody, &payload); err != nil || payload == nil {
+		return responseBody
+	}
+	payload["task_id"] = details.TaskID
+	payload["id"] = details.TaskID
+	if details.Status != "" {
+		payload["status"] = details.Status
+	}
+	normalized, err := common.Marshal(payload)
+	if err != nil {
+		return responseBody
+	}
+	return normalized
+}
+
 func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, responseBody []byte) {
-	if info == nil || info.RelayMode != relayconstant.RelayModeImagesGenerations {
+	if info == nil || (info.RelayMode != relayconstant.RelayModeImagesGenerations && info.RelayMode != relayconstant.RelayModeImagesEdits) {
 		return
 	}
 
@@ -630,7 +656,14 @@ func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, re
 
 	status := strings.ToLower(strings.TrimSpace(details.Status))
 	if status == "" {
-		status = "succeeded"
+		// APIMart task replies are asynchronous. A few compatible gateways omit
+		// status while still returning a task_xxx id; do not mistake those for a
+		// completed OpenAI image response.
+		if strings.HasPrefix(strings.ToLower(taskID), "task_") {
+			status = "submitted"
+		} else {
+			status = "succeeded"
+		}
 	}
 	isSuccess := status == "succeeded" || status == "completed" || status == "success"
 	isPending := status == "submitted" || status == "queued" || status == "processing" || status == "in_progress" || status == "pending"
@@ -638,7 +671,7 @@ func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, re
 		return
 	}
 
-	if _, exists, err := model.GetByTaskId(info.UserId, taskID); err != nil {
+	if _, exists, err := model.GetByOnlyTaskId(taskID); err != nil {
 		logger.LogWarn(c, fmt.Sprintf("check image task %s failed: %s", taskID, err.Error()))
 		return
 	} else if exists {
@@ -651,15 +684,40 @@ func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, re
 	task.PrivateData.BillingSource = info.BillingSource
 	task.PrivateData.SubscriptionId = info.SubscriptionId
 	task.PrivateData.TokenId = info.TokenId
+	imageCount := uint(1)
+	if imageRequest, ok := info.Request.(*dto.ImageRequest); ok {
+		task.Properties.Input = imageRequest.Prompt
+		task.Properties.ImageSize = imageRequest.Size
+		task.Properties.ImageResolution = imageRequest.GetResolution()
+		task.Properties.ImageQuality = imageRequest.Quality
+		task.Properties.ImageWatermark = imageRequest.Watermark != nil && *imageRequest.Watermark
+		if imageRequest.N != nil && *imageRequest.N > 0 {
+			imageCount = *imageRequest.N
+		}
+		task.Properties.ImageCount = imageCount
+	}
+	otherRatios := make(map[string]float64, len(info.PriceData.OtherRatios)+1)
+	for key, value := range info.PriceData.OtherRatios {
+		otherRatios[key] = value
+	}
+	if imageCount > 1 {
+		otherRatios["n"] = float64(imageCount)
+	}
+	isAPIMartTask := common.IsAPIMartAPIBaseURL(info.ChannelBaseUrl)
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
 		ModelPrice:      info.PriceData.ModelPrice,
 		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
 		ModelRatio:      info.PriceData.ModelRatio,
-		OtherRatios:     info.PriceData.OtherRatios,
+		OtherRatios:     otherRatios,
 		OriginModelName: info.OriginModelName,
-		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
+		PerCallBilling:  !isAPIMartTask && (common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice),
 	}
-	task.Quota = 0
+	if info.PriceData.UsePrice {
+		task.Quota = int(math.Round(
+			info.PriceData.ModelPrice * common.QuotaPerUnit *
+				info.PriceData.GroupRatioInfo.GroupRatio * float64(imageCount),
+		))
+	}
 	task.Data = responseBody
 	task.Action = constant.TaskActionImageGenerate
 	if isSuccess {
@@ -676,7 +734,9 @@ func maybePersistOpenAIImageTask(c *gin.Context, info *relaycommon.RelayInfo, re
 		task.Progress = "10%"
 	}
 	if err := task.Insert(); err != nil {
-		logger.LogWarn(c, fmt.Sprintf("insert image task %s failed: %s", taskID, err.Error()))
+		logger.LogWarn(c, fmt.Sprintf("persist APIMart image task failed task_id=%s user_id=%d channel_id=%d status=%s: %s", taskID, info.UserId, info.ChannelId, task.Status, err.Error()))
+	} else {
+		logger.LogInfo(c, fmt.Sprintf("persisted APIMart image task task_id=%s user_id=%d channel_id=%d status=%s", taskID, info.UserId, info.ChannelId, task.Status))
 	}
 }
 
@@ -696,6 +756,11 @@ func parseOpenAIImageTaskResponse(responseBody []byte) (openAIImageTaskDetails, 
 	}
 
 	item := firstImageObject(payload["data"])
+	// Some APIMart-compatible responses wrap the task under data.task or
+	// data.result. Prefer the object carrying the task id/status.
+	if nested := firstImageObject(item["task"]); firstString(nested, "task_id", "id") != "" {
+		item = nested
+	}
 	taskID := firstString(item, "task_id", "id")
 	if taskID == "" {
 		taskID = firstString(payload, "task_id", "id")

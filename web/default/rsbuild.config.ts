@@ -63,6 +63,11 @@ export default defineConfig(({ envMode }) => {
     },
     html: {
       template: './index.html',
+      // Inject the square mark instead of letting Rsbuild discover the legacy
+      // horizontal favicon.ico from public/. The template also carries a
+      // versioned link so browser/CDN caches are invalidated on release.
+      favicon:
+        '//synthapi.asia/favicon.png?v=synthapi-logo-from-root-20260828',
     },
     server: {
       host: '0.0.0.0',

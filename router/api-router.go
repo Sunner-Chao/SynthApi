@@ -203,6 +203,8 @@ func SetApiRouter(router *gin.Engine) {
 		rewardAdminRoute := apiRouter.Group("/user/rewards/admin")
 		rewardAdminRoute.Use(middleware.AdminAuth())
 		{
+			rewardAdminRoute.GET("/settings", controller.AdminGetRewardProgramSettings)
+			rewardAdminRoute.PUT("/settings", controller.AdminUpdateRewardProgramSettings)
 			rewardAdminRoute.GET("/claims", controller.AdminListRechargeBenefitClaims)
 			rewardAdminRoute.GET("/users/summaries", controller.AdminGetUserRewardListSummaries)
 			rewardAdminRoute.GET("/users/:id/summary", controller.AdminGetUserRewardSummary)

@@ -168,6 +168,8 @@ POST /v1/responses
 
 ## Image Generation
 
+图像聚合模型使用异步任务，完整的模型列表、参数和轮询流程见 [图像生成 API](./image-api.md)。
+
 ### 请求
 
 ```bash
@@ -196,7 +198,7 @@ POST /v1/images/generations
 }
 ```
 
-APIMart GPT Image 2 兼容参数也可以直接通过 API Key 传入：
+GPT Image 2 的扩展参数也可以直接通过 API Key 传入：
 
 ```json
 {
@@ -212,7 +214,7 @@ APIMart GPT Image 2 兼容参数也可以直接通过 API Key 传入：
 
 `image_urls` 支持公网 URL 或 Base64 Data URI，最多 16 张；`size` 支持文档中的比例或 `WIDTHxHEIGHT` 自定义尺寸，`resolution` 支持 `1k`、`2k`、`4k`。请求仍受 API Key 的模型限制和分组限制约束。
 
-当请求路由到 APIMart 可配置生图线路时，GPT Image 2 按分辨率档位计费：1K 为基础价，2K 为 `1.6471x`，4K 为 `2.4706x`；`n` 会继续按图片张数相乘。`size` 只控制画面比例和实际像素尺寸，不额外改变价格档位。其他生图线路仍使用各自渠道的定价规则。
+当请求路由到图像聚合线路时，GPT Image 2 按分辨率档位计费：1K 为基础价，2K 为 `1.6471x`，4K 为 `2.4706x`；`n` 会继续按图片张数相乘。`size` 只控制画面比例和实际像素尺寸，不额外改变价格档位。其他生图线路仍使用各自渠道的定价规则。
 
 ## Audio
 

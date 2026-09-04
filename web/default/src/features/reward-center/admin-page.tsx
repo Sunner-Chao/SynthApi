@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Ban, Check, ExternalLink, Gift, Settings2, ShieldCheck, Zap } from 'lucide-react'
@@ -7,18 +7,17 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { getOptionValue, useSystemOptions } from '@/features/system-settings/hooks/use-system-options'
-import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
 import { useStatus } from '@/hooks/use-status'
-import { getRechargeBenefitClaims, reviewRechargeBenefitClaim } from './api'
+import {
+  getRechargeBenefitClaims,
+  getRewardProgramSettings,
+  reviewRechargeBenefitClaim,
+  updateRewardProgramSetting,
+} from './api'
+import type { RewardProgramSettings } from './api'
 import { RewardCenterShell } from './reward-center-shell'
 import './styles.css'
 import type { RechargeBenefitClaim } from './types'
-
-const defaultSettings = {
-  AffiliateMilestoneRewardEnabled: true,
-  RechargeBenefitEnabled: true,
-}
 
 function formatDate(timestamp: number) {
   if (!timestamp) return '—'
@@ -39,12 +38,35 @@ export function AdminRewardPage() {
   const { status } = useStatus()
   const queryClient = useQueryClient()
   const [claimStatus, setClaimStatus] = useState<'pending' | 'granted' | 'rejected'>('pending')
-  const optionsQuery = useSystemOptions()
-  const updateOption = useUpdateOption()
-  const settings = useMemo(
-    () => getOptionValue(optionsQuery.data?.data, defaultSettings),
-    [optionsQuery.data?.data]
-  )
+  const settingsQuery = useQuery({
+    queryKey: ['reward-admin-settings'],
+    queryFn: async () => {
+      const response = await getRewardProgramSettings()
+      if (!response.success) throw new Error(response.message)
+      return response.data
+    },
+  })
+  const settings = settingsQuery.data ?? {
+    AffiliateMilestoneRewardEnabled:
+      status?.affiliate_milestone_reward_enabled !== false,
+    RechargeBenefitEnabled: status?.recharge_benefit_enabled !== false,
+  }
+
+  const updateSetting = useMutation({
+    mutationFn: (input: {
+      key: keyof RewardProgramSettings
+      value: boolean
+    }) => updateRewardProgramSetting(input.key, input.value),
+    onSuccess: async (response) => {
+      if (!response.success) {
+        toast.error(response.message || '设置更新失败')
+        return
+      }
+      toast.success('活动设置已更新')
+      await queryClient.invalidateQueries({ queryKey: ['reward-admin-settings'] })
+      await queryClient.invalidateQueries({ queryKey: ['status'] })
+    },
+  })
 
   const claimsQuery = useQuery({
     queryKey: ['reward-admin-claims', claimStatus],
@@ -53,7 +75,7 @@ export function AdminRewardPage() {
       if (!response.success) throw new Error(response.message)
       return response.data
     },
-    enabled: !optionsQuery.isLoading,
+    enabled: !settingsQuery.isLoading,
   })
 
   const reviewMutation = useMutation({
@@ -70,11 +92,11 @@ export function AdminRewardPage() {
     },
   })
 
-  const toggle = (key: keyof typeof defaultSettings, value: boolean) => {
-    updateOption.mutate({ key, value: String(value) })
+  const toggle = (key: keyof RewardProgramSettings, value: boolean) => {
+    updateSetting.mutate({ key, value })
   }
 
-  if (optionsQuery.isLoading) {
+  if (settingsQuery.isLoading) {
     return <div className='reward-loading'><Skeleton className='h-16 w-72' /><Skeleton className='h-[65vh] w-full' /></div>
   }
 
@@ -87,7 +109,7 @@ export function AdminRewardPage() {
             <h1>福利中心管理</h1>
             <p>统一管理用户端活动展示、千元充能申请与福利开关。关闭活动只影响新申请，历史记录继续保留。</p>
           </div>
-          <div className='reward-admin-hero__status'><ShieldCheck /> ROOT 管理员 · ID 1</div>
+          <div className='reward-admin-hero__status'><ShieldCheck /> 管理员权限</div>
         </section>
 
         <section className='reward-admin-program-grid'>
@@ -100,7 +122,7 @@ export function AdminRewardPage() {
             <CardContent>
               <div className='reward-admin-switch-row'>
                 <div><strong>{settings.AffiliateMilestoneRewardEnabled ? '用户端已开启' : '用户端已关闭'}</strong><span>历史返利台账不受影响</span></div>
-                <Switch checked={settings.AffiliateMilestoneRewardEnabled} disabled={updateOption.isPending} onCheckedChange={(checked) => toggle('AffiliateMilestoneRewardEnabled', checked)} />
+                <Switch checked={settings.AffiliateMilestoneRewardEnabled} disabled={updateSetting.isPending} onCheckedChange={(checked) => toggle('AffiliateMilestoneRewardEnabled', checked)} />
               </div>
               <Button variant='outline' size='sm' render={<Link to='/rewards/referral' />}>查看用户页面 <ExternalLink /></Button>
             </CardContent>
@@ -115,7 +137,7 @@ export function AdminRewardPage() {
             <CardContent>
               <div className='reward-admin-switch-row'>
                 <div><strong>{settings.RechargeBenefitEnabled ? '用户端已开启' : '用户端已关闭'}</strong><span>关闭后仍可审核历史申请</span></div>
-                <Switch checked={settings.RechargeBenefitEnabled} disabled={updateOption.isPending} onCheckedChange={(checked) => toggle('RechargeBenefitEnabled', checked)} />
+                <Switch checked={settings.RechargeBenefitEnabled} disabled={updateSetting.isPending} onCheckedChange={(checked) => toggle('RechargeBenefitEnabled', checked)} />
               </div>
               <Button variant='outline' size='sm' render={<Link to='/rewards/recharge' />}>查看用户页面 <ExternalLink /></Button>
             </CardContent>

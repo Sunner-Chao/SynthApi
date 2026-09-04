@@ -12,6 +12,7 @@ export function useRewardOverview(
       if (!response.success) throw new Error(response.message)
       return response.data
     },
+    retry: false,
     refetchInterval: 60_000,
     enabled,
   })

@@ -51,7 +51,7 @@ export function AdminRewardSidebarPanel() {
               </small>
             </span>
             <span className='sidebar-reward-badge shrink-0 rounded px-1.5 text-[10px] font-bold'>
-              ROOT
+              ADMIN
             </span>
           </SidebarMenuButton>
         </SidebarMenuItem>

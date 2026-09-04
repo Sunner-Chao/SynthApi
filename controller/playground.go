@@ -3,10 +3,14 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +22,44 @@ func Playground(c *gin.Context) {
 
 func PlaygroundImage(c *gin.Context) {
 	playgroundRelay(c, types.RelayFormatOpenAIImage)
+}
+
+// PlaygroundVideo submits an asynchronous video task using the authenticated
+// dashboard session. The temporary token keeps the normal distributor and
+// billing path identical to API-key requests without exposing a token to the
+// browser.
+func PlaygroundVideo(c *gin.Context) {
+	useAccessToken := c.GetBool("use_access_token")
+	if useAccessToken {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"message": "暂不支持使用 access token",
+				"type":    "access_denied",
+			},
+		})
+		return
+	}
+	userID := c.GetInt("id")
+	userCache, err := model.GetUserCache(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": "failed to load user context", "type": "server_error"}})
+		return
+	}
+	userCache.WriteContext(c)
+	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if group == "" {
+		group = common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+	}
+	tempToken := &model.Token{UserId: userID, Name: fmt.Sprintf("playground-video-%s", group), Group: group}
+	_ = middleware.SetupContextForToken(c, tempToken)
+	RelayTask(c)
+}
+
+// FetchPlaygroundVideoTask uses the same persisted task representation as the
+// public OpenAI-compatible endpoint while accepting dashboard session auth.
+func FetchPlaygroundVideoTask(c *gin.Context) {
+	c.Set("relay_mode", relayconstant.RelayModeVideoFetchByID)
+	RelayTaskFetch(c)
 }
 
 func playgroundRelay(c *gin.Context, relayFormat types.RelayFormat) {

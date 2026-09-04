@@ -2,7 +2,9 @@ package dto
 
 import (
 	"encoding/json"
+	"math"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -56,6 +58,43 @@ func (i *ImageRequest) IsAPIMartGPTImage2() bool {
 	return modelName == "gpt-image-2" || modelName == "gpt-image-2-ext"
 }
 
+func (i *ImageRequest) IsAPIMartImageModel() bool {
+	_, ok := apimartImageModels[strings.ToLower(strings.TrimSpace(i.Model))]
+	return ok
+}
+
+var apimartImageModels = map[string]struct{}{
+	"flux-2-flex":                    {},
+	"flux-2-max":                     {},
+	"flux-2-pro":                     {},
+	"flux-kontext-max":               {},
+	"flux-kontext-pro":               {},
+	"gemini-2.5-flash-image-preview": {},
+	"gemini-3-pro-image-preview":     {},
+	"gemini-3.1-flash-image-preview": {},
+	"gemini-3.1-flash-lite-image":    {},
+	"gpt-image-2":                    {},
+	"gpt-image-2-ext":                {},
+	"gpt-image-2-official":           {},
+	"grok-imagine-1.5-apimart":       {},
+	"grok-imagine-2.0-ext":           {},
+	"grok-imagine-image":             {},
+	"grok-imagine-image-2.0":         {},
+	"grok-imagine-image-quality":     {},
+	"imagen-4.0-apimart":             {},
+	"qwen-image-2.0":                 {},
+	"qwen-image-2.0-pro":             {},
+	"qwen-image-3.0":                 {},
+	"qwen-image-3.0-pro":             {},
+	"seedream-4.0":                   {},
+	"seedream-4.5":                   {},
+	"seedream-5-0-lite":              {},
+	"seedream-5-0-pro":               {},
+	"wan2.7-image":                   {},
+	"wan2.7-image-pro":               {},
+	"z-image-turbo":                  {},
+}
+
 func (i *ImageRequest) GetResolution() string {
 	if len(i.Resolution) == 0 {
 		return ""
@@ -67,6 +106,27 @@ func (i *ImageRequest) GetResolution() string {
 	return strings.ToLower(strings.TrimSpace(resolution))
 }
 
+func (i *ImageRequest) GetExtraString(key string) string {
+	raw, ok := i.Extra[key]
+	if !ok || len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if err := common.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func (i *ImageRequest) GetExtraBool(key string) bool {
+	raw, ok := i.Extra[key]
+	if !ok || len(raw) == 0 {
+		return false
+	}
+	var value bool
+	return common.Unmarshal(raw, &value) == nil && value
+}
+
 func APIMartGPTImage2ResolutionPriceRatio(resolution string) float64 {
 	switch strings.ToLower(strings.TrimSpace(resolution)) {
 	case "2k":
@@ -76,6 +136,103 @@ func APIMartGPTImage2ResolutionPriceRatio(resolution string) float64 {
 	default:
 		return 1
 	}
+}
+
+func (i *ImageRequest) APIMartImagePriceRatio() float64 {
+	modelName := strings.ToLower(strings.TrimSpace(i.Model))
+	resolution := i.GetResolution()
+	if resolution == "" {
+		resolution = defaultAPIMartResolution(modelName)
+	}
+
+	switchRatio := func(values map[string]float64) float64 {
+		if ratio, ok := values[resolution]; ok {
+			return ratio
+		}
+		return 1
+	}
+
+	switch modelName {
+	case "gpt-image-2", "gpt-image-2-ext":
+		return APIMartGPTImage2ResolutionPriceRatio(resolution)
+	case "gemini-3.1-flash-image-preview":
+		return switchRatio(map[string]float64{"0.5k": 1, "1k": 1, "2k": 4.0 / 3.0, "4k": 5.0 / 3.0})
+	case "flux-2-flex":
+		resolution = effectiveMegapixelResolution(i.Size, resolution)
+		return switchRatio(map[string]float64{"1mp": 0.5, "2mp": 1, "3mp": 1.5, "4mp": 2})
+	case "flux-2-max":
+		resolution = effectiveMegapixelResolution(i.Size, resolution)
+		return switchRatio(map[string]float64{"1mp": 0.7, "2mp": 1, "3mp": 1.3, "4mp": 1.6})
+	case "flux-2-pro":
+		resolution = effectiveMegapixelResolution(i.Size, resolution)
+		return switchRatio(map[string]float64{"1mp": 2.0 / 3.0, "2mp": 1, "3mp": 4.0 / 3.0, "4mp": 5.0 / 3.0})
+	case "grok-imagine-image-2.0":
+		quality := strings.ToLower(strings.TrimSpace(i.Quality))
+		if quality == "" || quality == "auto" {
+			quality = "medium"
+		}
+		return switchRatio(map[string]float64{
+			"1k": map[bool]float64{true: 2.0 / 3.0, false: 1}[quality == "low"],
+			"2k": map[bool]float64{true: 1, false: 4.0 / 3.0}[quality == "low"],
+		})
+	case "grok-imagine-image-quality":
+		return switchRatio(map[string]float64{"1k": 1, "2k": 1.4})
+	case "qwen-image-3.0-pro":
+		if pixelCount(i.Size) > 2_250_000 || resolution == "2k" {
+			return 2
+		}
+	case "seedream-5-0-pro":
+		if pixelCount(i.Size) > 2_601_124 || resolution == "2k" {
+			return 2
+		}
+	case "z-image-turbo":
+		if i.GetExtraBool("prompt_extend") {
+			return 2
+		}
+	}
+	return 1
+}
+
+func defaultAPIMartResolution(modelName string) string {
+	switch modelName {
+	case "flux-2-flex", "flux-2-max", "flux-2-pro":
+		return "2mp"
+	case "seedream-4.0", "seedream-4.5", "seedream-5-0-lite", "wan2.7-image", "wan2.7-image-pro":
+		return "2k"
+	default:
+		return "1k"
+	}
+}
+
+func effectiveMegapixelResolution(size string, fallback string) string {
+	pixels := pixelCount(size)
+	if pixels <= 0 {
+		return fallback
+	}
+	tier := int(math.Ceil(float64(pixels) / 1_000_000))
+	if tier < 1 {
+		tier = 1
+	}
+	if tier > 4 {
+		tier = 4
+	}
+	return strconv.Itoa(tier) + "mp"
+}
+
+func pixelCount(size string) int64 {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(size)), "x")
+	if len(parts) != 2 {
+		return 0
+	}
+	width, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil || width <= 0 {
+		return 0
+	}
+	height, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil || height <= 0 {
+		return 0
+	}
+	return width * height
 }
 
 func (i *ImageRequest) UnmarshalJSON(data []byte) error {

@@ -90,10 +90,23 @@ export async function getUserRewardSummary(
 export async function getUserRewardListSummaries(
   ids: number[]
 ): Promise<ApiResponse<Record<number, AdminUserRewardListSummary>>> {
-  const res = await api.get('/api/user/rewards/admin/users/summaries', {
-    params: { ids: ids.join(',') },
-  })
-  return res.data
+  try {
+    const res = await api.get('/api/user/rewards/admin/users/summaries', {
+      params: { ids: ids.join(',') },
+      skipErrorHandler: true,
+    })
+    return res.data
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'response' in error &&
+      (error as { response?: { status?: number } }).response?.status === 404
+    ) {
+      return { success: true, message: '', data: {} }
+    }
+    throw error
+  }
 }
 
 /**

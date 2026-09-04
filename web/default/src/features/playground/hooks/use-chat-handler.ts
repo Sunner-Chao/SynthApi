@@ -95,11 +95,18 @@ export function useChatHandler({
     return err?.response?.data?.error?.code || undefined
   }
 
+  const getImageResponseItems = (
+    response: ImageGenerationResponse
+  ): ImageGenerationData[] => {
+    if (Array.isArray(response.data)) return response.data
+    return response.data ? [response.data] : []
+  }
+
   const pickImageData = (response: ImageGenerationResponse) =>
-    response.data?.find((item) => item.url || item.b64_json)
+    getImageResponseItems(response).find((item) => item.url || item.b64_json)
 
   const pickTaskId = (response: ImageGenerationResponse) =>
-    response.data?.find((item) => item.task_id)?.task_id ||
+    getImageResponseItems(response).find((item) => item.task_id)?.task_id ||
     response.task_id ||
     response.id ||
     ''

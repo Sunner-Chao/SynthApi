@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -60,5 +61,46 @@ func TestAPIMartGPTImage2ResolutionPriceRatio(t *testing.T) {
 		if math.Abs(actual-test.expected) > 1e-9 {
 			t.Fatalf("resolution %q ratio = %f, expected %f", test.resolution, actual, test.expected)
 		}
+	}
+}
+
+func TestAPIMartImagePriceRatio(t *testing.T) {
+	tests := []struct {
+		name     string
+		request  ImageRequest
+		expected float64
+	}{
+		{
+			name:     "gpt image 2 4k",
+			request:  ImageRequest{Model: "gpt-image-2", Resolution: json.RawMessage(`"4k"`)},
+			expected: apimartGPTImage2Price4K / apimartGPTImage2Price1K,
+		},
+		{
+			name:     "flux pro exact three megapixels",
+			request:  ImageRequest{Model: "flux-2-pro", Size: "2000x1500", Resolution: json.RawMessage(`"1MP"`)},
+			expected: 4.0 / 3.0,
+		},
+		{
+			name:     "qwen pro 2k",
+			request:  ImageRequest{Model: "qwen-image-3.0-pro", Resolution: json.RawMessage(`"2K"`)},
+			expected: 2,
+		},
+		{
+			name:     "grok 2 low 1k",
+			request:  ImageRequest{Model: "grok-imagine-image-2.0", Resolution: json.RawMessage(`"1K"`), Quality: "low"},
+			expected: 2.0 / 3.0,
+		},
+		{
+			name:     "z image prompt extension",
+			request:  ImageRequest{Model: "z-image-turbo", Extra: map[string]json.RawMessage{"prompt_extend": json.RawMessage(`true`)}},
+			expected: 2,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if actual := test.request.APIMartImagePriceRatio(); math.Abs(actual-test.expected) > 1e-9 {
+				t.Fatalf("expected ratio %.9f, got %.9f", test.expected, actual)
+			}
+		})
 	}
 }
