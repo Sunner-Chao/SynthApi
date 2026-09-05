@@ -354,6 +354,11 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			}
 			if req != nil {
 				modelRequest.Model = req.Model
+				// Dashboard video requests include the selected billing/routing
+				// group in the JSON or multipart body. Preserve it so the
+				// distributor can route to the corresponding video channel
+				// instead of falling back to the user's default group.
+				modelRequest.Group = req.Group
 			}
 		} else if c.Request.Method == http.MethodGet {
 			relayMode = relayconstant.RelayModeVideoFetchByID
@@ -369,6 +374,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 				return nil, false, err
 			}
 			modelRequest.Model = req.Model
+			// Keep the explicitly selected group for the legacy
+			// /v1/video/generations endpoint as well.
+			modelRequest.Group = req.Group
 			relayMode = relayconstant.RelayModeVideoSubmit
 		} else if c.Request.Method == http.MethodGet {
 			relayMode = relayconstant.RelayModeVideoFetchByID
