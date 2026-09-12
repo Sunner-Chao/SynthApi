@@ -24,13 +24,16 @@ type turnstileCheckResponse struct {
 }
 
 func newTurnstileHTTPClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	directTransport := http.DefaultTransport.(*http.Transport).Clone()
+	var transport http.RoundTripper = directTransport
 	if rawProxy := common.GetEnvOrDefaultString("TURNSTILE_VERIFY_PROXY", ""); rawProxy != "" {
 		proxyURL, err := url.Parse(rawProxy)
 		if err != nil {
 			common.SysError(fmt.Sprintf("invalid TURNSTILE_VERIFY_PROXY: %v", err))
 		} else {
-			transport.Proxy = http.ProxyURL(proxyURL)
+			proxyTransport := directTransport.Clone()
+			proxyTransport.Proxy = http.ProxyURL(proxyURL)
+			transport = &turnstileFallbackTransport{primary: proxyTransport, fallback: directTransport}
 		}
 	}
 
@@ -42,6 +45,21 @@ func newTurnstileHTTPClient() *http.Client {
 		Transport: transport,
 		Timeout:   time.Duration(timeoutSeconds) * time.Second,
 	}
+}
+
+type turnstileFallbackTransport struct {
+	primary, fallback http.RoundTripper
+}
+
+func (t *turnstileFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	res, err := t.primary.RoundTrip(req)
+	if err == nil && res.StatusCode >= 200 && res.StatusCode < 500 {
+		return res, nil
+	}
+	if res != nil {
+		res.Body.Close()
+	}
+	return t.fallback.RoundTrip(req)
 }
 
 func turnstileToken(c *gin.Context) string {

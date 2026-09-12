@@ -137,6 +137,7 @@ export function useSidebarData(): SidebarData {
         id: 'admin',
         title: t('Admin'),
         items: [
+          { title: t('R2 数据监控'), url: '/r2-monitor', icon: Activity },
           {
             title: t('Account Import'),
             url: '/accounts',

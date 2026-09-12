@@ -50,9 +50,9 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
   const { avg_latency_ms, avg_tps, success_rate } = props.perf
 
   let statusColor = 'bg-emerald-500'
-  if (success_rate < 99) {
+  if (success_rate < 95) {
     statusColor = 'bg-red-500'
-  } else if (success_rate < 99.9) {
+  } else if (success_rate < 99) {
     statusColor = 'bg-amber-500'
   }
 

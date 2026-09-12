@@ -4,7 +4,7 @@ DO $migration$
 DECLARE
   old_group text := 'gpt-image-2(可自定义图像参数)';
   new_group text := '图像模型聚合(可自定义图像参数)';
-  image_models text := 'flux-2-flex,flux-2-max,flux-2-pro,flux-kontext-max,flux-kontext-pro,gemini-2.5-flash-image-preview,gemini-3-pro-image-preview,gemini-3.1-flash-image-preview,gemini-3.1-flash-lite-image,gpt-image-2,gpt-image-2-ext,gpt-image-2-official,grok-imagine-1.5-apimart,grok-imagine-2.0-ext,grok-imagine-image,grok-imagine-image-2.0,grok-imagine-image-quality,imagen-4.0-apimart,qwen-image-2.0,qwen-image-2.0-pro,qwen-image-3.0,qwen-image-3.0-pro,seedream-4.0,seedream-4.5,seedream-5-0-lite,seedream-5-0-pro,wan2.7-image,wan2.7-image-pro,z-image-turbo';
+  image_models text := 'flux-2-flex,flux-2-max,flux-2-pro,flux-kontext-max,flux-kontext-pro,gemini-2.5-flash-image-preview,gemini-3-pro-image-preview,gemini-3.1-flash-image-preview,gemini-3.1-flash-lite-image,gpt-image-2,gpt-image-2-ext,gpt-image-2.5,gpt-image-2-official,grok-imagine-1.5-apimart,grok-imagine-2.0-ext,grok-imagine-image,grok-imagine-image-2.0,grok-imagine-image-quality,imagen-4.0-apimart,qwen-image-2.0,qwen-image-2.0-pro,qwen-image-3.0,qwen-image-3.0-pro,seedream-4.0,seedream-4.5,seedream-5-0-lite,seedream-5-0-pro,wan2.7-image,wan2.7-image-pro,z-image-turbo';
 BEGIN
   IF (SELECT count(*) FROM channels WHERE id = 26 AND base_url = 'https://api.apimart.ai') <> 1 THEN
     RAISE EXCEPTION 'APIMart image channel #26 was not found';
@@ -45,6 +45,7 @@ BEGIN
     "gemini-3.1-flash-lite-image": 0.552,
     "gpt-image-2": 0.136986,
     "gpt-image-2-ext": 0.139642857,
+    "gpt-image-2.5": 0.1643832,
     "gpt-image-2-official": 0.078725714,
     "grok-imagine-1.5-apimart": 0.246428571,
     "grok-imagine-2.0-ext": 1.314285714,

@@ -39,6 +39,7 @@ const routerMap = {
   user: '/console/user',
   subscription: '/console/subscription',
   log: '/console/log',
+  'r2-monitor': '/console/r2-monitor',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -89,6 +90,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'log',
         to: '/log',
       },
+      { text: 'R2 数据监控', itemKey: 'r2-monitor', to: '/r2-monitor' },
       {
         text: t('绘图日志'),
         itemKey: 'midjourney',
@@ -109,6 +111,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
     // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
+      if (item.itemKey === 'r2-monitor') return isAdmin();
       const configVisible = isModuleVisible('console', item.itemKey);
       return configVisible;
     });

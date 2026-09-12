@@ -614,7 +614,7 @@ func addMultipartReferenceImages(c *gin.Context, request *dto.ImageRequest) erro
 	switch request.GetResolution() {
 	case "", "1k", "2k", "4k":
 	default:
-		return errors.New("resolution must be one of 1k, 2k, or 4k for gpt-image-2")
+	return errors.New("resolution must be one of 1k, 2k, or 4k for gpt-image-2.5")
 	}
 
 	var headers []*multipart.FileHeader

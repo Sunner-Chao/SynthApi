@@ -134,6 +134,14 @@ export const APIMART_MODEL_CONFIGS: Record<string, ImageModelConfig> = {
     maxReferences: 16,
     sourcePrices: { '1k': 0.0085, '2k': 0.014, '4k': 0.021 },
   },
+  'gpt-image-2.5': {
+    summary: 'GPT-Image-2.5，支持文生图、图生图和参考图编辑。',
+    defaultResolution: '1k',
+    resolutions: resolution('1K', '2K', '4K'),
+    maxImages: 10,
+    maxReferences: 16,
+    sourcePrices: { '1k': 0.0085, '2k': 0.014, '4k': 0.021 },
+  },
   'gpt-image-2-official': {
     summary: 'OpenAI 官方通道，按实际输入与图像输出 Token 结算。',
     defaultResolution: '1k',

@@ -14,6 +14,7 @@ var (
 		"dall-e-2",
 		"gpt-image-1",
 		"gpt-image-2",
+		"gpt-image-2.5",
 		"chatgpt-image",
 		"gemini-2.5-flash-image-preview",
 		"gemini-3-pro-image-preview",
