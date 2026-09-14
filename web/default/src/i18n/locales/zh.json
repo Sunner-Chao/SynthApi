@@ -5235,5 +5235,15 @@
     "Sequential generation": "连续图像",
     "Reuse": "复用参数",
     "Reference": "作为参考图"
-  }
+  },
+  "Some requests failed": "部分请求失败",
+  "High failure rate": "失败率较高",
+  "No request data": "暂无请求数据",
+  "{{count}} requests": "{{count}} 次请求",
+  "{{count}} requests in the last 24 hours": "近 24 小时 {{count}} 次请求",
+  "High-failure periods": "高失败率时段",
+  "{{count}} high-failure periods": "{{count}} 个高失败率时段",
+  "Request success rate; {{incidents}} high-failure periods in the last 24 hours": "请求成功率；近 24 小时有 {{incidents}} 个高失败率时段",
+  "Green: success rate ≥90%. Yellow: below 90%. Red: below 50% with at least 10 requests. Gray: no data.": "绿色：成功率 ≥90%；黄色：低于 90%；红色：至少 10 次请求且成功率低于 50%；灰色：暂无数据。",
+  "Recent requests: success is green, isolated failures yellow, 3 consecutive failures turn red. Latency does not change availability colors.": "近期请求：成功为绿，偶发失败为黄，连续 3 次失败开始标红。耗时不影响可用性颜色。"
 }

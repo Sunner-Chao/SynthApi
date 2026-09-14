@@ -22,6 +22,11 @@ import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, Code2, HeartPulse, Info, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLobeIcon } from '@/lib/lobe-icon'
+import {
+  healthPresentation,
+  serviceHealth,
+  summarizeHealth,
+} from '@/lib/service-health'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,6 +50,7 @@ import { CopyButton } from '@/components/copy-button'
 import { sideDrawerContentClassName } from '@/components/drawer-layout'
 import { GroupBadge } from '@/components/group-badge'
 import { PublicLayout } from '@/components/layout'
+import { ServiceHealthBars } from '@/components/service-health-bars'
 import { getPerfMetrics } from '@/features/performance-metrics/api'
 import {
   formatLatency,
@@ -179,7 +185,8 @@ function OverviewMetric(props: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: React.ReactNode
-  intent?: 'default' | 'warning' | 'success'
+  intent?: 'default' | 'warning' | 'success' | 'danger'
+  health?: { rate: number; requestCount?: number }
 }) {
   const Icon = props.icon
   const intent = props.intent ?? 'default'
@@ -194,11 +201,19 @@ function OverviewMetric(props: {
         <div
           className={cn(
             'text-foreground truncate font-mono text-sm font-semibold tabular-nums',
+            intent === 'danger' && 'text-rose-600 dark:text-rose-400',
             intent === 'warning' && 'text-amber-600 dark:text-amber-400',
             intent === 'success' && 'text-emerald-600 dark:text-emerald-400'
           )}
         >
           {props.value}
+          {props.health && (
+            <ServiceHealthBars
+              rate={props.health.rate}
+              requestCount={props.health.requestCount}
+              className='ml-2'
+            />
+          )}
         </div>
       </div>
     </div>
@@ -216,19 +231,10 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
   const groups = (metricsQuery.data?.data.groups ?? []).filter(
     (group) => !EXCLUDED_GROUPS.includes(group.group)
   )
-  const successRates = groups
-    .map((group) => group.success_rate)
-    .filter((rate) => Number.isFinite(rate))
-  const successRate =
-    successRates.length > 0
-      ? successRates.reduce((sum, rate) => sum + rate, 0) / successRates.length
-      : Number.NaN
-  let successIntent: 'default' | 'warning' | 'success' = 'warning'
-  if (successRate >= 99.9) {
-    successIntent = 'success'
-  } else if (successRate >= 99) {
-    successIntent = 'default'
-  }
+  const summary = summarizeHealth(groups)
+  const successRate = summary.success_rate
+  const successIntent =
+    healthPresentation[serviceHealth(successRate, summary.request_count)].intent
   const tpsValues = groups
     .map((group) => group.avg_tps)
     .filter((value) => value > 0)
@@ -264,6 +270,7 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
         label={t('Success rate')}
         value={formatUptimePct(successRate)}
         intent={successIntent}
+        health={{ rate: successRate, requestCount: summary.request_count }}
       />
     </div>
   )

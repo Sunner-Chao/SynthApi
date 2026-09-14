@@ -57,6 +57,8 @@ export type LatencyTimePoint = {
 }
 
 export type UptimeDayPoint = {
+  request_count?: number
+  success_count?: number
   date: string
   uptime_pct: number
   incidents: number

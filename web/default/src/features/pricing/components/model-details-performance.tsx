@@ -20,6 +20,11 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, HeartPulse, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import {
+  healthPresentation,
+  serviceHealth,
+  summarizeHealth,
+} from '@/lib/service-health'
 import { cn } from '@/lib/utils'
 import {
   Table,
@@ -30,6 +35,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { GroupBadge } from '@/components/group-badge'
+import { ServiceHealthBars } from '@/components/service-health-bars'
+import { ServiceHealthLegend } from '@/components/service-health-legend'
 import { getPerfMetrics } from '@/features/performance-metrics/api'
 import {
   formatLatency,
@@ -39,6 +46,7 @@ import {
 import type { PerformanceGroup } from '@/features/performance-metrics/types'
 import { EXCLUDED_GROUPS } from '../constants'
 import { type UptimeDayPoint } from '../lib/mock-stats'
+import { toUptimeSeries } from '../lib/performance-health'
 import type { PricingModel } from '../types'
 import { LatencyTrendChart, UptimeTrendChart } from './model-details-charts'
 import { UptimeSparkline } from './model-details-uptime-sparkline'
@@ -48,7 +56,8 @@ function StatCard(props: {
   label: string
   value: React.ReactNode
   hint?: string
-  intent?: 'default' | 'warning' | 'success'
+  intent?: 'default' | 'warning' | 'success' | 'danger'
+  health?: { rate: number; requestCount?: number }
 }) {
   const Icon = props.icon
   const intent = props.intent ?? 'default'
@@ -61,11 +70,19 @@ function StatCard(props: {
       <span
         className={cn(
           'text-foreground font-mono text-lg font-semibold tabular-nums',
+          intent === 'danger' && 'text-rose-600 dark:text-rose-400',
           intent === 'warning' && 'text-amber-600 dark:text-amber-400',
           intent === 'success' && 'text-emerald-600 dark:text-emerald-400'
         )}
       >
         {props.value}
+        {props.health && (
+          <ServiceHealthBars
+            rate={props.health.rate}
+            requestCount={props.health.requestCount}
+            className='ml-2'
+          />
+        )}
       </span>
       {props.hint && (
         <span className='text-muted-foreground/70 text-[11px]'>
@@ -104,44 +121,6 @@ function toLatencySeries(groups: PerformanceGroup[]) {
         values.reduce((sum, value) => sum + value, 0) / values.length
       ),
     }))
-}
-
-function toUptimeSeries(groups: PerformanceGroup[]): UptimeDayPoint[] {
-  const byTs = new Map<number, { rates: number[]; incidents: number }>()
-  for (const group of groups) {
-    for (const point of group.series) {
-      const current = byTs.get(point.ts) ?? { rates: [], incidents: 0 }
-      if (Number.isFinite(point.success_rate)) {
-        current.rates.push(point.success_rate)
-        if (point.success_rate < 100) current.incidents += 1
-      }
-      byTs.set(point.ts, current)
-    }
-  }
-  return Array.from(byTs.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([ts, value]) => {
-      const uptime =
-        value.rates.length > 0
-          ? value.rates.reduce((sum, rate) => sum + rate, 0) /
-            value.rates.length
-          : 0
-      return {
-        date: new Date(ts * 1000).toISOString(),
-        uptime_pct: Math.round(uptime * 100) / 100,
-        incidents: value.incidents,
-        outage_minutes: 0,
-      }
-    })
-}
-
-function toGroupUptimeSeries(group: PerformanceGroup): UptimeDayPoint[] {
-  return group.series.map((point) => ({
-    date: new Date(point.ts * 1000).toISOString(),
-    uptime_pct: Math.round(point.success_rate * 100) / 100,
-    incidents: point.success_rate < 100 ? 1 : 0,
-    outage_minutes: 0,
-  }))
 }
 
 function average(
@@ -185,7 +164,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
   const uptimeByGroup = useMemo<Record<string, UptimeDayPoint[]>>(() => {
     const map: Record<string, UptimeDayPoint[]> = {}
     for (const group of groups) {
-      map[group.group] = toGroupUptimeSeries(group)
+      map[group.group] = toUptimeSeries([group])
     }
     return map
   }, [groups])
@@ -214,27 +193,18 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
       ? tpsValues.reduce((sum, value) => sum + value, 0) / tpsValues.length
       : 0
   const avgLatency = average(performances, 'avg_latency_ms')
-  const successRates = performances
-    .map((perf) => perf.success_rate)
-    .filter((value) => Number.isFinite(value))
-  const successRate =
-    successRates.length > 0
-      ? successRates.reduce((sum, value) => sum + value, 0) /
-        successRates.length
-      : 0
+  const summary = summarizeHealth(groups)
+  const successRate = summary.success_rate
+  const intent =
+    healthPresentation[serviceHealth(successRate, summary.request_count)].intent
   const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
-  let intent: 'default' | 'warning' | 'success' = 'warning'
-  if (successRate >= 99.9) {
-    intent = 'success'
-  } else if (successRate >= 99) {
-    intent = 'default'
-  }
 
   const headerCellClass =
     'text-muted-foreground py-2 text-[10px] font-medium tracking-wider uppercase'
 
   return (
     <div className='flex flex-col gap-4'>
+      <ServiceHealthLegend />
       <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
         <StatCard
           icon={Timer}
@@ -251,14 +221,11 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
           icon={HeartPulse}
           label={t('Success rate')}
           value={formatUptimePct(successRate)}
-          hint={
-            incidentCount > 0
-              ? t('{{count}} incidents in the last 24 hours', {
-                  count: incidentCount,
-                })
-              : t('No incidents in the last 24 hours')
-          }
+          hint={t('{{count}} requests in the last 24 hours', {
+            count: summary.request_count ?? 0,
+          })}
           intent={intent}
+          health={{ rate: successRate, requestCount: summary.request_count }}
         />
       </div>
 
@@ -333,7 +300,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
           description={
             incidentCount > 0
               ? t(
-                  'Request success rate; {{incidents}} incident buckets in the last 24 hours',
+                  'Request success rate; {{incidents}} high-failure periods in the last 24 hours',
                   {
                     incidents: incidentCount,
                   }
@@ -344,7 +311,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
             incidentCount > 0 ? (
               <span className='inline-flex items-center gap-1 text-amber-600 dark:text-amber-400'>
                 <AlertTriangle className='size-3.5' />
-                {t('{{count}} incidents', {
+                {t('{{count}} high-failure periods', {
                   count: incidentCount,
                 })}
               </span>

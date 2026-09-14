@@ -16,66 +16,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
-import { Activity, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { healthPresentation, serviceHealth } from '@/lib/service-health'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { formatUptimePct } from '@/features/performance-metrics/lib/format'
-import { aggregateUptime, type UptimeDayPoint } from '../lib/mock-stats'
-
-// ---------------------------------------------------------------------------
-// Uptime sparkline
-// ---------------------------------------------------------------------------
-//
-// Compact 30-day uptime visualisation: a row of small coloured bars where:
-//   - Bar colour reflects per-day uptime (green / amber / red)
-//   - Bar height reflects severity (the worse the day, the shorter the bar)
-//   - Hovering a bar reveals the exact date and uptime
-//
-// Useful as a header strip ("at-a-glance" status) and as a per-row visual
-// inside the per-group performance table.
-
-type SparklineSize = 'sm' | 'md'
+import { ServiceHealthBars } from '@/components/service-health-bars'
+import type { UptimeDayPoint } from '../lib/mock-stats'
+import { summarizeUptime } from '../lib/performance-health'
 
 type UptimeSparklineProps = {
   series: UptimeDayPoint[]
-  size?: SparklineSize
+  size?: 'sm' | 'md'
   showOverall?: boolean
   emptyLabel?: string
   className?: string
 }
 
-function colourFor(uptime: number): string {
-  if (uptime >= 99.9) return 'bg-emerald-500'
-  if (uptime >= 99.0) return 'bg-emerald-400'
-  if (uptime >= 95.0) return 'bg-amber-500'
-  if (uptime >= 90.0) return 'bg-amber-600'
-  return 'bg-rose-500'
-}
-
-function heightFor(uptime: number): string {
-  if (uptime >= 99.9) return 'h-full'
-  if (uptime >= 99.0) return 'h-[88%]'
-  if (uptime >= 95.0) return 'h-[72%]'
-  if (uptime >= 90.0) return 'h-[55%]'
-  return 'h-[40%]'
-}
-
-function overallTextColour(pct: number): string {
-  if (pct >= 99.9) return 'text-emerald-600 dark:text-emerald-400'
-  if (pct >= 99.0) return 'text-emerald-600 dark:text-emerald-400'
-  if (pct >= 95.0) return 'text-amber-600 dark:text-amber-400'
-  return 'text-rose-600 dark:text-rose-400'
-}
-
 export function UptimeSparkline(props: UptimeSparklineProps) {
+  const { t } = useTranslation()
   const size = props.size ?? 'md'
-  const showOverall = props.showOverall ?? true
+  const summary = summarizeUptime(props.series)
+  const health = serviceHealth(summary.success_rate, summary.request_count)
+  const overall = Number.isFinite(summary.success_rate)
+    ? `${summary.success_rate.toFixed(1)}%`
+    : '—'
 
   if (props.series.length === 0) {
     return (
@@ -85,142 +53,80 @@ export function UptimeSparkline(props: UptimeSparklineProps) {
     )
   }
 
-  const overall =
-    props.series.reduce((s, p) => s + p.uptime_pct, 0) / props.series.length
-
-  const containerHeight = size === 'sm' ? 'h-3.5' : 'h-5'
-  const barWidth = size === 'sm' ? 'w-[3px]' : 'w-1'
-  const gap = size === 'sm' ? 'gap-px' : 'gap-[2px]'
-
   return (
     <div className={cn('flex items-center gap-2', props.className)}>
       <div
-        className={cn('flex items-end', containerHeight, gap)}
+        className={cn(
+          'flex items-end',
+          size === 'sm' ? 'h-3.5 gap-px' : 'h-5 gap-[2px]'
+        )}
         role='img'
-        aria-label={`30 day uptime ${overall.toFixed(2)}%`}
+        aria-label={`${t('Success rate')} · 24h: ${overall}`}
       >
-        {props.series.map((day) => (
-          <Tooltip key={day.date}>
-            <TooltipTrigger
-              render={
+        {props.series.map((point) => {
+          const pointHealth = serviceHealth(
+            point.uptime_pct,
+            point.request_count
+          )
+          const presentation = healthPresentation[pointHealth]
+          return (
+            <Tooltip key={point.date}>
+              <TooltipTrigger
+                render={
+                  <div
+                    className={cn(
+                      'flex h-full items-end rounded-sm transition-opacity hover:opacity-80',
+                      size === 'sm' ? 'w-[3px]' : 'w-1'
+                    )}
+                  />
+                }
+              >
                 <div
+                  data-service-health={pointHealth}
                   className={cn(
-                    'rounded-sm transition-opacity hover:opacity-80',
-                    barWidth,
-                    containerHeight,
-                    'flex items-end'
+                    'w-full rounded-sm',
+                    presentation.bar,
+                    presentation.height
                   )}
+                  aria-hidden='true'
                 />
-              }
-            >
-              <div
-                className={cn(
-                  'w-full rounded-sm',
-                  colourFor(day.uptime_pct),
-                  heightFor(day.uptime_pct)
-                )}
-                aria-hidden
-              />
-            </TooltipTrigger>
-            <TooltipContent side='top' className='font-mono text-xs'>
-              <div className='font-medium'>{day.date}</div>
-              <div>{day.uptime_pct.toFixed(2)}%</div>
-              {day.outage_minutes > 0 && (
-                <div className='text-muted-foreground'>
-                  {day.outage_minutes} min outage
+              </TooltipTrigger>
+              <TooltipContent side='top' className='font-mono text-xs'>
+                <div className='font-medium'>
+                  {new Date(point.date).toLocaleString()}
                 </div>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        ))}
+                <div>{t(presentation.label)}</div>
+                {pointHealth !== 'unknown' && (
+                  <div>
+                    {t('Success rate')}: {point.uptime_pct.toFixed(2)}%
+                  </div>
+                )}
+                {point.request_count != null && (
+                  <div>
+                    {t('{{count}} requests', { count: point.request_count })}
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
       </div>
-      {showOverall && (
-        <span
-          className={cn(
-            'font-mono text-sm font-semibold tabular-nums',
-            overallTextColour(overall)
-          )}
-        >
-          {overall.toFixed(1)}%
-        </span>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Uptime status row — sparkline + summary text + status icon
-// ---------------------------------------------------------------------------
-
-export function UptimeStatusRow(props: {
-  series: UptimeDayPoint[]
-  className?: string
-}) {
-  const { t } = useTranslation()
-  const summary = useMemo(() => aggregateUptime(props.series), [props.series])
-  const status = useMemo(() => {
-    if (summary.uptime_pct >= 99.9) return 'operational'
-    if (summary.uptime_pct >= 99.0) return 'minor'
-    if (summary.uptime_pct >= 95.0) return 'degraded'
-    return 'major'
-  }, [summary.uptime_pct])
-
-  const StatusIcon =
-    status === 'operational'
-      ? CheckCircle2
-      : status === 'minor'
-        ? Activity
-        : AlertCircle
-
-  const statusColour =
-    status === 'operational'
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : status === 'minor'
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : status === 'degraded'
-          ? 'text-amber-600 dark:text-amber-400'
-          : 'text-rose-600 dark:text-rose-400'
-
-  const statusLabel =
-    status === 'operational'
-      ? t('All systems operational')
-      : status === 'minor'
-        ? t('Minor blips in the last 30 days')
-        : status === 'degraded'
-          ? t('Degraded performance recently')
-          : t('Significant outages detected')
-
-  return (
-    <div
-      className={cn(
-        'border-border/60 bg-muted/30 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 sm:gap-4 sm:px-4',
-        props.className
-      )}
-    >
-      <div className='flex items-center gap-2'>
-        <StatusIcon className={cn('size-4 shrink-0', statusColour)} />
-        <span className='text-sm font-medium'>{t('Last 30 days uptime')}</span>
-      </div>
-
-      <UptimeSparkline series={props.series} className='ml-auto' />
-
-      <div className='flex items-center gap-3 text-xs'>
-        <span className={cn('font-medium', statusColour)}>{statusLabel}</span>
-        {summary.incidents > 0 && (
-          <span className='text-muted-foreground'>
-            {summary.incidents}{' '}
-            {summary.incidents === 1 ? t('incident') : t('incidents')}
+      {(props.showOverall ?? true) && (
+        <>
+          <ServiceHealthBars
+            rate={summary.success_rate}
+            requestCount={summary.request_count}
+          />
+          <span
+            className={cn(
+              'font-mono text-sm font-semibold tabular-nums',
+              healthPresentation[health].text
+            )}
+          >
+            {overall}
           </span>
-        )}
-        {summary.outage_minutes > 0 && (
-          <span className='text-muted-foreground'>
-            {summary.outage_minutes} {t('min downtime')}
-          </span>
-        )}
-        <span className='text-muted-foreground hidden sm:inline'>
-          {formatUptimePct(summary.uptime_pct)} {t('overall')}
-        </span>
-      </div>
+        </>
+      )}
     </div>
   )
 }

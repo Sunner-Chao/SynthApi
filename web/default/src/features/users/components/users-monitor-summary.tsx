@@ -35,14 +35,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/status-badge'
 import {
-  formatSuccessRate,
-  successRateTextClass,
-} from '@/features/channel-monitor/components/success-rate-strip'
-import {
   getAvailabilityRate,
   getUsageSuccessRate,
   hasUsageMetrics,
 } from '@/features/channel-monitor/lib/metrics'
+import {
+  formatSuccessRate,
+  successRateTextClass,
+} from '@/features/channel-monitor/lib/success-rate'
 import { getChannelMonitor } from '@/features/dashboard/api'
 import type { ChannelMonitorItem } from '@/features/dashboard/types'
 
@@ -172,7 +172,9 @@ function GroupRow({ item }: ChannelRowProps) {
         <span
           className={cn(
             'inline-flex items-center gap-1 font-mono text-xs font-semibold',
-            hasUsage ? successRateTextClass(usageRate) : 'text-muted-foreground'
+            hasUsage
+              ? successRateTextClass(usageRate, item.usage_request_count)
+              : 'text-muted-foreground'
           )}
         >
           <HeartPulse className='size-3' aria-hidden='true' />

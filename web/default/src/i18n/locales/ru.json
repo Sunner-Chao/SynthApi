@@ -4886,5 +4886,15 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Some requests failed": "Some requests failed",
+  "High failure rate": "High failure rate",
+  "No request data": "No request data",
+  "{{count}} requests": "{{count}} requests",
+  "{{count}} requests in the last 24 hours": "{{count}} requests in the last 24 hours",
+  "High-failure periods": "High-failure periods",
+  "{{count}} high-failure periods": "{{count}} high-failure periods",
+  "Request success rate; {{incidents}} high-failure periods in the last 24 hours": "Request success rate; {{incidents}} high-failure periods in the last 24 hours",
+  "Green: success rate ≥90%. Yellow: below 90%. Red: below 50% with at least 10 requests. Gray: no data.": "Green: success rate ≥90%. Yellow: below 90%. Red: below 50% with at least 10 requests. Gray: no data.",
+  "Recent requests: success is green, isolated failures yellow, 3 consecutive failures turn red. Latency does not change availability colors.": "Recent requests: success is green, isolated failures yellow, 3 consecutive failures turn red. Latency does not change availability colors."
 }

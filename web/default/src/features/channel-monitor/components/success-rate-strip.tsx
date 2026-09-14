@@ -17,8 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
+import {
+  DISPLAY_RECENT_REQUEST_COUNT,
+  healthPresentation,
+  recentRequestHealth,
+  summarizeRecentRequests,
+} from '@/lib/service-health'
 import { cn } from '@/lib/utils'
-import { getRequestResponseColor } from '@/lib/request-duration-colors'
+import {
+  formatSuccessRate,
+  successRateColorClass,
+  successRateHeightClass,
+  successRateTextClass,
+} from '../lib/success-rate'
 
 export type SuccessRateSource = 'usage' | 'availability'
 
@@ -39,87 +50,15 @@ export type RecentRequestStatus = {
 }
 
 function clampRate(rate: number): number {
-  if (!Number.isFinite(rate)) return 0
+  if (!Number.isFinite(rate)) return Number.NaN
   return Math.max(0, Math.min(100, rate))
-}
-
-export function formatSuccessRate(rate: number): string {
-  if (!Number.isFinite(rate)) return '-'
-  return `${rate.toFixed(rate >= 99.95 ? 0 : 1)}%`
-}
-
-export function successRateColorClass(rate: number): string {
-  if (rate >= 99.9) return 'bg-emerald-500'
-  if (rate >= 99) return 'bg-emerald-400'
-  if (rate >= 95) return 'bg-amber-500'
-  if (rate >= 90) return 'bg-amber-600'
-  return 'bg-rose-500'
-}
-
-export function successRateHeightClass(rate: number): string {
-  if (rate >= 99.9) return 'h-full'
-  if (rate >= 99) return 'h-[88%]'
-  if (rate >= 95) return 'h-[72%]'
-  if (rate >= 90) return 'h-[55%]'
-  return 'h-[40%]'
-}
-
-export function successRateTextClass(rate: number): string {
-  if (!Number.isFinite(rate)) return 'text-muted-foreground'
-  if (rate >= 99.9) return 'text-emerald-600 dark:text-emerald-400'
-  if (rate >= 99) return 'text-emerald-600 dark:text-emerald-400'
-  if (rate >= 95) return 'text-amber-600 dark:text-amber-400'
-  return 'text-rose-600 dark:text-rose-400'
-}
-
-export function successRateSurfaceClass(rate: number): string {
-  if (rate >= 99) {
-    return 'border-emerald-200/70 bg-emerald-50/60 dark:border-emerald-500/20 dark:bg-emerald-500/10'
-  }
-  if (rate >= 95) {
-    return 'border-amber-200/80 bg-amber-50/70 dark:border-amber-500/25 dark:bg-amber-500/10'
-  }
-  return 'border-rose-200/80 bg-rose-50/70 dark:border-rose-500/25 dark:bg-rose-500/10'
-}
-
-export function successRateIntent(
-  rate: number
-): 'danger' | 'warning' | 'success' {
-  if (rate >= 99) return 'success'
-  if (rate >= 95) return 'warning'
-  return 'danger'
-}
-
-function recentRequestColorClass(request: RecentRequestStatus): string {
-  if (!request.success) return 'bg-rose-500 dark:bg-rose-400'
-  const outputTokens = request.output_tokens ?? 0
-  const generationMs = request.generation_ms ?? 0
-  const tokensPerSecond =
-    request.throughput_available && outputTokens > 0 && generationMs > 0
-      ? (outputTokens * 1000) / generationMs
-      : null
-  const responseColor = getRequestResponseColor(
-    (request.latency_ms ?? 0) / 1000,
-    outputTokens,
-    tokensPerSecond
-  )
-  if (responseColor === 'danger') {
-    return 'bg-rose-500 dark:bg-rose-400'
-  }
-  if (responseColor === 'warning') {
-    return 'bg-amber-400 dark:bg-amber-300'
-  }
-  return 'bg-emerald-500 dark:bg-emerald-400'
 }
 
 function compactSeries(
   series: SuccessRateSeriesPoint[] | undefined,
   bucketCount: number
-): (number | null)[] {
-  const values = (series ?? [])
-    .filter((point) => (point.request_count ?? 1) > 0)
-    .map((point) => clampRate(point.success_rate))
-    .slice(-bucketCount)
+): (SuccessRateSeriesPoint | null)[] {
+  const values = (series ?? []).slice(-bucketCount)
   if (values.length >= bucketCount) return values
   return [
     ...Array.from({ length: bucketCount - values.length }, () => null),
@@ -129,6 +68,7 @@ function compactSeries(
 
 export function SuccessRateStrip(props: {
   rate: number
+  requestCount?: number
   source?: SuccessRateSource
   series?: SuccessRateSeriesPoint[]
   enabledCount?: number
@@ -150,7 +90,7 @@ export function SuccessRateStrip(props: {
   const rate = clampRate(
     hasUsage ? props.rate : (props.availabilityRate ?? props.rate)
   )
-  const bucketCount = size === 'sm' ? 30 : 30
+  const bucketCount = 30
   const containerHeight = size === 'sm' ? 'h-3.5' : 'h-5'
   const barWidth = size === 'sm' ? 'w-[3px]' : 'w-1'
   const gap = size === 'sm' ? 'gap-px' : 'gap-[2px]'
@@ -184,15 +124,15 @@ export function SuccessRateStrip(props: {
         }
       >
         {Array.from({ length: bucketCount }).map((_, index) => {
-          const usageRate = seriesBuckets[index]
-          const isEnabledBucket = index < enabledBuckets
-          const bucketRate = hasUsage
-            ? hasUsageSeries
-              ? usageRate
-              : rate
-            : isEnabledBucket
-              ? rate
-              : null
+          const usagePoint = seriesBuckets[index]
+          let bucketRate: number | null = null
+          let bucketCount = props.requestCount
+          if (hasUsage && hasUsageSeries) {
+            bucketRate = usagePoint?.success_rate ?? null
+            bucketCount = usagePoint?.request_count
+          } else if (hasUsage || index < enabledBuckets) {
+            bucketRate = rate
+          }
           return (
             <span
               key={index}
@@ -209,8 +149,8 @@ export function SuccessRateStrip(props: {
                   bucketRate == null
                     ? 'bg-muted-foreground/20 h-[40%]'
                     : cn(
-                        successRateColorClass(bucketRate),
-                        successRateHeightClass(bucketRate)
+                        successRateColorClass(bucketRate, bucketCount),
+                        successRateHeightClass(bucketRate, bucketCount)
                       )
                 )}
               />
@@ -222,7 +162,9 @@ export function SuccessRateStrip(props: {
         <span
           className={cn(
             'font-mono text-sm font-semibold tabular-nums',
-            hasUsage ? successRateTextClass(rate) : 'text-muted-foreground'
+            hasUsage
+              ? successRateTextClass(rate, props.requestCount)
+              : 'text-muted-foreground'
           )}
         >
           {hasUsage ? formatSuccessRate(rate) : (props.emptyLabel ?? '—')}
@@ -235,7 +177,6 @@ export function SuccessRateStrip(props: {
 // The backend keeps 60 requests for recovery and API consumers. The compact
 // card/table view shows the newest 30 so every equal-width slot fits without
 // forcing the monitor layout to scroll horizontally.
-const DISPLAY_RECENT_REQUEST_COUNT = 30
 
 export function RecentRequestStrip(props: {
   requests?: RecentRequestStatus[]
@@ -251,8 +192,10 @@ export function RecentRequestStrip(props: {
     ),
     ...requests,
   ]
-  const successCount = requests.filter((request) => request.success).length
-  const rate = requests.length > 0 ? (successCount / requests.length) * 100 : 0
+  const summary = summarizeRecentRequests(requests)
+  const successCount = summary.success_count ?? 0
+  const rate = summary.success_rate
+  let consecutiveFailures = 0
 
   return (
     <div className={cn('min-w-0 overflow-x-auto', props.className)}>
@@ -269,6 +212,11 @@ export function RecentRequestStrip(props: {
         }
       >
         {slots.map((request, index) => {
+          consecutiveFailures =
+            request && !request.success ? consecutiveFailures + 1 : 0
+          const health = request
+            ? recentRequestHealth(request.success, consecutiveFailures)
+            : 'unknown'
           const time = request?.ts
             ? new Date(request.ts * 1000).toLocaleTimeString([], {
                 hour: '2-digit',
@@ -287,12 +235,11 @@ export function RecentRequestStrip(props: {
             <span
               key={`${request?.ts ?? 'empty'}-${index}`}
               title={label}
+              data-service-health={health}
               aria-label={label}
               className={cn(
                 'min-w-0 flex-1 rounded-[3px] transition-transform hover:scale-y-110',
-                request == null
-                  ? 'bg-slate-200/80 dark:bg-white/10'
-                  : recentRequestColorClass(request)
+                healthPresentation[health].bar
               )}
             />
           )

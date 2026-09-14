@@ -46,7 +46,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { SectionPageLayout } from '@/components/layout'
+import { ServiceHealthLegend } from '@/components/service-health-legend'
 import { StatusBadge } from '@/components/status-badge'
+import { formatSuccessRate } from '@/features/channel-monitor/lib/success-rate'
 import { getChannelMonitor } from '@/features/dashboard/api'
 import type { ChannelMonitorItem } from '@/features/dashboard/types'
 import { MonitorCardGrid } from './components/monitor-card-grid'
@@ -55,14 +57,8 @@ import {
   type ViewMode,
   type StatusFilter,
 } from './components/monitor-filters'
-import {
-  RecentRequestStrip,
-  formatSuccessRate,
-} from './components/success-rate-strip'
-import {
-  getAvailabilityRate,
-  hasUsageMetrics,
-} from './lib/metrics'
+import { RecentRequestStrip } from './components/success-rate-strip'
+import { getAvailabilityRate, hasUsageMetrics } from './lib/metrics'
 
 const CHANNEL_STATUS = {
   ENABLED: 1,
@@ -103,9 +99,9 @@ function statusMeta(status: number, t: (key: string) => string) {
   if (status === CHANNEL_STATUS.AUTO_DISABLED) {
     return {
       label: t('Auto disabled'),
-      dot: 'bg-destructive',
+      dot: 'bg-amber-400',
       badge: 'warning' as const,
-      text: 'text-destructive',
+      text: 'text-amber-600 dark:text-amber-400',
     }
   }
   return {
@@ -146,9 +142,7 @@ export function ChannelMonitor() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const [nextRefreshAt, setNextRefreshAt] = useState(
-    () => Date.now() + MONITOR_REFRESH_INTERVAL_MS
-  )
+  const [openedAt] = useState(() => Date.now())
 
   const monitorQuery = useQuery({
     // An empty model asks the API for a group-level aggregate across models.
@@ -164,14 +158,14 @@ export function ChannelMonitor() {
     return () => window.clearInterval(timer)
   }, [])
 
-  useEffect(() => {
-    if (!monitorQuery.isFetching && monitorQuery.dataUpdatedAt > 0) {
-      setNextRefreshAt(Date.now() + MONITOR_REFRESH_INTERVAL_MS)
-    }
-  }, [monitorQuery.dataUpdatedAt, monitorQuery.isFetching])
+  const nextRefreshAt =
+    (monitorQuery.dataUpdatedAt || openedAt) + MONITOR_REFRESH_INTERVAL_MS
 
   const summary = monitorQuery.data?.data?.summary
-  const allItems = monitorQuery.data?.data?.items ?? []
+  const allItems = useMemo(
+    () => monitorQuery.data?.data?.items ?? [],
+    [monitorQuery.data]
+  )
   const loading = monitorQuery.isLoading
   const showError = monitorQuery.isError && allItems.length === 0 && !loading
   const filteredItems = useMemo(
@@ -239,6 +233,7 @@ export function ChannelMonitor() {
 
       <SectionPageLayout.Content>
         <div className='space-y-4'>
+          <ServiceHealthLegend recent />
           {/* Summary cards */}
           <div className='grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6'>
             <MonitorSummaryCard

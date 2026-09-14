@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { VChart } from '@visactor/react-vchart'
 import { useTranslation } from 'react-i18next'
+import { healthPresentation, serviceHealth } from '@/lib/service-health'
 import { useThemeRadiusPx } from '@/lib/theme-radius'
 import { useChartTheme } from '@/lib/use-chart-theme'
 import { cn } from '@/lib/utils'
@@ -87,7 +88,7 @@ function getUptimeAxisDomain(series: UptimeDayPoint[]): {
   const minValue = Math.min(...values)
   const maxValue = Math.max(...values)
 
-  let min = 0
+  let min: number
   let max = 100
 
   if (minValue >= 99.5) {
@@ -238,12 +239,18 @@ export function UptimeTrendChart(props: {
   const spec = useMemo(() => {
     if (props.series.length === 0) return null
 
-    const data = props.series.map((point) => ({
-      date: formatDayLabel(point.date),
-      uptime: clampPercent(point.uptime_pct),
-      incidents: point.incidents,
-      outage: point.outage_minutes,
-    }))
+    const data = props.series
+      .filter(
+        (point) =>
+          serviceHealth(point.uptime_pct, point.request_count) !== 'unknown'
+      )
+      .map((point) => ({
+        requestCount: point.request_count,
+        date: formatDayLabel(point.date),
+        uptime: clampPercent(point.uptime_pct),
+        incidents: point.incidents,
+        outage: point.outage_minutes,
+      }))
     const yDomain = getUptimeAxisDomain(props.series)
 
     return {
@@ -262,11 +269,9 @@ export function UptimeTrendChart(props: {
           size: 5,
           stroke: '#ffffff',
           lineWidth: 1.5,
-          fill: (datum: { uptime: number }) => {
-            if (datum.uptime >= 99.9) return '#10b981'
-            if (datum.uptime >= 99.0) return '#f59e0b'
-            return '#ef4444'
-          },
+          fill: (datum: { uptime: number; requestCount?: number }) =>
+            healthPresentation[serviceHealth(datum.uptime, datum.requestCount)]
+              .color,
         },
       },
       tooltip: {
@@ -278,7 +283,7 @@ export function UptimeTrendChart(props: {
               value: (d: { uptime: number }) => `${d.uptime.toFixed(2)}%`,
             },
             {
-              key: t('Incidents'),
+              key: t('High-failure periods'),
               value: (d: { incidents: number }) => `${d.incidents}`,
             },
             {

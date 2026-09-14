@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { ServiceHealthBars } from '@/components/service-health-bars'
 import {
   formatLatency,
   formatThroughput,
@@ -28,6 +29,7 @@ export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
+  request_count?: number
 }
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -43,18 +45,13 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
 ) {
   const { t } = useTranslation()
 
-  if (!props.perf) {
-    return null
-  }
-
-  const { avg_latency_ms, avg_tps, success_rate } = props.perf
-
-  let statusColor = 'bg-emerald-500'
-  if (success_rate < 95) {
-    statusColor = 'bg-red-500'
-  } else if (success_rate < 99) {
-    statusColor = 'bg-amber-500'
-  }
+  const { avg_latency_ms, avg_tps, success_rate, request_count } =
+    props.perf ?? {
+      avg_latency_ms: 0,
+      avg_tps: 0,
+      success_rate: Number.NaN,
+      request_count: 0,
+    }
 
   return (
     <div
@@ -80,16 +77,18 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
         </div>
       </div>
       <div
-        title={`${t('Success rate')}: ${success_rate.toFixed(1)}%`}
+        title={
+          Number.isFinite(success_rate)
+            ? `${t('Success rate')}: ${success_rate.toFixed(1)}%`
+            : t('No request data')
+        }
         className='min-w-0'
       >
         <div className='text-muted-foreground/55 truncate text-[10px] leading-4'>
           {t('Status short')}
         </div>
         <div className='flex h-4 items-center justify-end gap-0.5'>
-          <span className='bg-muted-foreground/10 h-2 w-1 rounded-full' />
-          <span className='bg-muted-foreground/15 h-2.5 w-1 rounded-full' />
-          <span className={cn('h-3 w-1 rounded-full', statusColor)} />
+          <ServiceHealthBars rate={success_rate} requestCount={request_count} />
         </div>
       </div>
     </div>

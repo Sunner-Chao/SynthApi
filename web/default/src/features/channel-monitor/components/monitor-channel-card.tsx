@@ -27,10 +27,13 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { summarizeRecentRequests } from '@/lib/service-health'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ServiceHealthBars } from '@/components/service-health-bars'
+import { successRateTextClass } from '@/features/channel-monitor/lib/success-rate'
 import type { ChannelMonitorItem } from '@/features/dashboard/types'
-import { RecentRequestStrip, successRateTextClass } from './success-rate-strip'
+import { RecentRequestStrip } from './success-rate-strip'
 
 const CHANNEL_STATUS = {
   ENABLED: 1,
@@ -120,13 +123,8 @@ function MetricBox({
 }
 
 function recentRate(item: ChannelMonitorItem): number | null {
-  const requests = item.recent_requests ?? []
-  if (requests.length > 0) {
-    return (
-      (requests.filter((request) => request.success).length / requests.length) *
-      100
-    )
-  }
+  const summary = summarizeRecentRequests(item.recent_requests ?? [])
+  if ((summary.request_count ?? 0) > 0) return summary.success_rate
   if (
     item.success_rate_source === 'usage' &&
     Number.isFinite(item.success_rate)
@@ -161,6 +159,14 @@ export function MonitorChannelCard({
   const enabledCount = item.enabled_count ?? 0
   const modelCount = item.model_count ?? 0
   const availability = recentRate(item)
+  const recentSummary = summarizeRecentRequests(item.recent_requests ?? [])
+  const hasRecent = (recentSummary.request_count ?? 0) > 0
+  const sampleCount = hasRecent
+    ? recentSummary.request_count
+    : item.usage_request_count
+  const rateLabel = hasRecent
+    ? t('Recent requests')
+    : `${t('Availability')} · 24h`
   const refreshLabel =
     refreshRemainingSeconds == null
       ? null
@@ -217,14 +223,18 @@ export function MonitorChannelCard({
       <div className='flex items-end justify-between gap-3'>
         <div className='flex min-w-0 items-center gap-2 text-sm font-medium text-slate-400 dark:text-slate-500'>
           <Activity className='size-4 shrink-0' aria-hidden='true' />
-          <span className='truncate'>{t('Availability')} · 24h</span>
+          <span className='truncate'>{rateLabel}</span>
+          <ServiceHealthBars
+            rate={availability ?? Number.NaN}
+            requestCount={sampleCount}
+          />
         </div>
         <div
           className={cn(
             'shrink-0 font-mono text-[40px] leading-[0.9] font-bold tracking-[-0.04em] tabular-nums',
             availability == null
               ? 'text-slate-400 dark:text-slate-500'
-              : successRateTextClass(availability)
+              : successRateTextClass(availability, sampleCount)
           )}
         >
           {formatAvailability(availability)}
@@ -235,7 +245,7 @@ export function MonitorChannelCard({
         <span className='truncate text-sm font-semibold tracking-[0.04em] text-slate-400 dark:text-slate-500'>
           {t('Recent requests')}
         </span>
-        <span className='shrink-0 font-mono text-sm font-semibold tabular-nums text-slate-400 dark:text-slate-500'>
+        <span className='shrink-0 font-mono text-sm font-semibold text-slate-400 tabular-nums dark:text-slate-500'>
           {refreshLabel ??
             `${t('Last checked')} ${formatRelativeTime(item.test_time)}`}
         </span>
