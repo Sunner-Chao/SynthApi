@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import {
-  Activity,
   Globe2,
   KeyRound,
   Layers3,
@@ -27,7 +26,10 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { summarizeRecentRequests } from '@/lib/service-health'
+import {
+  DISPLAY_RECENT_REQUEST_COUNT,
+  summarizeRecentRequests,
+} from '@/lib/service-health'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ServiceHealthBars } from '@/components/service-health-bars'
@@ -221,8 +223,7 @@ export function MonitorChannelCard({
       <div className='my-6 h-px shrink-0 bg-slate-200/70 dark:bg-white/10' />
 
       <div className='flex items-end justify-between gap-3'>
-        <div className='flex min-w-0 items-center gap-2 text-sm font-medium text-slate-400 dark:text-slate-500'>
-          <Activity className='size-4 shrink-0' aria-hidden='true' />
+        <div className='flex min-w-0 flex-col items-start gap-2 text-xs font-medium text-slate-400 dark:text-slate-500'>
           <span className='truncate'>{rateLabel}</span>
           <ServiceHealthBars
             rate={availability ?? Number.NaN}
@@ -243,7 +244,9 @@ export function MonitorChannelCard({
 
       <div className='mt-6 flex min-w-0 items-center justify-between gap-3'>
         <span className='truncate text-sm font-semibold tracking-[0.04em] text-slate-400 dark:text-slate-500'>
-          {t('Recent requests')}
+          {t('Recent {{count}} requests', {
+            count: DISPLAY_RECENT_REQUEST_COUNT,
+          })}
         </span>
         <span className='shrink-0 font-mono text-sm font-semibold text-slate-400 tabular-nums dark:text-slate-500'>
           {refreshLabel ??

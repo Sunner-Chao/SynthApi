@@ -27,6 +27,7 @@ import {
   toUptimeSeries,
   summarizeUptime,
 } from '../src/features/pricing/lib/performance-health.ts'
+import zh from '../src/i18n/locales/zh.json'
 import {
   serviceHealth,
   recentRequestHealth,
@@ -129,3 +130,20 @@ assert.equal((badge.match(/bg-emerald-500/g) ?? []).length, 3)
 console.log(
   'Rendered regression checks passed: slow successes stay green, consecutive failures and all three badge bars use the shared policy'
 )
+
+assert.deepEqual(Object.keys(zh), ['translation'])
+i18next.addResourceBundle('zh', 'translation', zh.translation)
+await i18next.changeLanguage('zh')
+assert.equal(
+  i18next.t('Recent {{count}} requests', { count: 30 }),
+  '最近 30 次请求'
+)
+assert.equal(i18next.t('Some requests failed'), '部分请求失败')
+assert(
+  i18next
+    .t(
+      'Green: success rate ≥90%. Yellow: below 90%. Red: below 50% with at least 10 requests. Gray: no data.'
+    )
+    .startsWith('绿色')
+)
+console.log('Chinese health labels and request-window translation verified')

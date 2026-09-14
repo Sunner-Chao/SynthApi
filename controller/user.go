@@ -99,6 +99,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
+	clearLegacySessionCookies(c)
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
@@ -121,6 +122,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 func Logout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
+	clearLegacySessionCookies(c)
 	err := session.Save()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
