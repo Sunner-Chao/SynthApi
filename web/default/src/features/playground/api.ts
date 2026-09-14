@@ -58,10 +58,13 @@ export async function getVideoGenerationTask(
   taskId: string,
   signal?: AbortSignal
 ): Promise<VideoGenerationResponse> {
-  const res = await api.get(`/pg/videos/generations/${encodeURIComponent(taskId)}`, {
-    signal,
-    skipErrorHandler: true,
-  } as Record<string, unknown>)
+  const res = await api.get(
+    `/pg/videos/generations/${encodeURIComponent(taskId)}`,
+    {
+      signal,
+      skipErrorHandler: true,
+    } as Record<string, unknown>
+  )
   return res.data
 }
 
@@ -77,6 +80,9 @@ export async function getVideoGenerationHistory(): Promise<
       start_timestamp: sevenDaysAgo,
     },
   })
+  if (res.data?.success !== true) {
+    throw new Error(res.data?.message || 'Failed to load video history')
+  }
   const items = res.data?.data?.items
   return Array.isArray(items) ? items : []
 }

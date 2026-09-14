@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -55,6 +57,10 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	if serveCachedVideo(c, taskID) {
+		return
+	}
+
 	channel, err := model.CacheGetChannel(task.ChannelId)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to get channel for task %s: %s", taskID, err.Error()))
@@ -77,7 +83,7 @@ func VideoProxy(c *gin.Context) {
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "", nil)
+	req, err := http.NewRequestWithContext(ctx, c.Request.Method, "", nil)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to create request: %s", err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
@@ -149,31 +155,63 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	// Browsers use byte ranges for metadata, playback and seeking.
+	for _, header := range []string{"Range", "If-Range", "If-None-Match", "If-Modified-Since"} {
+		if value := c.GetHeader(header); value != "" {
+			req.Header.Set(header, value)
+		}
+	}
+	if c.Request.Method == http.MethodGet {
+		archiveVideo(taskID, client, req)
+	}
+	proxyVideoResponse(c, client, req)
+}
+
+func videoResponseHeaders(c *gin.Context, contentType string) {
+	if contentType == "" || contentType == "application/octet-stream" {
+		contentType = "video/mp4"
+	}
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.Header("Vary", "Cookie, Authorization")
+	c.Header("X-Content-Type-Options", "nosniff")
+	disposition := "inline"
+	if c.Query("download") == "1" {
+		ext := ".mp4"
+		if strings.HasPrefix(contentType, "video/webm") {
+			ext = ".webm"
+		}
+		disposition = mime.FormatMediaType("attachment", map[string]string{"filename": "video-" + c.Param("task_id") + ext})
+	}
+	c.Header("Content-Disposition", disposition)
+}
+
+func proxyVideoResponse(c *gin.Context, client *http.Client, req *http.Request) {
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to fetch video from %s: %s", videoURL, err.Error()))
 		videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to fetch video content")
 		return
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
-		videoProxyError(c, http.StatusBadGateway, "server_error",
-			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusPartialContent, http.StatusRequestedRangeNotSatisfiable, http.StatusNotModified:
+	default:
+		videoProxyError(c, http.StatusBadGateway, "server_error", fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
 		return
 	}
-
-	for key, values := range resp.Header {
-		for _, value := range values {
-			c.Writer.Header().Add(key, value)
+	// Forward only media headers; upstream cookies and public caching must not
+	// leak onto this authenticated endpoint.
+	for _, header := range []string{"Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if value := resp.Header.Get(header); value != "" {
+			c.Header(header, value)
 		}
 	}
-
-	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
-	c.Writer.WriteHeader(resp.StatusCode)
-	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
+	videoResponseHeaders(c, resp.Header.Get("Content-Type"))
+	c.Status(resp.StatusCode)
+	if c.Request.Method != http.MethodHead && resp.StatusCode != http.StatusNotModified {
+		if _, err := io.Copy(c.Writer, resp.Body); err != nil {
+			logger.LogError(c.Request.Context(), "Failed to stream video content")
+		}
 	}
 }
 
@@ -203,9 +241,7 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 		}
 	}
 
-	c.Writer.Header().Set("Content-Type", mimeType)
-	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
-	c.Writer.WriteHeader(http.StatusOK)
-	_, err = c.Writer.Write(videoBytes)
-	return err
+	videoResponseHeaders(c, mimeType)
+	http.ServeContent(c.Writer, c.Request, "video", time.Time{}, bytes.NewReader(videoBytes))
+	return nil
 }

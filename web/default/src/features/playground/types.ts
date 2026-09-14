@@ -268,6 +268,8 @@ export interface VideoGenerationRequest {
 export interface VideoGenerationResponse {
   id?: string
   task_id?: string
+  url?: string
+  metadata?: { url?: string }
   status?: string
   progress?: string | number
   error?: { message?: string; code?: string; type?: string }

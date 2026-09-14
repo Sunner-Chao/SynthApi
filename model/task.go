@@ -213,6 +213,13 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	return t
 }
 
+// Include text, image-reference, first/last-frame and remix video tasks.
+func videoHistoryActions() []string {
+	return []string{constant.TaskActionVideoGenerate, constant.TaskActionGenerate,
+		constant.TaskActionTextGenerate, constant.TaskActionFirstTailGenerate,
+		constant.TaskActionReferenceGenerate, constant.TaskActionRemix}
+}
+
 func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQueryParams) []*Task {
 	var tasks []*Task
 	var err error
@@ -233,7 +240,7 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	}
 	if queryParams.Action != "" {
 		if queryParams.Action == constant.TaskActionVideoGenerate {
-			query = query.Where("action IN ?", []string{constant.TaskActionVideoGenerate, constant.TaskActionGenerate, constant.TaskActionTextGenerate})
+			query = query.Where("action IN ?", videoHistoryActions())
 		} else {
 			query = query.Where("action = ?", queryParams.Action)
 		}
@@ -286,7 +293,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	}
 	if queryParams.Action != "" {
 		if queryParams.Action == constant.TaskActionVideoGenerate {
-			query = query.Where("action IN ?", []string{constant.TaskActionVideoGenerate, constant.TaskActionGenerate, constant.TaskActionTextGenerate})
+			query = query.Where("action IN ?", videoHistoryActions())
 		} else {
 			query = query.Where("action = ?", queryParams.Action)
 		}
@@ -487,7 +494,11 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}
 	if queryParams.Action != "" {
-		query = query.Where("action = ?", queryParams.Action)
+		if queryParams.Action == constant.TaskActionVideoGenerate {
+			query = query.Where("action IN ?", videoHistoryActions())
+		} else {
+			query = query.Where("action = ?", queryParams.Action)
+		}
 	}
 	if queryParams.Status != "" {
 		query = query.Where("status = ?", queryParams.Status)
@@ -517,7 +528,7 @@ func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	}
 	if queryParams.Action != "" {
 		if queryParams.Action == constant.TaskActionVideoGenerate {
-			query = query.Where("action IN ?", []string{constant.TaskActionVideoGenerate, constant.TaskActionGenerate, constant.TaskActionTextGenerate})
+			query = query.Where("action IN ?", videoHistoryActions())
 		} else {
 			query = query.Where("action = ?", queryParams.Action)
 		}
