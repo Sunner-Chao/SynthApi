@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export { CTA } from './sections/cta'
 export { Features } from './sections/features'
+export { FeaturesCyberpunk } from './sections/features-cyberpunk'
 export { Hero } from './sections/hero'
+export { HeroRedesigned } from './sections/hero-redesigned'
+export { HeroCyberpunk } from './sections/hero-cyberpunk'
 export { HowItWorks } from './sections/how-it-works'
 export { Stats } from './sections/stats'

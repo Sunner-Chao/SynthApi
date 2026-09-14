@@ -1,0 +1,775 @@
+/* Native OKYAI chatbot geometry and timing, scoped to the existing playground.
+   The original CSS/HTML lives in .artifacts/okyai-reference-source. */
+.playground-okyai {
+  isolation: isolate;
+}
+.playground-okyai[data-fullscreen='true'] {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  min-height: 100dvh;
+  background: var(--background);
+}
+.playground-chat-header {
+  position: relative;
+  z-index: 2;
+}
+.playground-chat-header h1 {
+  color: var(--foreground);
+  font-size: 30px;
+  line-height: 36px;
+  font-weight: 700;
+}
+.playground-chat-header p {
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--foreground) 52%, transparent);
+  font-size: 16px;
+  line-height: 24px;
+}
+.playground-okyai .okyai-outline-action {
+  height: 36px;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: transparent;
+  font-size: 13px;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
+}
+.playground-okyai .okyai-outline-action:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.playground-okyai .okyai-outline-action:active {
+  transform: scale(0.97);
+}
+.playground-messages-host {
+  min-height: 0;
+}
+.playground-okyai-input-host {
+  position: relative;
+  z-index: 3;
+  padding: 0 12px 20px;
+  max-width: 960px;
+}
+.playground-okyai[data-empty='true'] .playground-okyai-input-host {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  width: min(896px, calc(100% - 32px));
+  max-width: none;
+  padding: 0;
+  margin-inline: 0;
+  transform: translate(-50%, -34%);
+}
+.playground-input {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Reference circle2, ring180/ring90 and the original gooey filter geometry. */
+.playground-empty-orb {
+  height: 180px;
+  display: grid;
+  place-items: center;
+  animation: playground-orb-enter 0.5s 0.1s both
+    cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+.okyai-orb {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 4px var(--card))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--sidebar-primary) 85%, white))
+    drop-shadow(0 0 22px color-mix(in srgb, var(--primary) 68%, transparent))
+    drop-shadow(0 0 34px color-mix(in srgb, var(--sidebar-primary) 38%, transparent));
+  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.okyai-orb:hover {
+  transform: scale(1.4);
+  filter: drop-shadow(0 0 4px var(--foreground))
+    drop-shadow(0 0 8px var(--foreground))
+    drop-shadow(0 0 12px var(--foreground))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--primary) 30%, transparent))
+    drop-shadow(
+      0 6px 26px color-mix(in srgb, var(--sidebar-primary) 30%, transparent)
+    );
+}
+.okyai-orb:active {
+  transform: scale(1.2);
+}
+.okyai-orb-ball {
+  display: flex;
+  width: 70px;
+  height: 70px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 34%,
+    color-mix(in srgb, var(--sidebar-primary) 95%, white),
+    color-mix(in srgb, var(--primary) 85%, #250650) 42%,
+    color-mix(in srgb, var(--primary) 70%, #1a0438) 70%,
+    #0f0220
+  );
+  box-shadow:
+    inset 0 -2px 8px color-mix(in srgb, var(--primary) 60%, transparent),
+    inset 0 2px 12px color-mix(in srgb, var(--sidebar-primary) 40%, white),
+    0 0 20px color-mix(in srgb, var(--primary) 30%, transparent);
+  animation: playground-liquid-pulse 4.2s ease-in-out infinite;
+}
+.okyai-orb-lines {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150px;
+  height: 150px;
+  transform: translate(-50%, -50%);
+  background-image: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--background) 75%, transparent) 15%,
+    var(--primary) 50%
+  );
+  clip-path: polygon(
+    50% 25%,
+    65% 30%,
+    75% 42%,
+    75% 58%,
+    65% 70%,
+    50% 75%,
+    35% 70%,
+    26% 58%,
+    25% 42%,
+    35% 30%
+  );
+  pointer-events: none;
+}
+.okyai-orb-rings {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  position: absolute;
+  inset: 0;
+  perspective: 11rem;
+}
+.okyai-orb-rings::before,
+.okyai-orb-rings::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 6px solid transparent;
+  mask:
+    linear-gradient(var(--background) 0 0) padding-box,
+    linear-gradient(var(--background) 0 0);
+  background: linear-gradient(
+      var(--background),
+      var(--primary),
+      var(--sidebar-primary),
+      var(--accent),
+      var(--muted)
+    )
+    border-box;
+  mask-composite: exclude;
+}
+.okyai-orb-rings::before {
+  animation: playground-ring180 10s linear infinite;
+}
+.okyai-orb-rings::after {
+  animation: playground-ring90 10s linear infinite;
+}
+.okyai-orb-lines {
+  animation: playground-animation-ball 15s both ease;
+}
+.playground-input[data-orb-dismissed='true'] .playground-empty-orb {
+  height: 0;
+  opacity: 0;
+  transform: scale(0.8);
+  overflow: hidden;
+  transition:
+    opacity 0.25s,
+    transform 0.25s,
+    height 0.25s;
+  animation: none;
+}
+@keyframes playground-liquid-pulse {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+    border-radius: 50%;
+  }
+  25% {
+    transform: scale(1.02, 0.98) translateY(-1px);
+    border-radius: 48% 52% 50% 50%;
+  }
+  50% {
+    transform: scale(0.98, 1.02) translateY(1px);
+    border-radius: 50% 50% 52% 48%;
+  }
+  75% {
+    transform: scale(1.01, 0.99) translateY(-0.5px);
+    border-radius: 51% 49% 50% 50%;
+  }
+}
+@keyframes playground-ring180 {
+  0% {
+    transform: rotateY(180deg) rotateX(180deg) rotateZ(180deg);
+  }
+  50% {
+    transform: rotateY(360deg) rotateX(360deg) rotateZ(360deg) scale(1.1);
+  }
+  100% {
+    transform: rotateY(540deg) rotateX(540deg) rotateZ(540deg);
+  }
+}
+@keyframes playground-ring90 {
+  0% {
+    transform: rotateY(90deg) rotateX(90deg) rotateZ(90deg);
+  }
+  50% {
+    transform: rotateY(270deg) rotateX(270deg) rotateZ(270deg) scale(1.1);
+  }
+  100% {
+    transform: rotateY(450deg) rotateX(450deg) rotateZ(450deg);
+  }
+}
+@keyframes playground-animation-ball {
+  2% {
+    clip-path: polygon(
+      50% 25%,
+      50% 0,
+      75% 42%,
+      75% 58%,
+      65% 70%,
+      50% 75%,
+      35% 70%,
+      26% 58%,
+      25% 42%,
+      50% 0
+    );
+  }
+  4% {
+    clip-path: polygon(
+      50% 25%,
+      70% 0,
+      75% 42%,
+      85% 66%,
+      65% 100%,
+      50% 75%,
+      35% 100%,
+      15% 65%,
+      25% 42%,
+      30% 0
+    );
+  }
+  6% {
+    clip-path: polygon(
+      50% 25%,
+      50% 15%,
+      75% 42%,
+      75% 58%,
+      65% 70%,
+      50% 75%,
+      35% 70%,
+      26% 58%,
+      25% 42%,
+      50% 15%
+    );
+  }
+  7%,
+  59% {
+    clip-path: polygon(
+      50% 25%,
+      100% 12%,
+      75% 42%,
+      85% 66%,
+      65% 70%,
+      50% 75%,
+      35% 70%,
+      15% 65%,
+      25% 42%,
+      0 12%
+    );
+  }
+  9%,
+  57% {
+    clip-path: polygon(
+      50% 25%,
+      50% 0,
+      75% 42%,
+      75% 58%,
+      65% 70%,
+      50% 75%,
+      35% 70%,
+      26% 58%,
+      25% 42%,
+      50% 0
+    );
+  }
+  12%,
+  55%,
+  61% {
+    clip-path: polygon(
+      50% 25%,
+      65% 30%,
+      75% 42%,
+      75% 58%,
+      65% 70%,
+      50% 75%,
+      35% 70%,
+      26% 58%,
+      25% 42%,
+      35% 30%
+    );
+  }
+}
+
+.playground-composer {
+  animation: playground-composer-enter 0.6s 0.4s both
+    cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.playground-okyai .playground-prompt-input {
+  height: auto;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--secondary) 40%, transparent);
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--primary) 15%, transparent);
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s;
+}
+.playground-okyai .playground-prompt-input:hover {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+}
+.playground-okyai .playground-prompt-input:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.playground-okyai .playground-prompt-textarea {
+  min-height: 44px;
+  max-height: 200px;
+  padding: 12px 14px 4px;
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  color: var(--foreground);
+  box-shadow: none;
+}
+.playground-okyai .playground-prompt-textarea::placeholder {
+  color: var(--muted-foreground);
+}
+.playground-composer-toolbar {
+  padding: 8px 12px 10px;
+}
+.playground-composer-tools {
+  gap: 4px;
+}
+.playground-okyai .playground-attach-button,
+.playground-okyai .playground-search-button,
+.playground-okyai .playground-mode-button {
+  min-height: 32px;
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition:
+    transform 0.2s,
+    background 0.2s,
+    color 0.2s,
+    width 0.2s;
+}
+.playground-okyai .playground-attach-button:hover,
+.playground-okyai .playground-search-button:hover,
+.playground-okyai .playground-mode-button:hover {
+  transform: scale(1.1);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.playground-search-button::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  height: 24px;
+  width: 1px;
+  background: linear-gradient(
+    to top,
+    transparent,
+    var(--primary) 50%,
+    transparent
+  );
+  opacity: 0.7;
+}
+.playground-search-button {
+  position: relative;
+}
+.playground-mode-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  transition:
+    max-width 0.2s,
+    opacity 0.2s;
+}
+.playground-okyai .playground-search-button[data-active='true'] {
+  width: auto;
+  padding: 0 10px;
+  color: var(--primary);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.playground-okyai .playground-mode-button[data-active='true'] {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.playground-search-button[data-active='true'] .playground-mode-label {
+  max-width: 100px;
+  opacity: 1;
+}
+.playground-mode-button[data-active='true'] .playground-mode-label {
+  max-width: 100px;
+  opacity: 1;
+}
+.playground-mode-button {
+  position: relative;
+}
+.playground-mode-button::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  height: 24px;
+  width: 1px;
+  background: linear-gradient(to top, transparent, var(--primary) 50%, transparent);
+  opacity: 0.45;
+}
+.playground-composer-selectors {
+  min-width: 0;
+}
+.playground-composer-selectors [role='combobox'] {
+  max-width: 180px;
+  background: transparent;
+  border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+  border-radius: 999px;
+}
+.playground-okyai[data-empty='true'] .playground-composer-selectors [role='combobox'] {
+  display: none;
+}
+.playground-okyai .playground-send-button {
+  min-height: 36px;
+  height: 36px;
+  width: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--foreground);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+.playground-okyai .playground-send-button:not(:disabled) {
+  background: linear-gradient(135deg, var(--primary), var(--sidebar-primary));
+  color: white;
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.playground-okyai .playground-send-button:not(:disabled):hover {
+  transform: scale(1.1);
+}
+.playground-okyai .playground-send-button:not(:disabled):active {
+  transform: scale(0.95);
+}
+.playground-okyai .playground-stop-button {
+  height: 36px;
+  border-radius: 999px;
+}
+.playground-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  animation: playground-prompts-enter 0.4s 0.7s both;
+}
+.playground-suggestions-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: -4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.playground-suggestions-label svg {
+  color: var(--warning);
+}
+.playground-input-hint {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted-foreground) 72%, transparent);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+}
+.playground-okyai .playground-suggestions button {
+  height: 32px;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: 999px;
+  border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+  background: color-mix(in srgb, var(--secondary) 60%, transparent);
+  padding: 6px 12px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 400;
+  animation: playground-prompt-enter 0.35s both cubic-bezier(0.34, 1.4, 0.64, 1);
+  transition: all 0.2s;
+}
+.playground-suggestions button:nth-child(1) {
+  animation-delay: 0.9s;
+}
+.playground-suggestions button:nth-child(2) {
+  animation-delay: 0.97s;
+}
+.playground-suggestions button:nth-child(3) {
+  animation-delay: 1.04s;
+}
+.playground-suggestions button:nth-child(4) {
+  animation-delay: 1.11s;
+}
+.playground-suggestions button:nth-child(5) {
+  animation-delay: 1.18s;
+}
+.playground-suggestions button:nth-child(6) {
+  animation-delay: 1.25s;
+}
+.playground-okyai .playground-suggestions button:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  background: var(--secondary);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.playground-okyai .playground-message {
+  align-items: flex-start;
+  flex-direction: row !important;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+  animation: playground-message-enter 0.3s cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+.playground-okyai .playground-assistant-message {
+  justify-content: flex-start;
+}
+.playground-message-body {
+  max-width: 85%;
+}
+.playground-okyai .playground-bot-avatar {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--primary), var(--sidebar-primary));
+  color: white;
+}
+.playground-bot-avatar svg {
+  width: 16px;
+  height: 16px;
+}
+.playground-okyai .okyai-user-bubble,
+.playground-okyai .okyai-assistant-bubble {
+  max-width: 100%;
+  border-radius: 16px;
+  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.625;
+  overflow-wrap: anywhere;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+.playground-okyai .okyai-user-bubble {
+  background: var(--primary-action);
+  color: white;
+}
+.playground-okyai .okyai-assistant-bubble {
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  background: color-mix(in srgb, var(--secondary) 60%, transparent);
+  color: var(--foreground);
+}
+.playground-okyai .okyai-assistant-bubble:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.playground-response-loader {
+  display: flex;
+  justify-content: center;
+  padding: 32px;
+}
+.playground-audio-loader-orb {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    var(--sidebar-primary),
+    var(--primary)
+  );
+  filter: blur(1px);
+  box-shadow:
+    0 -5px 20px color-mix(in srgb, var(--sidebar-primary) 80%, white),
+    0 5px 20px var(--info);
+  animation: playground-audio-spin 1.7s linear infinite;
+}
+.playground-audio-loader-orb > div {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--background);
+  filter: blur(10px);
+}
+@keyframes playground-audio-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes playground-orb-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes playground-composer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(50px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes playground-prompts-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes playground-prompt-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes playground-message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (min-width: 768px) {
+  .playground-message-body {
+    max-width: 75%;
+  }
+}
+@media (max-width: 639px) {
+  .playground-chat-header {
+    padding: 16px 16px 8px;
+  }
+  .playground-chat-header h1 {
+    font-size: 24px;
+    line-height: 32px;
+  }
+  .playground-chat-header p {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .playground-okyai .okyai-outline-action {
+    width: 36px;
+    padding: 0;
+  }
+  .playground-okyai-input-host {
+    padding: 0 8px 12px;
+  }
+  .playground-okyai[data-empty='true'] .playground-okyai-input-host {
+    left: 50%;
+    width: calc(100% - 24px);
+    max-width: none;
+    padding: 0;
+    transform: translate(-50%, -30%);
+  }
+  .playground-empty-orb {
+    height: 140px;
+  }
+  .playground-suggestions {
+    gap: 6px;
+  }
+  .playground-okyai .playground-message {
+    gap: 8px;
+  }
+  .playground-okyai .playground-bot-avatar {
+    width: 28px;
+    height: 28px;
+  }
+  .playground-composer-selectors [role='combobox'] {
+    max-width: 80px;
+  }
+}
+
+@media (min-width: 768px) {
+  .playground-okyai-input-host {
+    position: relative;
+    left: auto;
+  }
+
+  .playground-okyai[data-empty='true'] .playground-okyai-input-host {
+    left: 50%;
+    right: auto;
+    margin-inline: 0;
+    transform: translate(-50%, -34%);
+  }
+}
+@media (max-height: 620px) {
+  .playground-empty-orb {
+    height: 100px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .playground-okyai *,
+  .playground-okyai *::before,
+  .playground-okyai *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

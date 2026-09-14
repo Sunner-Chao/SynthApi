@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TopNavLink } from '../types'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
+import { OkyaiHeader } from './okyai-header'
+import { useLocation } from '@tanstack/react-router'
 
 type PublicLayoutProps = {
   children: React.ReactNode
@@ -33,18 +35,25 @@ type PublicLayoutProps = {
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
+  const location = useLocation()
+  const isHomePage = location.pathname === '/'
+
   return (
     <div className='bg-background text-foreground relative min-h-svh overflow-x-clip'>
-      <PublicHeader
-        navContent={props.navContent}
-        navLinks={props.navLinks}
-        showThemeSwitch={props.showThemeSwitch}
-        showAuthButtons={props.showAuthButtons}
-        showNotifications={props.showNotifications}
-        logo={props.logo}
-        siteName={props.siteName}
-        {...props.headerProps}
-      />
+      {isHomePage ? (
+        <OkyaiHeader />
+      ) : (
+        <PublicHeader
+          navContent={props.navContent}
+          navLinks={props.navLinks}
+          showThemeSwitch={props.showThemeSwitch}
+          showAuthButtons={props.showAuthButtons}
+          showNotifications={props.showNotifications}
+          logo={props.logo}
+          siteName={props.siteName}
+          {...props.headerProps}
+        />
+      )}
 
       {props.showMainContainer !== false ? (
         <main className='container px-4 py-6 pt-20 md:px-4'>

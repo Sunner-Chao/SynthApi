@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/public-sans';
+@import './hero-animations.css';
 /* Editorial serif (Lora) backing the `serif` font axis and the Anthropic
  * preset's default typography. See `--font-serif` in theme.css for the
  * full Latin + CJK fallback stack and `theme-presets.css` for the cascade
@@ -29,10 +30,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 @import './theme.css';
 @import './theme-presets.css';
-@import './square-ui-theme.css';
-@import './square-layout.css';
-@import './square-ui.css';
-@import './synthpay.css';
 
 /* Shiki dual themes: token colors follow dark theme (pre background stays `bg-background` on the block) */
 @layer components {
@@ -1102,6 +1099,122 @@ For commercial licensing, please contact support@quantumnous.com
   .terminal-demo-blink,
   .terminal-demo-spin,
   .terminal-demo-pulse {
+    animation: none !important;
+  }
+}
+
+/* ── Cyberpunk Hero Styles ── */
+@layer utilities {
+  /* Radial gradient utility */
+  .bg-gradient-radial {
+    background-image: radial-gradient(var(--tw-gradient-stops));
+  }
+}
+
+/* Liquid blob animations for hero section */
+@keyframes liquid-morph {
+  0%, 100% {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+    transform: translate(10px, -10px) scale(1.05);
+  }
+  50% {
+    border-radius: 50% 50% 33% 67% / 55% 27% 73% 45%;
+    transform: translate(-10px, 10px) scale(0.95);
+  }
+  75% {
+    border-radius: 33% 67% 58% 42% / 63% 68% 32% 37%;
+    transform: translate(-8px, -8px) scale(1.02);
+  }
+}
+
+.liquid-blob {
+  position: absolute;
+  filter: blur(60px);
+  animation: liquid-morph 8s ease-in-out infinite;
+  will-change: transform, border-radius;
+}
+
+.liquid-blob-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  animation: liquid-morph 8s ease-in-out infinite;
+}
+
+.liquid-blob-gradient-1 {
+  background: radial-gradient(circle at 30% 50%, rgba(139, 92, 246, 0.4) 0%, rgba(168, 85, 247, 0.2) 50%, transparent 100%);
+}
+
+.liquid-blob-gradient-2 {
+  background: radial-gradient(circle at 70% 50%, rgba(236, 72, 153, 0.35) 0%, rgba(219, 39, 119, 0.15) 50%, transparent 100%);
+  animation-delay: -4s;
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.2);
+  }
+}
+
+.glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+/* Gradient text effect */
+.gradient-text {
+  background: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 3s ease-in-out infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    filter: hue-rotate(10deg);
+  }
+}
+
+/* Flow border effect for cards */
+@keyframes flow-border {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.flow-border {
+  background: linear-gradient(90deg,
+    rgba(139, 92, 246, 0.3) 0%,
+    rgba(236, 72, 153, 0.3) 25%,
+    rgba(59, 130, 246, 0.3) 50%,
+    rgba(236, 72, 153, 0.3) 75%,
+    rgba(139, 92, 246, 0.3) 100%
+  );
+  background-size: 200% 100%;
+  animation: flow-border 4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-blob,
+  .liquid-blob-inner,
+  .glow-pulse,
+  .gradient-text,
+  .flow-border {
     animation: none !important;
   }
 }

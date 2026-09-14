@@ -22,7 +22,9 @@ import { Route as BusinessIndexRouteImport } from './routes/business/index'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as ConsoleTopupRouteImport } from './routes/console/topup'
+import { Route as ConsoleR2MonitorRouteImport } from './routes/console/r2-monitor'
 import { Route as ConsoleLogRouteImport } from './routes/console/log'
+import { Route as AuthenticatedR2MonitorRouteImport } from './routes/_authenticated/r2-monitor'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
@@ -143,10 +145,20 @@ const ConsoleTopupRoute = ConsoleTopupRouteImport.update({
   path: '/console/topup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConsoleR2MonitorRoute = ConsoleR2MonitorRouteImport.update({
+  id: '/console/r2-monitor',
+  path: '/console/r2-monitor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConsoleLogRoute = ConsoleLogRouteImport.update({
   id: '/console/log',
   path: '/console/log',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedR2MonitorRoute = AuthenticatedR2MonitorRouteImport.update({
+  id: '/r2-monitor',
+  path: '/r2-monitor',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedChat2linkRoute = AuthenticatedChat2linkRouteImport.update({
   id: '/chat2link',
@@ -485,7 +497,9 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/r2-monitor': typeof AuthenticatedR2MonitorRoute
   '/console/log': typeof ConsoleLogRoute
+  '/console/r2-monitor': typeof ConsoleR2MonitorRoute
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
@@ -554,7 +568,9 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/r2-monitor': typeof AuthenticatedR2MonitorRoute
   '/console/log': typeof ConsoleLogRoute
+  '/console/r2-monitor': typeof ConsoleR2MonitorRoute
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
@@ -627,7 +643,9 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
+  '/_authenticated/r2-monitor': typeof AuthenticatedR2MonitorRoute
   '/console/log': typeof ConsoleLogRoute
+  '/console/r2-monitor': typeof ConsoleR2MonitorRoute
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
@@ -699,7 +717,9 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/r2-monitor'
     | '/console/log'
+    | '/console/r2-monitor'
     | '/console/topup'
     | '/oauth/$provider'
     | '/about/'
@@ -768,7 +788,9 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/r2-monitor'
     | '/console/log'
+    | '/console/r2-monitor'
     | '/console/topup'
     | '/oauth/$provider'
     | '/about'
@@ -840,7 +862,9 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/chat2link'
+    | '/_authenticated/r2-monitor'
     | '/console/log'
+    | '/console/r2-monitor'
     | '/console/topup'
     | '/oauth/$provider'
     | '/about/'
@@ -905,6 +929,7 @@ export interface RootRouteChildren {
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
   ConsoleLogRoute: typeof ConsoleLogRoute
+  ConsoleR2MonitorRoute: typeof ConsoleR2MonitorRoute
   ConsoleTopupRoute: typeof ConsoleTopupRoute
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
@@ -1009,12 +1034,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleTopupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/console/r2-monitor': {
+      id: '/console/r2-monitor'
+      path: '/console/r2-monitor'
+      fullPath: '/console/r2-monitor'
+      preLoaderRoute: typeof ConsoleR2MonitorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/console/log': {
       id: '/console/log'
       path: '/console/log'
       fullPath: '/console/log'
       preLoaderRoute: typeof ConsoleLogRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/r2-monitor': {
+      id: '/_authenticated/r2-monitor'
+      path: '/r2-monitor'
+      fullPath: '/r2-monitor'
+      preLoaderRoute: typeof AuthenticatedR2MonitorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/chat2link': {
       id: '/_authenticated/chat2link'
@@ -1497,6 +1536,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
+  AuthenticatedR2MonitorRoute: typeof AuthenticatedR2MonitorRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
@@ -1528,6 +1568,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
+  AuthenticatedR2MonitorRoute: AuthenticatedR2MonitorRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
@@ -1572,6 +1613,7 @@ const rootRouteChildren: RootRouteChildren = {
   errors500Route: errors500Route,
   errors503Route: errors503Route,
   ConsoleLogRoute: ConsoleLogRoute,
+  ConsoleR2MonitorRoute: ConsoleR2MonitorRoute,
   ConsoleTopupRoute: ConsoleTopupRoute,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
