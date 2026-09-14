@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,6 +27,8 @@ type turnstileCheckResponse struct {
 
 func newTurnstileHTTPClient() *http.Client {
 	directTransport := http.DefaultTransport.(*http.Transport).Clone()
+	// Direct fallback must not inherit the same broken HTTP(S)_PROXY.
+	directTransport.Proxy = nil
 	var transport http.RoundTripper = directTransport
 	if rawProxy := common.GetEnvOrDefaultString("TURNSTILE_VERIFY_PROXY", ""); rawProxy != "" {
 		proxyURL, err := url.Parse(rawProxy)
@@ -33,7 +37,7 @@ func newTurnstileHTTPClient() *http.Client {
 		} else {
 			proxyTransport := directTransport.Clone()
 			proxyTransport.Proxy = http.ProxyURL(proxyURL)
-			transport = &turnstileFallbackTransport{primary: proxyTransport, fallback: directTransport}
+			transport = &turnstileFallbackTransport{primary: proxyTransport, fallback: directTransport, primaryTimeout: 3 * time.Second}
 		}
 	}
 
@@ -49,17 +53,49 @@ func newTurnstileHTTPClient() *http.Client {
 
 type turnstileFallbackTransport struct {
 	primary, fallback http.RoundTripper
+	primaryTimeout    time.Duration
 }
 
 func (t *turnstileFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	res, err := t.primary.RoundTrip(req)
+	timeout := t.primaryTimeout
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	primary := req.Clone(ctx)
+	res, err := t.primary.RoundTrip(primary)
 	if err == nil && res.StatusCode >= 200 && res.StatusCode < 500 {
+		res.Body = &turnstileResponseBody{ReadCloser: res.Body, cancel: cancel}
 		return res, nil
 	}
 	if res != nil {
 		res.Body.Close()
 	}
-	return t.fallback.RoundTrip(req)
+	cancel()
+	if req.Context().Err() != nil {
+		return nil, req.Context().Err()
+	}
+	fallback := req.Clone(req.Context())
+	if req.Body != nil {
+		if req.GetBody == nil {
+			return nil, fmt.Errorf("verification request cannot be replayed")
+		}
+		fallback.Body, err = req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return t.fallback.RoundTrip(fallback)
+}
+
+type turnstileResponseBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *turnstileResponseBody) Close() error {
+	defer b.cancel()
+	return b.ReadCloser.Close()
 }
 
 func turnstileToken(c *gin.Context) string {

@@ -130,3 +130,39 @@ func TestTurnstileCheckUsesRequestContext(t *testing.T) {
 	}
 	<-done
 }
+
+func TestTurnstileFallbackReplaysBodyAfterPrimaryTimeout(t *testing.T) {
+	payload := "secret=test&response=token"
+	fallbackCalled := false
+	transport := &turnstileFallbackTransport{
+		primaryTimeout: 20 * time.Millisecond,
+		primary: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			_, _ = io.ReadAll(r.Body)
+			<-r.Context().Done()
+			return nil, r.Context().Err()
+		}),
+		fallback: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			fallbackCalled = true
+			require.NoError(t, r.Context().Err())
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.Equal(t, payload, string(body))
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`)), Header: make(http.Header)}, nil
+		}),
+	}
+	client := &http.Client{Transport: transport, Timeout: time.Second}
+	response, err := client.Post("https://verify.example/", "application/x-www-form-urlencoded", strings.NewReader(payload))
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.True(t, fallbackCalled)
+}
+
+func TestTurnstileFallbackIsActuallyDirect(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+	t.Setenv("TURNSTILE_VERIFY_PROXY", "http://127.0.0.1:2")
+	client := newTurnstileHTTPClient()
+	transport := client.Transport.(*turnstileFallbackTransport)
+	require.Nil(t, transport.fallback.(*http.Transport).Proxy)
+	require.NotNil(t, transport.primary.(*http.Transport).Proxy)
+}
