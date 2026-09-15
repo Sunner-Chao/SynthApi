@@ -38,6 +38,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
+	if info.TaskRelayInfo != nil && info.TaskRelayInfo.PublicTaskID != "" {
+		other["task_id"] = info.TaskRelayInfo.PublicTaskID
+	}
 	other["model_price"] = info.PriceData.ModelPrice
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio

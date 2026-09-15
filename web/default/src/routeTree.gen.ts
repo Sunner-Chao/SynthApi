@@ -24,7 +24,9 @@ import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as ConsoleTopupRouteImport } from './routes/console/topup'
 import { Route as ConsoleR2MonitorRouteImport } from './routes/console/r2-monitor'
 import { Route as ConsoleLogRouteImport } from './routes/console/log'
+import { Route as AuthenticatedVideoLogsRouteImport } from './routes/_authenticated/video-logs'
 import { Route as AuthenticatedR2MonitorRouteImport } from './routes/_authenticated/r2-monitor'
+import { Route as AuthenticatedImageLogsRouteImport } from './routes/_authenticated/image-logs'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
@@ -155,9 +157,19 @@ const ConsoleLogRoute = ConsoleLogRouteImport.update({
   path: '/console/log',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedVideoLogsRoute = AuthenticatedVideoLogsRouteImport.update({
+  id: '/video-logs',
+  path: '/video-logs',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedR2MonitorRoute = AuthenticatedR2MonitorRouteImport.update({
   id: '/r2-monitor',
   path: '/r2-monitor',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedImageLogsRoute = AuthenticatedImageLogsRouteImport.update({
+  id: '/image-logs',
+  path: '/image-logs',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedChat2linkRoute = AuthenticatedChat2linkRouteImport.update({
@@ -497,7 +509,9 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/image-logs': typeof AuthenticatedImageLogsRoute
   '/r2-monitor': typeof AuthenticatedR2MonitorRoute
+  '/video-logs': typeof AuthenticatedVideoLogsRoute
   '/console/log': typeof ConsoleLogRoute
   '/console/r2-monitor': typeof ConsoleR2MonitorRoute
   '/console/topup': typeof ConsoleTopupRoute
@@ -568,7 +582,9 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/image-logs': typeof AuthenticatedImageLogsRoute
   '/r2-monitor': typeof AuthenticatedR2MonitorRoute
+  '/video-logs': typeof AuthenticatedVideoLogsRoute
   '/console/log': typeof ConsoleLogRoute
   '/console/r2-monitor': typeof ConsoleR2MonitorRoute
   '/console/topup': typeof ConsoleTopupRoute
@@ -643,7 +659,9 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
+  '/_authenticated/image-logs': typeof AuthenticatedImageLogsRoute
   '/_authenticated/r2-monitor': typeof AuthenticatedR2MonitorRoute
+  '/_authenticated/video-logs': typeof AuthenticatedVideoLogsRoute
   '/console/log': typeof ConsoleLogRoute
   '/console/r2-monitor': typeof ConsoleR2MonitorRoute
   '/console/topup': typeof ConsoleTopupRoute
@@ -717,7 +735,9 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/image-logs'
     | '/r2-monitor'
+    | '/video-logs'
     | '/console/log'
     | '/console/r2-monitor'
     | '/console/topup'
@@ -788,7 +808,9 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/image-logs'
     | '/r2-monitor'
+    | '/video-logs'
     | '/console/log'
     | '/console/r2-monitor'
     | '/console/topup'
@@ -862,7 +884,9 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/chat2link'
+    | '/_authenticated/image-logs'
     | '/_authenticated/r2-monitor'
+    | '/_authenticated/video-logs'
     | '/console/log'
     | '/console/r2-monitor'
     | '/console/topup'
@@ -1048,11 +1072,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleLogRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/video-logs': {
+      id: '/_authenticated/video-logs'
+      path: '/video-logs'
+      fullPath: '/video-logs'
+      preLoaderRoute: typeof AuthenticatedVideoLogsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/r2-monitor': {
       id: '/_authenticated/r2-monitor'
       path: '/r2-monitor'
       fullPath: '/r2-monitor'
       preLoaderRoute: typeof AuthenticatedR2MonitorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/image-logs': {
+      id: '/_authenticated/image-logs'
+      path: '/image-logs'
+      fullPath: '/image-logs'
+      preLoaderRoute: typeof AuthenticatedImageLogsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/chat2link': {
@@ -1536,7 +1574,9 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
+  AuthenticatedImageLogsRoute: typeof AuthenticatedImageLogsRoute
   AuthenticatedR2MonitorRoute: typeof AuthenticatedR2MonitorRoute
+  AuthenticatedVideoLogsRoute: typeof AuthenticatedVideoLogsRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
@@ -1568,7 +1608,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
+  AuthenticatedImageLogsRoute: AuthenticatedImageLogsRoute,
   AuthenticatedR2MonitorRoute: AuthenticatedR2MonitorRoute,
+  AuthenticatedVideoLogsRoute: AuthenticatedVideoLogsRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useMemo, useState } from 'react'
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
 import { MonitorCog, Table2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
@@ -166,7 +166,17 @@ function UsageLogsContent() {
             <SectionPageLayout.Title>
               <span className='pl-10'>{t('Usage Logs')}</span>
             </SectionPageLayout.Title>
-            <SectionPageLayout.Actions>{viewSwitch}</SectionPageLayout.Actions>
+            <SectionPageLayout.Actions>
+              <div className='flex items-center gap-3 text-sm'>
+                <Link to='/image-logs' className='text-primary underline'>
+                  {t('Image Logs')}
+                </Link>
+                <Link to='/video-logs' className='text-primary underline'>
+                  {t('Video Logs')}
+                </Link>
+                {viewSwitch}
+              </div>
+            </SectionPageLayout.Actions>
             <SectionPageLayout.Content>
               <UsageLogsTable
                 logCategory={activeCategory}

@@ -100,6 +100,8 @@ export function useSidebarData(): SidebarData {
             url: '/usage-logs/common',
             icon: FileText,
           },
+          { title: t('Image Logs'), url: '/image-logs', icon: ImageIcon },
+          { title: t('Video Logs'), url: '/video-logs', icon: Video },
           {
             title: t('Image Workbench'),
             url: '/image-workbench',

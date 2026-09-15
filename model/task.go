@@ -75,6 +75,7 @@ func (t *Task) GetData(v any) error {
 }
 
 type Properties struct {
+	RequestID         string `json:"request_id,omitempty"`
 	Input             string `json:"input"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 	OriginModelName   string `json:"origin_model_name,omitempty"`
@@ -176,6 +177,9 @@ type SyncTaskQueryParams struct {
 
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
 	properties := Properties{}
+	if relayInfo != nil {
+		properties.RequestID = relayInfo.RequestId
+	}
 	privateData := TaskPrivateData{}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
 		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||

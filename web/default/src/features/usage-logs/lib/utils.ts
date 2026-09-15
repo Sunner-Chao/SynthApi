@@ -197,6 +197,7 @@ export function buildApiParams(config: {
 
   // Build base params from search params
   const params: GetLogsParams = {
+    media_kind: 'other',
     p: page,
     page_size: pageSize,
     ...(searchParams.type ? { type: processType(searchParams.type) } : {}),

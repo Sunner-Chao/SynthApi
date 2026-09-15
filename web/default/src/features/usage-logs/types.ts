@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Type definitions for usage logs
  */
-
 import type { AdminUserRewardListSummary } from '@/features/reward-center/types'
 
 export interface UsageLog {
@@ -46,10 +45,7 @@ export interface UsageLog {
   other: string
 }
 
-export type UsageLogRewardSummaries = Record<
-  number,
-  AdminUserRewardListSummary
->
+export type UsageLogRewardSummaries = Record<number, AdminUserRewardListSummary>
 
 // ============================================================================
 // Log Category Types
@@ -398,6 +394,7 @@ export interface TaskLog {
 // ============================================================================
 
 export interface GetLogsParams {
+  media_kind?: 'image' | 'video' | 'other'
   p?: number
   page_size?: number
   type?: number
@@ -424,6 +421,7 @@ export interface GetLogsResponse {
 }
 
 export interface GetLogStatsParams {
+  media_kind?: 'image' | 'video' | 'other'
   type?: number
   username?: string
   token_name?: string
