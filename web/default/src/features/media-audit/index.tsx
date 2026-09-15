@@ -417,16 +417,16 @@ export function MediaAuditPage(props: { kind: MediaKind }) {
             </div>
           </div>
         </div>
+        {selected && (
+          <MediaDetail
+            key={selected.id}
+            row={selected}
+            kind={props.kind}
+            onClose={() => setSelected(null)}
+            statusLabel={statusLabel}
+          />
+        )}
       </SectionPageLayout.Content>
-      {selected && (
-        <MediaDetail
-          key={selected.id}
-          row={selected}
-          kind={props.kind}
-          onClose={() => setSelected(null)}
-          statusLabel={statusLabel}
-        />
-      )}
     </SectionPageLayout>
   )
 }

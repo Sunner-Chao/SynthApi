@@ -76,3 +76,10 @@ func TestMediaAuditRoutesEnforceOwnership(t *testing.T) {
 		})
 	}
 }
+
+func TestMediaAuditPublicExposure(t *testing.T) {
+	require.True(t, isBlockedOnPublicPort("/api/media-logs/admin/image"))
+	require.True(t, isBlockedOnPublicPort("/api/media-logs/admin/video/task_id/content"))
+	require.False(t, isBlockedOnPublicPort("/api/media-logs/self/image"))
+	require.False(t, isBlockedOnPublicPort("/image-logs"))
+}

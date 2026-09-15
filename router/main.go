@@ -97,6 +97,7 @@ func isBlockedOnPublicPort(path string) bool {
 
 	for _, prefix := range []string{
 		"/api/option",
+		"/api/media-logs/admin",
 		"/api/channel",
 		"/api/redemption",
 		"/api/group",
