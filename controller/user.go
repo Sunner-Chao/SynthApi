@@ -272,7 +272,7 @@ func SearchUsers(c *gin.Context) {
 }
 
 func canManageTargetRole(myRole int, targetRole int) bool {
-	return myRole == common.RoleRootUser || myRole > targetRole
+	return common.IsAdminRole(myRole) && common.IsValidateRole(targetRole)
 }
 
 func GetUser(c *gin.Context) {
@@ -412,6 +412,10 @@ func GetSelf(c *gin.Context) {
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
+	if common.IsAdminRole(userRole) {
+		// Both themes must ignore historical role-limited navigation overlays.
+		userSetting.SidebarModules = ""
+	}
 	quotaDelta, usedQuotaDelta, requestCountDelta := model.GetPendingUserBatchUpdates(user.Id)
 
 	// 构建响应数据，包含用户信息和权限
@@ -456,22 +460,12 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 	permissions := map[string]interface{}{}
 
 	// 根据用户角色计算权限
-	if userRole == common.RoleRootUser {
-		// 超级管理员不需要边栏设置功能
+	if common.IsAdminRole(userRole) {
+		// Use one complete sidebar for both administrator roles. This also
+		// ignores stale role-10 overlays that previously hid system settings.
 		permissions["sidebar_settings"] = false
 		permissions["sidebar_modules"] = map[string]interface{}{}
 		permissions["model_management"] = true
-	} else if userRole == common.RoleAdminUser {
-		// 管理员可以设置边栏，但不包含系统设置功能
-		permissions["sidebar_settings"] = true
-		// Model metadata, vendor metadata and deployment pages are available to
-		// regular administrators; system settings remain root-only.
-		permissions["model_management"] = true
-		permissions["sidebar_modules"] = map[string]interface{}{
-			"admin": map[string]interface{}{
-				"setting": false, // 管理员不能访问系统设置
-			},
-		}
 	} else {
 		// 普通用户只能设置个人功能，不包含管理员区域
 		permissions["sidebar_settings"] = true
@@ -512,20 +506,8 @@ func generateDefaultSidebarConfig(userRole int) string {
 	}
 
 	// 管理员区域 - 根据角色决定
-	if userRole == common.RoleAdminUser {
-		// 管理员可以访问管理员区域，但不能访问系统设置
-		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":      true,
-			"account":      true,
-			"channel":      true,
-			"models":       true,
-			"redemption":   true,
-			"user":         true,
-			"subscription": true,
-			"setting":      false, // 管理员不能访问系统设置
-		}
-	} else if userRole == common.RoleRootUser {
-		// 超级管理员可以访问所有功能
+	if common.IsAdminRole(userRole) {
+		// Both administrator roles receive the full navigation.
 		defaultConfig["admin"] = map[string]interface{}{
 			"enabled":      true,
 			"account":      true,
@@ -540,7 +522,7 @@ func generateDefaultSidebarConfig(userRole int) string {
 	// 普通用户不包含admin区域
 
 	// 转换为JSON字符串
-	configBytes, err := json.Marshal(defaultConfig)
+	configBytes, err := common.Marshal(defaultConfig)
 	if err != nil {
 		common.SysLog("生成默认边栏配置失败: " + err.Error())
 		return ""
@@ -813,7 +795,7 @@ func DeleteUser(c *gin.Context) {
 		}
 	}
 	myRole := c.GetInt("role")
-	if myRole <= originUser.Role {
+	if !canManageTargetRole(myRole, originUser.Role) || originUser.Role == common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
@@ -866,7 +848,7 @@ func CreateUser(c *gin.Context) {
 		user.DisplayName = user.Username
 	}
 	myRole := c.GetInt("role")
-	if user.Role >= myRole {
+	if !canManageTargetRole(myRole, user.Role) || user.Role == common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
@@ -946,7 +928,7 @@ func ManageUser(c *gin.Context) {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
 	case "promote":
-		if myRole != common.RoleRootUser {
+		if !common.IsAdminRole(myRole) {
 			common.ApiErrorI18n(c, i18n.MsgUserAdminCannotPromote)
 			return
 		}

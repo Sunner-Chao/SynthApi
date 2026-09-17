@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
@@ -176,7 +177,7 @@ export function ApiKeysMutateDrawer({
           ratio: info.ratio,
           channelStatus: groupChannelStatus[key],
         })),
-    [groupsRaw, groupChannelStatus]
+    [groupsRaw, groupChannelStatus, t]
   )
   const backendHasAuto = availableGroupValues.includes('auto')
   const availableAutoGroupValues = useMemo(
@@ -369,8 +370,8 @@ export function ApiKeysMutateDrawer({
           triggerRefresh()
         }
       }
-    } catch (_error) {
-      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } catch (error) {
+      handleServerError(error)
     } finally {
       setIsSubmitting(false)
     }

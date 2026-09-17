@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { handleServerError } from '@/lib/handle-server-error'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +31,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { manageUser } from '../api'
-import { ERROR_MESSAGES } from '../constants'
 import { useUsers } from './users-provider'
 
 export function UsersDeactivateDialog() {
@@ -51,8 +51,8 @@ export function UsersDeactivateDialog() {
       } else {
         toast.error(result.message || t('Failed to deactivate user'))
       }
-    } catch (_error) {
-      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } catch (error) {
+      handleServerError(error)
     } finally {
       setIsDeactivating(false)
     }

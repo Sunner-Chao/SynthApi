@@ -34,6 +34,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { handleServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -128,7 +129,6 @@ export function DataTableRowActions<TData>({
     setResolvedKey,
     resolveRealKey,
     resolvedKeys,
-    loadingKeys,
   } = useApiKeys()
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
   const { chatPresets, serverAddress } = useChatPresets()
@@ -136,25 +136,8 @@ export function DataTableRowActions<TData>({
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [testResponseTime, setTestResponseTime] = useState<number | null>(null)
   const resolvedRealKey = resolvedKeys[apiKey.id]
-  const isRealKeyLoading = Boolean(loadingKeys[apiKey.id])
 
   const hasChatPresets = chatPresets.length > 0
-
-  const handleMenuOpenChange = useCallback(
-    (open: boolean) => {
-      if (open && !resolvedRealKey && !isRealKeyLoading) {
-        void resolveRealKey(apiKey.id)
-      }
-    },
-    [apiKey.id, isRealKeyLoading, resolvedRealKey, resolveRealKey]
-  )
-
-  const getCachedRealKey = useCallback(() => {
-    if (resolvedRealKey) return resolvedRealKey
-    void resolveRealKey(apiKey.id)
-    toast.info(t('API key is loading, please try again in a moment'))
-    return null
-  }, [apiKey.id, resolvedRealKey, resolveRealKey, t])
 
   const handleOpenChatPreset = useCallback(
     async (preset: ChatPreset) => {
@@ -217,8 +200,8 @@ export function DataTableRowActions<TData>({
       } else {
         toast.error(result.message || t(ERROR_MESSAGES.STATUS_UPDATE_FAILED))
       }
-    } catch {
-      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } catch (error) {
+      handleServerError(error)
     } finally {
       setIsTogglingStatus(false)
     }
@@ -337,7 +320,7 @@ export function DataTableRowActions<TData>({
         </TooltipContent>
       </Tooltip>
 
-      <DropdownMenu modal={false} onOpenChange={handleMenuOpenChange}>
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger
           render={
             <Button
@@ -352,7 +335,8 @@ export function DataTableRowActions<TData>({
         <DropdownMenuContent align='end' className='w-[200px]'>
           <DropdownMenuItem
             onClick={async () => {
-              const realKey = getCachedRealKey()
+              const realKey =
+                resolvedRealKey || (await resolveRealKey(apiKey.id))
               if (!realKey) return
               const ok = await copyToClipboard(realKey)
               if (ok) toast.success(t('Copied'))
@@ -365,7 +349,8 @@ export function DataTableRowActions<TData>({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={async () => {
-              const realKey = getCachedRealKey()
+              const realKey =
+                resolvedRealKey || (await resolveRealKey(apiKey.id))
               if (!realKey) return
               const connStr = encodeConnectionString(
                 realKey,

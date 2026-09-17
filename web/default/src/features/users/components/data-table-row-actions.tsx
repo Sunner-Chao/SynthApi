@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { handleServerError } from '@/lib/handle-server-error'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -47,12 +48,7 @@ import {
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 import { manageUser, resetUserPasskey, resetUserTwoFA } from '../api'
-import {
-  USER_STATUS,
-  USER_ROLE,
-  ERROR_MESSAGES,
-  isUserDeleted,
-} from '../constants'
+import { USER_STATUS, USER_ROLE, isUserDeleted } from '../constants'
 import { getUserActionMessage } from '../lib'
 import { type UserWithRewardSummary, type ManageUserAction } from '../types'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
@@ -103,8 +99,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           result.message || t('Failed to {{action}} user', { action })
         )
       }
-    } catch (_error) {
-      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } catch (error) {
+      handleServerError(error)
     }
   }
 
@@ -117,8 +113,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
       } else {
         toast.error(result.message || t('Failed to reset Passkey'))
       }
-    } catch (_error) {
-      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } catch (error) {
+      handleServerError(error)
     } finally {
       setResetPasskeyOpen(false)
     }
@@ -133,8 +129,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
       } else {
         toast.error(result.message || t('Failed to reset 2FA'))
       }
-    } catch (_error) {
-      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } catch (error) {
+      handleServerError(error)
     } finally {
       setResetTwoFAOpen(false)
     }

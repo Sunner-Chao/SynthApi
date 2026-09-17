@@ -108,6 +108,26 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// CredentialReadRateLimit separates authenticated key reads from login/reset
+// attempts and from other users behind the same proxy. Keep the configured
+// critical-operation budget, shared by single and batch reads for each user.
+func CredentialReadRateLimit() gin.HandlerFunc {
+	if !common.CriticalRateLimitEnable {
+		return defNext
+	}
+	limit := userRateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CREDENTIAL")
+	return func(c *gin.Context) {
+		limit(c)
+		if c.IsAborted() && c.Writer.Status() == http.StatusTooManyRequests {
+			c.Header("Retry-After", fmt.Sprint(common.CriticalRateLimitDuration))
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"success": false,
+				"code":    "RATE_LIMITED",
+			})
+		}
+	}
+}
+
 // RegistrationRateLimit applies a dedicated per-IP budget to public account
 // creation. It is intentionally separate from CriticalRateLimit so a burst of
 // sign-up attempts cannot consume the same budget used by login/reset flows.

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { handleServerError } from '@/lib/handle-server-error'
 import useDialogState from '@/hooks/use-dialog'
 import { fetchTokenKey, fetchTokenKeysBatch } from '../api'
 import { ERROR_MESSAGES } from '../constants'
@@ -90,8 +91,8 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
           }
           toast.error(res.message || t(ERROR_MESSAGES.UNEXPECTED))
           return null
-        } catch {
-          toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+        } catch (error) {
+          handleServerError(error)
           return null
         } finally {
           delete pendingRequests.current[id]
@@ -139,8 +140,8 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
         }
         toast.error(res.message || t(ERROR_MESSAGES.UNEXPECTED))
         return {}
-      } catch {
-        toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+      } catch (error) {
+        handleServerError(error)
         return {}
       } finally {
         for (const id of uncachedIds) {

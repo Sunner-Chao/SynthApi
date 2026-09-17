@@ -83,13 +83,13 @@ const queryClient = new QueryClient({
       if (error instanceof AxiosError) {
         if (error.config?.skipErrorHandler) return
         if (error.response?.status === 401) {
-          toast.error(i18next.t('Session expired!'))
+          handleServerError(error)
           useAuthStore.getState().auth.reset()
           const redirect = `${router.history.location.href}`
           router.navigate({ to: '/sign-in', search: { redirect } })
         }
         if (error.response?.status === 500) {
-          toast.error(i18next.t('Internal Server Error!'))
+          handleServerError(error)
           router.navigate({ to: '/500' })
         }
       }

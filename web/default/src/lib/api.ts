@@ -20,6 +20,10 @@ import axios, { type AxiosRequestConfig } from 'axios'
 import { t } from 'i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  handleServerError,
+  markServerErrorHandled,
+} from './handle-server-error'
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -118,19 +122,15 @@ api.interceptors.response.use(
       }
 
       if (!skip) {
-        toast.error(t('Session expired!'))
+        handleServerError(error)
       }
     } else if (!skip) {
       // Other errors: show error message from response or default
       const method = String(error?.config?.method || 'GET').toUpperCase()
       const url = String(error?.config?.url || 'unknown')
       const key = `${status || 'network'}:${method}:${url}`
-      const msg =
-        error?.response?.data?.message ||
-        (status === 404
-          ? `${t('Request failed')} (404: ${method} ${url})`
-          : error?.message || t('Request failed'))
-      if (shouldShowErrorToast(key)) toast.error(msg)
+      if (shouldShowErrorToast(key)) handleServerError(error)
+      else markServerErrorHandled(error)
     }
     return Promise.reject(error)
   }

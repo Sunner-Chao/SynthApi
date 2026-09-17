@@ -234,6 +234,12 @@ const (
 	RoleRootUser   = 100
 )
 
+// IsAdminRole treats both persisted administrator roles as equally privileged.
+// Keep their IDs distinct for account identity and root account protection.
+func IsAdminRole(role int) bool {
+	return role == RoleAdminUser || role == RoleRootUser
+}
+
 func IsValidateRole(role int) bool {
 	return role == RoleGuestUser || role == RoleCommonUser || role == RoleAdminUser || role == RoleRootUser
 }

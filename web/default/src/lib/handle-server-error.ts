@@ -20,24 +20,37 @@ import { AxiosError } from 'axios'
 import i18next from 'i18next'
 import { toast } from 'sonner'
 
-export function handleServerError(error: unknown) {
-  // eslint-disable-next-line no-console
-  console.log(error)
+const reportedErrors = new WeakSet<object>()
 
-  let errMsg = i18next.t('Something went wrong!')
+export function markServerErrorHandled(error: unknown): void {
+  if (error && typeof error === 'object') reportedErrors.add(error)
+}
 
-  if (
-    error &&
-    typeof error === 'object' &&
-    'status' in error &&
-    Number(error.status) === 204
-  ) {
-    errMsg = i18next.t('Content not found.')
-  }
-
+export function getServerErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
-    errMsg = error.response?.data.title
+    const data: unknown = error.response?.data
+    if (data && typeof data === 'object') {
+      for (const key of ['message', 'title'] as const) {
+        const value = (data as Record<string, unknown>)[key]
+        if (typeof value === 'string' && value.trim()) return value
+      }
+    }
+    if (error.response?.status === 429) {
+      return `${i18next.t('Too many requests')} ${i18next.t('Please try again later.')}`
+    }
+    if (error.response?.status === 401) return i18next.t('Session expired!')
+    if (error.response?.status === 404) return i18next.t('Content not found.')
+    if (error.response?.status === 500)
+      return i18next.t('Internal Server Error!')
   }
+  if (error instanceof Error && error.message) return error.message
+  return i18next.t('Something went wrong!')
+}
 
-  toast.error(errMsg)
+export function handleServerError(error: unknown): void {
+  // Axios and component catches often see the very same failure. Report it
+  // once, preserving the server's reason instead of adding a generic toast.
+  if (error && typeof error === 'object' && reportedErrors.has(error)) return
+  markServerErrorHandled(error)
+  toast.error(getServerErrorMessage(error))
 }

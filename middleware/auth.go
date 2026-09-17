@@ -198,10 +198,10 @@ func AdminAuth() func(c *gin.Context) {
 	}
 }
 
+// RootAuth is kept for route compatibility. Both administrator roles have
+// the same capabilities; sensitive routes still require secure verification.
 func RootAuth() func(c *gin.Context) {
-	return func(c *gin.Context) {
-		authHelper(c, common.RoleRootUser)
-	}
+	return AdminAuth()
 }
 
 func WssAuth(c *gin.Context) {
