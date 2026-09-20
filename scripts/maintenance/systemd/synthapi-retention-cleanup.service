@@ -1,0 +1,20 @@
+[Unit]
+Description=SynthAPI local artifacts and verified R2 copy retention
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/synthapi-retention-cleanup --apply --max-batches 200
+User=root
+UMask=0077
+Nice=19
+IOSchedulingClass=idle
+CPUQuota=15%
+MemoryMax=192M
+MemorySwapMax=0
+TimeoutStartSec=20min
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes

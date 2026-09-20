@@ -1,0 +1,828 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { useEffect, useMemo, useState } from 'react'
+import { useForm, type SubmitErrorHandler } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
+import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { getUserModels, getUserGroups } from '@/lib/api'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { handleServerError } from '@/lib/handle-server-error'
+import { cn } from '@/lib/utils'
+import { useStatus } from '@/hooks/use-status'
+import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { DateTimePicker } from '@/components/datetime-picker'
+import {
+  SideDrawerSection,
+  SideDrawerSectionHeader,
+  sideDrawerContentClassName,
+  sideDrawerFooterClassName,
+  sideDrawerFormClassName,
+  sideDrawerHeaderClassName,
+  sideDrawerSwitchItemClassName,
+} from '@/components/drawer-layout'
+import { MultiSelect } from '@/components/multi-select'
+import {
+  createApiKey,
+  updateApiKey,
+  getApiKey,
+  getGroupChannelStatus,
+  getTokenAutoGroups,
+} from '../api'
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
+import {
+  getApiKeyFormSchema,
+  type ApiKeyFormValues,
+  getApiKeyFormDefaultValues,
+  transformFormDataToPayload,
+  transformApiKeyToFormDefaults,
+} from '../lib'
+import { type ApiKey, type GroupChannelStatusSummary } from '../types'
+import {
+  ApiKeyGroupCombobox,
+  type ApiKeyGroupOption,
+} from './api-key-group-combobox'
+import { useApiKeys } from './api-keys-provider'
+import { AutoGroupOrderEditor } from './auto-group-order-editor'
+
+type ApiKeyMutateDrawerProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  currentRow?: ApiKey
+}
+
+const GROUP_CHANNEL_STATUS_REFRESH_INTERVAL_MS = 5 * 60 * 1000
+const EMPTY_GROUPS: NonNullable<
+  Awaited<ReturnType<typeof getUserGroups>>['data']
+> = {}
+
+export function ApiKeysMutateDrawer({
+  open,
+  onOpenChange,
+  currentRow,
+}: ApiKeyMutateDrawerProps) {
+  const { t } = useTranslation()
+  const isUpdate = !!currentRow
+  const { triggerRefresh, preferredGroup, setPreferredGroup } = useApiKeys()
+  const { status } = useStatus()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [groupChannelStatus, setGroupChannelStatus] = useState<
+    Record<string, GroupChannelStatusSummary>
+  >({})
+  const [testingGroups, setTestingGroups] = useState<Set<string>>(new Set())
+  const defaultUseAutoGroup = status?.default_use_auto_group === true
+
+  // Fetch models
+  const { data: modelsData } = useQuery({
+    queryKey: ['user-models'],
+    queryFn: getUserModels,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  })
+
+  // Fetch groups
+  const { data: groupsData, refetch: refetchGroups } = useQuery({
+    queryKey: ['user-groups'],
+    queryFn: getUserGroups,
+    enabled: open,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  })
+
+  const {
+    data: groupChannelStatusData,
+    isFetching: isFetchingGroupChannelStatus,
+  } = useQuery({
+    queryKey: ['user-group-channel-status'],
+    queryFn: () => getGroupChannelStatus({ refresh: false }),
+    enabled: open,
+    staleTime: GROUP_CHANNEL_STATUS_REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: false,
+  })
+  const { data: autoGroupsData } = useQuery({
+    queryKey: ['token-auto-groups'],
+    queryFn: getTokenAutoGroups,
+    enabled: open,
+    staleTime: 0,
+  })
+
+  const models = modelsData?.data || []
+  const groupsRaw = groupsData?.data || EMPTY_GROUPS
+  const availableGroupValues = useMemo(
+    () => Object.keys(groupsRaw),
+    [groupsRaw]
+  )
+  const groups: ApiKeyGroupOption[] = useMemo(
+    () =>
+      Object.entries(groupsRaw)
+        .sort(([left], [right]) => {
+          if (left === 'auto') return -1
+          if (right === 'auto') return 1
+          return 0
+        })
+        .map(([key, info]) => ({
+          value: key,
+          label: key,
+          desc:
+            key === 'auto'
+              ? t(
+                  'Automatically selects the best available group with circuit breaker mechanism'
+                )
+              : info.desc || key,
+          ratio: info.ratio,
+          channelStatus: groupChannelStatus[key],
+        })),
+    [groupsRaw, groupChannelStatus, t]
+  )
+  const backendHasAuto = availableGroupValues.includes('auto')
+  const availableAutoGroupValues = useMemo(
+    () => availableGroupValues.filter((group) => group !== 'auto'),
+    [availableGroupValues]
+  )
+  const globalAutoGroups = useMemo(() => {
+    const available = new Set(availableAutoGroupValues)
+    return (autoGroupsData?.data?.groups || []).filter((group) =>
+      available.has(group)
+    )
+  }, [autoGroupsData, availableAutoGroupValues])
+  const globalAutoGroupOptions = useMemo(() => {
+    const groupsByValue = new Map(groups.map((group) => [group.value, group]))
+    return globalAutoGroups.flatMap((group) => {
+      const option = groupsByValue.get(group)
+      return option ? [option] : []
+    })
+  }, [globalAutoGroups, groups])
+  const hasGlobalAutoGroups = globalAutoGroupOptions.length > 0
+  const maxAutoGroups =
+    Number.isInteger(autoGroupsData?.data?.max_count) &&
+    Number(autoGroupsData?.data?.max_count) > 0
+      ? Number(autoGroupsData?.data?.max_count)
+      : 5
+  const autoCrossGroupRetryEnabled =
+    autoGroupsData?.data?.cross_group_retry_enabled !== false
+  const normalizedPreferredGroup = preferredGroup.trim()
+  const schema = useMemo(
+    () => getApiKeyFormSchema(t, maxAutoGroups, hasGlobalAutoGroups),
+    [t, maxAutoGroups, hasGlobalAutoGroups]
+  )
+
+  useEffect(() => {
+    if (groupChannelStatusData?.data) {
+      setGroupChannelStatus(groupChannelStatusData.data)
+    }
+  }, [groupChannelStatusData])
+
+  useEffect(() => {
+    if (open) {
+      void refetchGroups()
+    }
+  }, [open, refetchGroups])
+
+  const handleTestGroupChannelStatus = (group: string) => {
+    if (!group || testingGroups.has(group)) return
+    setTestingGroups((prev) => new Set(prev).add(group))
+    getGroupChannelStatus({ refresh: true, group })
+      .then((result) => {
+        if (result.success && result.data) {
+          setGroupChannelStatus((prev) => ({
+            ...prev,
+            ...result.data,
+          }))
+        }
+      })
+      .catch(() => {
+        toast.error(t('Failed to refresh channel connectivity status'))
+      })
+      .finally(() => {
+        setTestingGroups((prev) => {
+          const next = new Set(prev)
+          next.delete(group)
+          return next
+        })
+      })
+  }
+
+  const form = useForm<ApiKeyFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
+  })
+
+  // Load existing data when updating
+  useEffect(() => {
+    if (open && isUpdate && currentRow) {
+      getApiKey(currentRow.id).then((result) => {
+        if (result.success && result.data) {
+          form.reset(
+            transformApiKeyToFormDefaults(
+              result.data,
+              availableAutoGroupValues,
+              maxAutoGroups,
+              hasGlobalAutoGroups
+            )
+          )
+        }
+      })
+    } else if (open && !isUpdate) {
+      const defaults = getApiKeyFormDefaultValues(
+        defaultUseAutoGroup && backendHasAuto,
+        autoCrossGroupRetryEnabled
+      )
+      if (
+        normalizedPreferredGroup &&
+        availableGroupValues.includes(normalizedPreferredGroup)
+      ) {
+        defaults.group = normalizedPreferredGroup
+        defaults.cross_group_retry = false
+      }
+      form.reset(defaults)
+    }
+  }, [
+    open,
+    isUpdate,
+    currentRow,
+    form,
+    defaultUseAutoGroup,
+    backendHasAuto,
+    availableAutoGroupValues,
+    maxAutoGroups,
+    hasGlobalAutoGroups,
+    autoCrossGroupRetryEnabled,
+    normalizedPreferredGroup,
+    availableGroupValues,
+  ])
+
+  // Correct group after groups load: if the form value is not in available groups, fall back
+  useEffect(() => {
+    if (groups.length === 0) return
+    const currentGroup = form.getValues('group')
+    if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
+      const fallback =
+        groups.find((g) => g.value === 'default')?.value ??
+        groups[0]?.value ??
+        ''
+      form.setValue('group', fallback)
+      if (currentGroup === 'auto') {
+        form.setValue('auto_groups', [])
+        form.setValue('auto_groups_mode', 'inherit')
+        form.setValue('cross_group_retry', false)
+      }
+    }
+    if (
+      normalizedPreferredGroup &&
+      !groups.some((g) => g.value === normalizedPreferredGroup)
+    ) {
+      setPreferredGroup('')
+    }
+  }, [groups, form, normalizedPreferredGroup, setPreferredGroup])
+
+  const onSubmit = async (data: ApiKeyFormValues) => {
+    setIsSubmitting(true)
+    try {
+      const basePayload = transformFormDataToPayload(data)
+
+      if (isUpdate && currentRow) {
+        const result = await updateApiKey({
+          ...basePayload,
+          id: currentRow.id,
+        })
+        if (result.success) {
+          toast.success(t(SUCCESS_MESSAGES.API_KEY_UPDATED))
+          onOpenChange(false)
+          setPreferredGroup('')
+          triggerRefresh()
+        } else {
+          toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
+        }
+      } else {
+        // Create mode - handle batch creation
+        const count = data.tokenCount || 1
+        let successCount = 0
+
+        for (let i = 0; i < count; i++) {
+          const result = await createApiKey({
+            ...basePayload,
+            name:
+              i === 0 && data.name
+                ? data.name
+                : `${data.name || 'default'}-${Math.random().toString(36).slice(2, 8)}`,
+          })
+          if (result.success) {
+            successCount++
+          } else {
+            toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
+            break
+          }
+        }
+
+        if (successCount > 0) {
+          toast.success(
+            t('Successfully created {{count}} API Key(s)', {
+              count: successCount,
+            })
+          )
+          onOpenChange(false)
+          setPreferredGroup('')
+          triggerRefresh()
+        }
+      }
+    } catch (error) {
+      handleServerError(error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const onInvalid: SubmitErrorHandler<ApiKeyFormValues> = () => {
+    toast.error(t('Please fix the highlighted fields before saving'))
+  }
+
+  const handleSetExpiry = (months: number, days: number, hours: number) => {
+    if (months === 0 && days === 0 && hours === 0) {
+      form.setValue('expired_time', undefined)
+      return
+    }
+
+    const now = new Date()
+    now.setMonth(now.getMonth() + months)
+    now.setDate(now.getDate() + days)
+    now.setHours(now.getHours() + hours)
+
+    form.setValue('expired_time', now)
+  }
+
+  const { meta: currencyMeta } = getCurrencyDisplay()
+  const currencyLabel = getCurrencyLabel()
+  const tokensOnly = currencyMeta.kind === 'tokens'
+  const quotaLabel = t('Quota ({{currency}})', { currency: currencyLabel })
+  const quotaPlaceholder = tokensOnly
+    ? t('Enter quota in tokens')
+    : t('Enter quota in {{currency}}', { currency: currencyLabel })
+  const unlimitedQuota = form.watch('unlimited_quota')
+  const selectedGroup = form.watch('group')
+  const autoGroupsMode = form.watch('auto_groups_mode')
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v)
+        if (!v) {
+          form.reset()
+          setPreferredGroup('')
+        }
+      }}
+    >
+      <SheetContent
+        className={sideDrawerContentClassName('max-w-none sm:!max-w-[620px]')}
+      >
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <SheetTitle>
+            {isUpdate ? t('Update API Key') : t('Create API Key')}
+          </SheetTitle>
+          <SheetDescription>
+            {isUpdate
+              ? t('Update the API key by providing necessary info.')
+              : t('Add a new API key by providing necessary info.')}
+          </SheetDescription>
+        </SheetHeader>
+        <Form {...form}>
+          <form
+            id='api-key-form'
+            onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+            className={sideDrawerFormClassName('gap-5')}
+          >
+            <SideDrawerSection>
+              <SideDrawerSectionHeader
+                title={t('Basic Information')}
+                description={t('Set API key basic information')}
+                icon={<KeyRound className='size-4' />}
+              />
+              <FormField
+                control={form.control}
+                name='name'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Name')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder={t('Enter a name')} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='group'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Group')}</FormLabel>
+                    <FormControl>
+                      <ApiKeyGroupCombobox
+                        options={groups}
+                        value={field.value}
+                        onValueChange={(group) => {
+                          field.onChange(group)
+                          if (group === 'auto') {
+                            if (!hasGlobalAutoGroups) {
+                              form.setValue('auto_groups_mode', 'custom', {
+                                shouldDirty: true,
+                              })
+                              form.setValue('auto_groups', [], {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              })
+                            }
+                            form.setValue(
+                              'cross_group_retry',
+                              autoCrossGroupRetryEnabled,
+                              { shouldDirty: true }
+                            )
+                            return
+                          }
+                          form.setValue('auto_groups', [], {
+                            shouldDirty: true,
+                          })
+                          form.setValue('auto_groups_mode', 'inherit', {
+                            shouldDirty: true,
+                          })
+                          form.setValue('cross_group_retry', false, {
+                            shouldDirty: true,
+                          })
+                        }}
+                        onTestGroup={handleTestGroupChannelStatus}
+                        placeholder={t('Select a group')}
+                        statusLoading={
+                          isFetchingGroupChannelStatus &&
+                          Object.keys(groupChannelStatus).length === 0
+                        }
+                        testingGroups={testingGroups}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {selectedGroup === 'auto' && (
+                <FormField
+                  control={form.control}
+                  name='auto_groups'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Auto group order')}</FormLabel>
+                      <FormControl>
+                        <AutoGroupOrderEditor
+                          value={field.value}
+                          mode={autoGroupsMode}
+                          options={groups}
+                          globalOptions={globalAutoGroupOptions}
+                          maxCount={maxAutoGroups}
+                          onChange={(value) => {
+                            form.setValue('auto_groups_mode', value.mode, {
+                              shouldDirty: true,
+                            })
+                            form.setValue('auto_groups', value.groups, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {selectedGroup === 'auto' && (
+                <FormField
+                  control={form.control}
+                  name='cross_group_retry'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <div className='flex flex-col gap-0.5'>
+                        <FormLabel className='text-sm'>
+                          {t('Cross-group retry')}
+                        </FormLabel>
+                        <FormDescription className='line-clamp-2 text-xs sm:line-clamp-none'>
+                          {autoCrossGroupRetryEnabled
+                            ? t(
+                                'When enabled, if channels in the current group fail, it will try channels in the next group in order.'
+                              )
+                            : t(
+                                'Cross-group retry is disabled by the administrator.'
+                              )}
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={autoCrossGroupRetryEnabled && !!field.value}
+                          disabled={!autoCrossGroupRetryEnabled}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <FormField
+                control={form.control}
+                name='expired_time'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Expiration Time')}</FormLabel>
+                    <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center'>
+                      <FormControl>
+                        <DateTimePicker
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder={t('Never expires')}
+                          className='min-w-0 [&_input[type=time]]:w-24 sm:[&_input[type=time]]:w-32'
+                        />
+                      </FormControl>
+                      <div className='grid grid-cols-4 gap-2 sm:flex'>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          className='px-2 text-xs sm:px-3 sm:text-sm'
+                          onClick={() => handleSetExpiry(0, 0, 0)}
+                        >
+                          {t('Never')}
+                        </Button>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          className='px-2 text-xs sm:px-3 sm:text-sm'
+                          onClick={() => handleSetExpiry(1, 0, 0)}
+                        >
+                          {t('1 Month')}
+                        </Button>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          className='px-2 text-xs sm:px-3 sm:text-sm'
+                          onClick={() => handleSetExpiry(0, 1, 0)}
+                        >
+                          {t('1 Day')}
+                        </Button>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          className='px-2 text-xs sm:px-3 sm:text-sm'
+                          onClick={() => handleSetExpiry(0, 0, 1)}
+                        >
+                          {t('1 Hour')}
+                        </Button>
+                      </div>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {!isUpdate && (
+                <FormField
+                  control={form.control}
+                  name='tokenCount'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Quantity')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min='1'
+                          placeholder={t('Number of keys to create')}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value, 10) || 1)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Create multiple API keys at once (random suffix will be added to names)'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </SideDrawerSection>
+
+            <SideDrawerSection>
+              <SideDrawerSectionHeader
+                title={t('Quota Settings')}
+                description={t('Set quota amount and limits')}
+                icon={<WalletCards className='size-4' />}
+              />
+              {!unlimitedQuota && (
+                <FormField
+                  control={form.control}
+                  name='remain_quota_dollars'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{quotaLabel}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          step={tokensOnly ? 1 : 0.01}
+                          placeholder={quotaPlaceholder}
+                          onChange={(e) =>
+                            field.onChange(parseFloat(e.target.value) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {tokensOnly
+                          ? t('Enter the quota amount in tokens')
+                          : t('Enter the quota amount in {{currency}}', {
+                              currency: currencyLabel,
+                            })}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <FormField
+                control={form.control}
+                name='unlimited_quota'
+                render={({ field }) => (
+                  <FormItem className={sideDrawerSwitchItemClassName()}>
+                    <div className='flex flex-col gap-0.5'>
+                      <FormLabel className='text-sm'>
+                        {t('Unlimited Quota')}
+                      </FormLabel>
+                      <FormDescription className='text-xs'>
+                        {t('Enable unlimited quota for this API key')}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </SideDrawerSection>
+
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <SideDrawerSection>
+                <CollapsibleTrigger
+                  render={
+                    <button
+                      type='button'
+                      className='hover:bg-muted/40 flex w-full items-center gap-3 rounded-md py-1.5 text-left transition-colors'
+                    />
+                  }
+                >
+                  <SideDrawerSectionHeader
+                    className='flex-1'
+                    title={t('Advanced Settings')}
+                    description={t('Set API key access restrictions')}
+                    icon={<Settings2 className='size-4' />}
+                  />
+                  <ChevronDown
+                    className={cn(
+                      'text-muted-foreground size-4 shrink-0 transition-transform',
+                      advancedOpen && 'rotate-180'
+                    )}
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className='flex flex-col gap-4 pt-2'>
+                    <FormField
+                      control={form.control}
+                      name='model_limits'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Model Limits')}</FormLabel>
+                          <FormControl>
+                            <MultiSelect
+                              options={models.map((m) => ({
+                                label: m,
+                                value: m,
+                              }))}
+                              selected={field.value}
+                              onChange={field.onChange}
+                              placeholder={t(
+                                'Select models (empty for allow all)'
+                              )}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t('Limit which models can be used with this key')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='allow_ips'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {t('IP Whitelist (supports CIDR)')}
+                          </FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              className='min-h-20 resize-none'
+                              placeholder={t(
+                                'One IP per line (empty for no restriction)'
+                              )}
+                              rows={3}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t(
+                              'Do not over-trust this feature. IP may be spoofed. Please use with nginx, CDN and other gateways.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </CollapsibleContent>
+              </SideDrawerSection>
+            </Collapsible>
+          </form>
+        </Form>
+        <SheetFooter className={sideDrawerFooterClassName()}>
+          <SheetClose
+            render={<Button variant='outline' className='w-full sm:w-auto' />}
+          >
+            {t('Close')}
+          </SheetClose>
+          <Button
+            type='button'
+            onClick={form.handleSubmit(onSubmit, onInvalid)}
+            disabled={isSubmitting}
+            className='w-full sm:w-auto'
+          >
+            {isSubmitting ? t('Saving...') : t('Save changes')}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}

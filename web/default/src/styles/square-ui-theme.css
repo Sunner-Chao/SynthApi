@@ -1,0 +1,358 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/**
+ * Square UI Theme System
+ * Based on https://github.com/ln-dev7/square-ui
+ * Using OKLCH color space for perceptually uniform colors
+ */
+
+@layer base {
+  :root {
+    /* OKLCH Light Mode Colors */
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.145 0 0);
+
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.534 0 0);
+
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.145 0 0);
+
+    --destructive: oklch(0.577 0.245 27.325);
+    --destructive-foreground: oklch(0.985 0 0);
+
+    --success: oklch(0.65 0.18 145);
+    --success-foreground: oklch(0.985 0 0);
+
+    --warning: oklch(0.75 0.15 85);
+    --warning-foreground: oklch(0.145 0 0);
+
+    --info: oklch(0.6 0.2 230);
+    --info-foreground: oklch(0.985 0 0);
+
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.205 0 0);
+
+    /* Sidebar Colors */
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.534 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.145 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.205 0 0);
+
+    /* Chart Colors - High contrast OKLCH */
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+
+    /* Square UI Specific */
+    --square-ui-container: oklch(0.985 0 0);
+    --square-ui-elevated: oklch(1 0 0);
+    --square-ui-shadow: oklch(0.145 0 0 / 0.05);
+    --square-ui-shadow-lg: oklch(0.145 0 0 / 0.1);
+  }
+
+  .dark {
+    /* OKLCH Dark Mode Colors */
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+
+    --primary: oklch(0.985 0 0);
+    --primary-foreground: oklch(0.145 0 0);
+
+    --secondary: oklch(0.244 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+
+    --muted: oklch(0.244 0 0);
+    --muted-foreground: oklch(0.714 0 0);
+
+    --accent: oklch(0.244 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+
+    --destructive: oklch(0.505 0.224 27.325);
+    --destructive-foreground: oklch(0.985 0 0);
+
+    --success: oklch(0.6 0.16 145);
+    --success-foreground: oklch(0.985 0 0);
+
+    --warning: oklch(0.7 0.14 85);
+    --warning-foreground: oklch(0.145 0 0);
+
+    --info: oklch(0.55 0.18 230);
+    --info-foreground: oklch(0.985 0 0);
+
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.985 0 0);
+
+    /* Sidebar Colors Dark */
+    --sidebar: oklch(0.167 0 0);
+    --sidebar-foreground: oklch(0.848 0 0);
+    --sidebar-primary: oklch(0.985 0 0);
+    --sidebar-primary-foreground: oklch(0.145 0 0);
+    --sidebar-accent: oklch(0.244 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.985 0 0);
+
+    /* Square UI Specific Dark */
+    --square-ui-container: oklch(0.167 0 0);
+    --square-ui-elevated: oklch(0.205 0 0);
+    --square-ui-shadow: oklch(0 0 0 / 0.3);
+    --square-ui-shadow-lg: oklch(0 0 0 / 0.5);
+  }
+}
+
+/* Square UI Layout Utilities */
+@layer components {
+  /* Main container with padding */
+  .square-ui-app-container {
+    @apply h-svh overflow-hidden lg:p-2 w-full;
+  }
+
+  /* Content container with border */
+  .square-ui-content-container {
+    @apply lg:border lg:rounded-md overflow-hidden;
+    @apply flex flex-col bg-background h-full w-full;
+  }
+
+  /* Elevated surface */
+  .square-ui-surface {
+    @apply rounded-xl border border-border bg-card;
+    @apply shadow-sm;
+  }
+
+  /* Stat card */
+  .square-ui-stat-card {
+    @apply relative overflow-hidden rounded-xl border border-border bg-card p-4;
+    @apply transition-all duration-200 ease-in-out;
+    @apply hover:shadow-md hover:border-primary/20;
+  }
+
+  /* Icon container */
+  .square-ui-icon-container {
+    @apply flex size-16 items-center justify-center;
+    @apply rounded-lg bg-muted border border-border;
+  }
+
+  /* Header bar */
+  .square-ui-header {
+    @apply w-full sticky top-0 z-10;
+    @apply flex items-center justify-between;
+    @apply border-b border-border bg-background;
+    @apply px-3 py-2.5 sm:px-4 sm:py-3 md:px-7;
+  }
+
+  /* Grid layouts */
+  .square-ui-grid-2 {
+    @apply grid grid-cols-1 lg:grid-cols-2 gap-4;
+  }
+
+  .square-ui-grid-3 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
+  }
+
+  .square-ui-grid-4 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4;
+  }
+
+  /* Section spacing */
+  .square-ui-section {
+    @apply space-y-4 md:space-y-6;
+  }
+
+  /* Card with hover effect */
+  .square-ui-interactive-card {
+    @apply rounded-xl border border-border bg-card shadow-sm;
+    @apply cursor-pointer transition-all duration-200;
+    @apply hover:shadow-lg hover:-translate-y-0.5;
+    @apply active:translate-y-0 active:shadow-sm;
+  }
+
+  /* Badge styles */
+  .square-ui-badge {
+    @apply inline-flex items-center justify-center;
+    @apply rounded-md px-2 py-1 text-xs font-medium;
+    @apply border transition-colors;
+  }
+
+  .square-ui-badge-success {
+    @apply inline-flex items-center justify-center;
+    @apply rounded-md px-2 py-1 text-xs font-medium;
+    @apply border transition-colors;
+    @apply bg-success/10 text-success border-success/20;
+  }
+
+  .square-ui-badge-warning {
+    @apply inline-flex items-center justify-center;
+    @apply rounded-md px-2 py-1 text-xs font-medium;
+    @apply border transition-colors;
+    @apply bg-warning/10 text-warning border-warning/20;
+  }
+
+  .square-ui-badge-error {
+    @apply inline-flex items-center justify-center;
+    @apply rounded-md px-2 py-1 text-xs font-medium;
+    @apply border transition-colors;
+    @apply bg-destructive/10 text-destructive border-destructive/20;
+  }
+
+  .square-ui-badge-info {
+    @apply inline-flex items-center justify-center;
+    @apply rounded-md px-2 py-1 text-xs font-medium;
+    @apply border transition-colors;
+    @apply bg-info/10 text-info border-info/20;
+  }
+
+  /* Button variants */
+  .square-ui-button-primary {
+    @apply bg-primary text-primary-foreground;
+    @apply hover:bg-primary/90;
+    @apply rounded-lg px-4 py-2 font-medium;
+    @apply transition-all duration-200;
+    @apply shadow-sm hover:shadow-md;
+  }
+
+  .square-ui-button-secondary {
+    @apply bg-secondary text-secondary-foreground;
+    @apply hover:bg-secondary/80;
+    @apply rounded-lg px-4 py-2 font-medium;
+    @apply transition-all duration-200;
+    @apply border border-border;
+  }
+
+  /* Input styles */
+  .square-ui-input {
+    @apply w-full rounded-lg border border-input;
+    @apply bg-background px-3 py-2;
+    @apply text-sm text-foreground;
+    @apply placeholder:text-muted-foreground;
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+    @apply transition-all duration-200;
+  }
+
+  /* Table styles */
+  .square-ui-table {
+    @apply w-full border-collapse;
+  }
+
+  .square-ui-table thead {
+    @apply bg-muted/50 border-b border-border;
+  }
+
+  .square-ui-table th {
+    @apply px-4 py-3 text-left text-sm font-medium text-muted-foreground;
+  }
+
+  .square-ui-table td {
+    @apply px-4 py-3 text-sm text-foreground border-b border-border;
+  }
+
+  .square-ui-table tbody tr {
+    @apply transition-colors hover:bg-muted/50;
+  }
+
+  /* Animations */
+  @keyframes square-ui-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes square-ui-scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .square-ui-animate-fade-in {
+    animation: square-ui-fade-in 0.3s ease-out;
+  }
+
+  .square-ui-animate-scale-in {
+    animation: square-ui-scale-in 0.2s ease-out;
+  }
+
+  /* Stagger animation delays */
+  .square-ui-stagger-1 {
+    animation-delay: 0.05s;
+  }
+
+  .square-ui-stagger-2 {
+    animation-delay: 0.1s;
+  }
+
+  .square-ui-stagger-3 {
+    animation-delay: 0.15s;
+  }
+
+  .square-ui-stagger-4 {
+    animation-delay: 0.2s;
+  }
+}
+
+/* Smooth transitions */
+@layer utilities {
+  .transition-square-ui {
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 200ms;
+  }
+
+  .transition-square-ui-slow {
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 300ms;
+  }
+}

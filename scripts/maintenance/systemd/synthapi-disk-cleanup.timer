@@ -1,0 +1,12 @@
+[Unit]
+Description=Check SynthAPI disk space hourly
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1h
+AccuracySec=2min
+RandomizedDelaySec=2min
+Unit=synthapi-disk-cleanup.service
+
+[Install]
+WantedBy=timers.target

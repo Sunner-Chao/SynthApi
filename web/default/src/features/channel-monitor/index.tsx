@@ -1,0 +1,534 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { useEffect, useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import {
+  Activity,
+  CircleAlert,
+  CircleCheck,
+  Clock3,
+  KeyRound,
+  RadioTower,
+  RefreshCw,
+  Route,
+  Users,
+} from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { SectionPageLayout } from '@/components/layout'
+import { ServiceHealthLegend } from '@/components/service-health-legend'
+import { StatusBadge } from '@/components/status-badge'
+import { formatSuccessRate } from '@/features/channel-monitor/lib/success-rate'
+import { getChannelMonitor } from '@/features/dashboard/api'
+import type { ChannelMonitorItem } from '@/features/dashboard/types'
+import { MonitorCardGrid } from './components/monitor-card-grid'
+import {
+  MonitorFilters,
+  type ViewMode,
+  type StatusFilter,
+} from './components/monitor-filters'
+import { RecentRequestStrip } from './components/success-rate-strip'
+import { getAvailabilityRate, hasUsageMetrics } from './lib/metrics'
+
+const CHANNEL_STATUS = {
+  ENABLED: 1,
+  MANUAL_DISABLED: 2,
+  AUTO_DISABLED: 3,
+} as const
+const MONITOR_REFRESH_INTERVAL_MS = 60 * 1000
+
+function formatLatency(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '-'
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
+  return `${ms}ms`
+}
+
+function formatRelativeTime(timestamp: number): string {
+  if (!timestamp) return '-'
+  const diffSeconds = Math.max(0, Math.floor(Date.now() / 1000 - timestamp))
+  if (diffSeconds < 60) return `${diffSeconds}s`
+  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m`
+  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h`
+  return `${Math.floor(diffSeconds / 86400)}d`
+}
+
+function formatDateTime(timestamp: number): string {
+  if (!timestamp) return '-'
+  return new Date(timestamp * 1000).toLocaleString()
+}
+
+function statusMeta(status: number, t: (key: string) => string) {
+  if (status === CHANNEL_STATUS.ENABLED) {
+    return {
+      label: t('Available'),
+      dot: 'bg-success',
+      badge: 'success' as const,
+      text: 'text-success',
+    }
+  }
+  if (status === CHANNEL_STATUS.AUTO_DISABLED) {
+    return {
+      label: t('Auto disabled'),
+      dot: 'bg-amber-400',
+      badge: 'warning' as const,
+      text: 'text-amber-600 dark:text-amber-400',
+    }
+  }
+  return {
+    label: t('Manual disabled'),
+    dot: 'bg-muted-foreground',
+    badge: 'neutral' as const,
+    text: 'text-muted-foreground',
+  }
+}
+
+function filterItems(
+  items: ChannelMonitorItem[],
+  search: string,
+  statusFilter: StatusFilter
+): ChannelMonitorItem[] {
+  return items.filter((item) => {
+    if (statusFilter === 'enabled' && item.status !== CHANNEL_STATUS.ENABLED)
+      return false
+    if (statusFilter === 'disabled' && item.status === CHANNEL_STATUS.ENABLED)
+      return false
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      return (
+        item.name?.toLowerCase().includes(q) ||
+        item.group?.toLowerCase().includes(q) ||
+        item.type_name?.toLowerCase().includes(q)
+      )
+    }
+    return true
+  })
+}
+
+export function ChannelMonitor() {
+  const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const isAdmin = Boolean(user && user.role >= ROLE.ADMIN)
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const [openedAt] = useState(() => Date.now())
+
+  const monitorQuery = useQuery({
+    // An empty model asks the API for a group-level aggregate across models.
+    queryKey: ['channel-monitor', 'page'],
+    queryFn: () => getChannelMonitor({ limit: 200 }),
+    staleTime: 30 * 1000,
+    refetchInterval: MONITOR_REFRESH_INTERVAL_MS,
+    retry: false,
+  })
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const nextRefreshAt =
+    (monitorQuery.dataUpdatedAt || openedAt) + MONITOR_REFRESH_INTERVAL_MS
+
+  const summary = monitorQuery.data?.data?.summary
+  const allItems = useMemo(
+    () => monitorQuery.data?.data?.items ?? [],
+    [monitorQuery.data]
+  )
+  const loading = monitorQuery.isLoading
+  const showError = monitorQuery.isError && allItems.length === 0 && !loading
+  const filteredItems = useMemo(
+    () => filterItems(allItems, search, statusFilter),
+    [allItems, search, statusFilter]
+  )
+
+  const enabledRate =
+    summary && summary.total > 0
+      ? Math.round((summary.enabled / summary.total) * 1000) / 10
+      : 0
+  const exceptionCount =
+    (summary?.auto_disabled ?? 0) + (summary?.manual_disabled ?? 0)
+  const exceptionClass =
+    exceptionCount > 0 ? 'text-destructive' : 'text-success'
+  const refreshRemainingMs = Math.max(0, nextRefreshAt - nowMs)
+  const refreshRemainingSeconds = Math.ceil(refreshRemainingMs / 1000)
+  const refreshProgress = Math.max(
+    0,
+    Math.min(
+      100,
+      ((MONITOR_REFRESH_INTERVAL_MS - refreshRemainingMs) /
+        MONITOR_REFRESH_INTERVAL_MS) *
+        100
+    )
+  )
+
+  return (
+    <SectionPageLayout>
+      <SectionPageLayout.Title>{t('Group Monitor')}</SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <div className='border-border bg-muted/40 text-muted-foreground flex h-8 min-w-36 flex-col justify-center rounded-md border px-2 text-[11px]'>
+          <div className='flex items-center justify-between gap-2 leading-none'>
+            <span>{t('Auto refresh')}</span>
+            <span className='font-mono tabular-nums'>
+              {refreshRemainingSeconds}s
+            </span>
+          </div>
+          <div className='bg-muted mt-1 h-0.5 overflow-hidden rounded-full'>
+            <div
+              className='bg-primary h-full rounded-full transition-[width] duration-1000'
+              style={{ width: `${refreshProgress}%` }}
+            />
+          </div>
+        </div>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => void monitorQuery.refetch()}
+          disabled={monitorQuery.isFetching}
+        >
+          <RefreshCw
+            className={cn('size-4', monitorQuery.isFetching && 'animate-spin')}
+            aria-hidden='true'
+          />
+          {t('Refresh')}
+        </Button>
+        {isAdmin && (
+          <Button size='sm' render={<Link to='/channels' />}>
+            <RadioTower className='size-4' aria-hidden='true' />
+            {t('Manage Channels')}
+          </Button>
+        )}
+      </SectionPageLayout.Actions>
+
+      <SectionPageLayout.Content>
+        <div className='space-y-4'>
+          <ServiceHealthLegend recent />
+          {/* Summary cards */}
+          <div className='grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6'>
+            <MonitorSummaryCard
+              icon={Route}
+              label={t('Total groups')}
+              value={String(summary?.total ?? 0)}
+              loading={loading}
+            />
+            <MonitorSummaryCard
+              icon={CircleCheck}
+              label={t('Available')}
+              value={`${summary?.enabled ?? 0}/${summary?.total ?? 0}`}
+              loading={loading}
+              valueClassName='text-success'
+            />
+            <MonitorSummaryCard
+              icon={Activity}
+              label={t('Availability')}
+              value={`${enabledRate}%`}
+              loading={loading}
+            />
+            <MonitorSummaryCard
+              icon={CircleAlert}
+              label={t('Exceptions')}
+              value={String(exceptionCount)}
+              loading={loading}
+              valueClassName={exceptionClass}
+            />
+            <MonitorSummaryCard
+              icon={Users}
+              label={t('Active users')}
+              value={String(summary?.active_users ?? 0)}
+              loading={loading}
+              valueClassName='text-primary'
+            />
+            <MonitorSummaryCard
+              icon={RadioTower}
+              label={t('Active groups')}
+              value={String(summary?.active_channels ?? 0)}
+              loading={loading}
+            />
+          </div>
+
+          {/* Filters + view toggle */}
+          <MonitorFilters
+            search={search}
+            onSearchChange={setSearch}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            isFetching={monitorQuery.isFetching}
+          />
+
+          {/* Results count */}
+          {!loading && allItems.length > 0 && (
+            <p className='text-muted-foreground text-xs'>
+              {filteredItems.length === allItems.length
+                ? t('{{count}} groups', { count: allItems.length })
+                : t('{{filtered}} of {{total}} groups', {
+                    filtered: filteredItems.length,
+                    total: allItems.length,
+                  })}
+            </p>
+          )}
+
+          {/* Grid view */}
+          {viewMode === 'grid' ? (
+            showError ? (
+              <div className='text-destructive rounded-xl border p-8 text-center text-sm'>
+                {t('Failed to load group monitor')}
+              </div>
+            ) : (
+              <MonitorCardGrid
+                items={filteredItems}
+                loading={loading}
+                refreshRemainingSeconds={refreshRemainingSeconds}
+              />
+            )
+          ) : (
+            /* Table view */
+            <Card className='gap-0 overflow-hidden py-0'>
+              <CardHeader className='border-b px-4 py-3'>
+                <div className='flex min-w-0 items-center gap-2'>
+                  <Activity
+                    className='text-muted-foreground size-4 shrink-0'
+                    aria-hidden='true'
+                  />
+                  <CardTitle className='truncate text-sm font-semibold'>
+                    {t('Live group status')}
+                  </CardTitle>
+                  {monitorQuery.isFetching && !loading && (
+                    <RefreshCw
+                      className='text-muted-foreground ml-auto size-4 animate-spin'
+                      aria-hidden='true'
+                    />
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className='p-0'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('Group')}</TableHead>
+                      <TableHead>{t('Status')}</TableHead>
+                      <TableHead className='text-right'>
+                        {t('Available')}
+                      </TableHead>
+                      <TableHead className='text-right'>
+                        {t('Models')}
+                      </TableHead>
+                      <TableHead>{t('Recent requests')}</TableHead>
+                      <TableHead className='text-right'>
+                        {t('Latency')}
+                      </TableHead>
+                      <TableHead>{t('Last checked')}</TableHead>
+                      <TableHead className='text-right'>
+                        {t('Current users')}
+                      </TableHead>
+                      <TableHead className='text-right'>
+                        {t('Actions')}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <MonitorTableSkeleton />
+                    ) : showError ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={9}
+                          className='text-destructive h-24 text-center'
+                        >
+                          {t('Failed to load group monitor')}
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredItems.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={9}
+                          className='text-muted-foreground h-24 text-center'
+                        >
+                          {t('No groups configured')}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredItems.map((item) => (
+                        <ChannelMonitorTableRow key={item.id} item={item} />
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
+  )
+}
+
+function MonitorSummaryCard(props: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: string
+  loading: boolean
+  valueClassName?: string
+}) {
+  const Icon = props.icon
+  return (
+    <Card className='gap-0 py-0'>
+      <CardContent className='p-3'>
+        <div className='text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs font-medium'>
+          <Icon className='size-3.5 shrink-0' aria-hidden='true' />
+          <span className='truncate'>{props.label}</span>
+        </div>
+        {props.loading ? (
+          <Skeleton className='mt-2 h-6 w-14' />
+        ) : (
+          <div
+            className={cn(
+              'mt-2 font-mono text-lg font-semibold tabular-nums',
+              props.valueClassName
+            )}
+          >
+            {props.value}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ChannelMonitorTableRow(props: { item: ChannelMonitorItem }) {
+  const { t } = useTranslation()
+  const item = props.item
+  const meta = statusMeta(item.status, t)
+  const activeUsers = item.active_users ?? 0
+  const groupName = item.group || item.name
+  const channelCount = item.channel_count ?? 0
+  const enabledCount = item.enabled_count ?? 0
+  const hasUsage = hasUsageMetrics(item)
+  const availabilityRate = getAvailabilityRate(item)
+  const usageHint = hasUsage
+    ? t('{{success}}/{{total}} successful requests in the last 24 hours', {
+        success: item.usage_success_count ?? 0,
+        total: item.usage_request_count ?? 0,
+      })
+    : t('No 24h usage data; availability {{rate}}', {
+        rate: formatSuccessRate(availabilityRate),
+      })
+
+  return (
+    <TableRow>
+      <TableCell className='max-w-64'>
+        <div className='flex min-w-0 items-center gap-2'>
+          <span
+            className={cn('size-2 shrink-0 rounded-full', meta.dot)}
+            aria-hidden='true'
+          />
+          <span className='truncate font-medium'>{groupName}</span>
+        </div>
+        <div className='text-muted-foreground mt-1 text-xs'>
+          {t('{{count}} channel(s)', { count: channelCount })}
+        </div>
+      </TableCell>
+      <TableCell>
+        <StatusBadge
+          label={meta.label}
+          variant={meta.badge}
+          size='sm'
+          copyable={false}
+        />
+      </TableCell>
+      <TableCell className='text-right font-mono'>{`${enabledCount}/${channelCount}`}</TableCell>
+      <TableCell className='text-right font-mono'>{item.model_count}</TableCell>
+      <TableCell>
+        <RecentRequestStrip
+          requests={item.recent_requests}
+          className='min-w-[180px]'
+          emptyLabel={t('No recent requests')}
+        />
+        <div className='text-muted-foreground mt-1 text-[11px]'>
+          {usageHint}
+        </div>
+      </TableCell>
+      <TableCell className={cn('text-right font-mono', meta.text)}>
+        {formatLatency(item.response_time)}
+      </TableCell>
+      <TableCell>
+        <div className='flex min-w-28 items-center gap-1.5'>
+          <Clock3
+            className='text-muted-foreground size-3.5'
+            aria-hidden='true'
+          />
+          <span className='font-mono'>
+            {formatRelativeTime(item.test_time)}
+          </span>
+        </div>
+        <div className='text-muted-foreground mt-1 text-xs'>
+          {formatDateTime(item.test_time)}
+        </div>
+      </TableCell>
+      <TableCell className='text-right'>
+        <StatusBadge
+          label={String(activeUsers)}
+          variant={activeUsers > 0 ? 'success' : 'neutral'}
+          size='sm'
+          copyable={false}
+        />
+      </TableCell>
+      <TableCell className='text-right'>
+        <Button
+          size='sm'
+          variant='outline'
+          render={
+            <Link to='/keys' search={{ create: true, group: groupName }} />
+          }
+        >
+          <KeyRound className='size-3.5' aria-hidden='true' />
+          {t('Create API Key')}
+        </Button>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function MonitorTableSkeleton() {
+  return Array.from({ length: 8 }).map((_, index) => (
+    <TableRow key={index}>
+      {Array.from({ length: 9 }).map((__, cellIndex) => (
+        <TableCell key={cellIndex}>
+          <Skeleton className='h-5 w-full min-w-16' />
+        </TableCell>
+      ))}
+    </TableRow>
+  ))
+}

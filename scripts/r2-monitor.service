@@ -1,0 +1,18 @@
+[Unit]
+Description=SynthAPI R2 monitor metadata collector
+After=network-online.target
+[Service]
+Type=oneshot
+User=root
+Group=ubuntu
+ExecStart=/usr/bin/python3 /home/ubuntu/demo/SynthApi/scripts/r2-monitor.py
+UMask=0027
+Nice=15
+CPUQuota=30%
+MemoryMax=256M
+TimeoutStartSec=300
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/synthapi-monitor
+[Install]
+WantedBy=multi-user.target

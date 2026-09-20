@@ -1,0 +1,190 @@
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name 118.25.43.185 synthapi.asia www.synthapi.asia api.synthapi.asia admin.synthapi.asia pay.synthapi.asia;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type text/plain;
+    }
+
+    location / {
+        return 308 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name 118.25.43.185;
+
+    ssl_certificate /etc/letsencrypt/live/118.25.43.185/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/118.25.43.185/privkey.pem;
+
+    location = / {
+        return 308 https://synthapi.asia$request_uri;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+}
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name synthapi.asia www.synthapi.asia;
+    client_max_body_size 100m;
+
+    ssl_certificate /etc/nginx/ssl/synthapi.asia/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/synthapi.asia/privkey.key;
+
+    if ($host = www.synthapi.asia) {
+        return 308 https://synthapi.asia$request_uri;
+    }
+
+    location ~ ^/(v1|v1beta|anthropic/v1|anthroic/v1|kling/v1)(/|$) {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_cache off;
+        proxy_hide_header Cache-Control;
+        gzip off;
+        add_header X-Accel-Buffering no always;
+        add_header Cache-Control "no-store, no-transform" always;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    location ^~ /Pay/ {
+        proxy_pass http://127.0.0.1:18088;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    location ~ ^/(submit|mapi|getOrderState|checkOrder|payHeart|checkPayResult|mpayNotify|validatePayResult|doc)(/|$) {
+        proxy_pass http://127.0.0.1:18088;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.synthapi.asia;
+    client_max_body_size 100m;
+
+    ssl_certificate /etc/nginx/ssl/api.synthapi.asia/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/api.synthapi.asia/privkey.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_cache off;
+        proxy_hide_header Cache-Control;
+        gzip off;
+        add_header X-Accel-Buffering no always;
+        add_header Cache-Control "no-store, no-transform" always;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name admin.synthapi.asia;
+    client_max_body_size 100m;
+
+    ssl_certificate /etc/nginx/ssl/admin.synthapi.asia/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/admin.synthapi.asia/privkey.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:13000;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name pay.synthapi.asia;
+    client_max_body_size 100m;
+
+    ssl_certificate /etc/nginx/ssl/pay.synthapi.asia/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/pay.synthapi.asia/privkey.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:18088;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+}

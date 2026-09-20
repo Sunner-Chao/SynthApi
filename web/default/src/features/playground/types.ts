@@ -1,0 +1,292 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+// Message types
+export type MessageRole = 'user' | 'assistant' | 'system'
+
+export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
+
+export interface MessageVersion {
+  id: string
+  content: string
+}
+
+export interface Message {
+  key: string
+  from: MessageRole
+  versions: MessageVersion[]
+  attachments?: PlaygroundAttachment[]
+  sources?: { href: string; title: string }[]
+  reasoning?: {
+    content: string
+    duration: number
+  }
+  isReasoningStreaming?: boolean
+  isReasoningComplete?: boolean
+  isContentComplete?: boolean
+  status?: MessageStatus
+  errorCode?: string | null
+}
+
+// API payload types
+export interface ChatCompletionMessage {
+  role: MessageRole
+  content: string | ContentPart[]
+}
+
+export interface ContentPart {
+  type: 'text' | 'image_url' | 'file'
+  text?: string
+  image_url?: {
+    url: string
+  }
+  file?: {
+    filename?: string
+    file_data?: string
+    mime_type?: string
+  }
+}
+
+export interface ChatCompletionRequest {
+  model: string
+  group?: string
+  messages: ChatCompletionMessage[]
+  stream: boolean
+  temperature?: number
+  top_p?: number
+  max_tokens?: number
+  frequency_penalty?: number
+  presence_penalty?: number
+  seed?: number
+  web_search_options?: {
+    search_context_size: 'low' | 'medium' | 'high'
+  }
+  search_parameters?: {
+    mode: 'on'
+  }
+  enable_search?: boolean
+  web_search?: {
+    enable: boolean
+    enable_citation?: boolean
+    enable_trace?: boolean
+    enable_status?: boolean
+  }
+}
+
+export interface ChatCompletionChunk {
+  id: string
+  object: string
+  created: number
+  model: string
+  choices: Array<{
+    index: number
+    delta: {
+      role?: MessageRole
+      content?: string
+      reasoning_content?: string
+    }
+    finish_reason: string | null
+  }>
+}
+
+export interface ChatCompletionResponse {
+  id: string
+  object: string
+  created: number
+  model: string
+  choices: Array<{
+    index: number
+    message: {
+      role: MessageRole
+      content: string
+      reasoning_content?: string
+    }
+    finish_reason: string
+  }>
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
+}
+
+export interface ImageGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  size?: string
+  resolution?: string
+  quality?: string
+  background?: string
+  output_format?: string
+  output_compression?: number
+  moderation?: string
+  input_fidelity?: string
+  response_format?: string
+  partial_images?: number
+  user?: string
+  n?: number
+  images?: string[]
+  image_urls?: string[]
+  official_fallback?: boolean
+  image?: string
+  watermark?: boolean
+  [key: string]: unknown
+}
+
+export interface ImageGenerationData {
+  id?: string
+  url?: string
+  b64_json?: string
+  revised_prompt?: string
+  task_id?: string
+  status?: string
+}
+
+export interface ImageGenerationResponse {
+  id?: string
+  task_id?: string
+  status?: string
+  progress?: string | number
+  message?: string
+  data?: ImageGenerationData[] | ImageGenerationData
+  error?: {
+    message?: string
+    code?: string
+    type?: string
+  }
+}
+
+export interface ImageGenerationHistoryItem {
+  id: number
+  task_id: string
+  status: string
+  progress?: string
+  result_url?: string
+  submit_time?: number
+  finish_time?: number
+  properties?: {
+    input?: string
+    origin_model_name?: string
+    upstream_model_name?: string
+    image_size?: string
+    image_resolution?: string
+    image_quality?: string
+    image_count?: number
+    image_watermark?: boolean
+  }
+}
+
+// Configuration types
+export interface PlaygroundConfig {
+  model: string
+  group: string
+  temperature: number
+  top_p: number
+  max_tokens: number
+  frequency_penalty: number
+  presence_penalty: number
+  seed: number | null
+  stream: boolean
+  web_search: boolean
+}
+
+export interface PlaygroundAttachment {
+  id: string
+  name: string
+  type: string
+  size: number
+  data: string
+  base64: string
+  kind: 'image' | 'file'
+  extractedText?: string
+  extractionStatus?: 'ready' | 'unsupported' | 'failed'
+  extractionError?: string
+}
+
+export interface ParameterEnabled {
+  temperature: boolean
+  top_p: boolean
+  max_tokens: boolean
+  frequency_penalty: boolean
+  presence_penalty: boolean
+  seed: boolean
+}
+
+// Model and group options
+export interface ModelOption {
+  label: string
+  value: string
+}
+
+export interface GroupOption {
+  label: string
+  value: string
+  ratio: number
+  desc?: string
+  supportsResolutionPricing?: boolean
+  supportsCustomImageParameters?: boolean
+  supportsCustomVideoParameters?: boolean
+  models?: string[]
+}
+
+export interface VideoGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  duration?: number
+  seconds?: string
+  resolution?: string
+  size?: string
+  aspect_ratio?: string
+  image_urls?: string[]
+  video_urls?: string[]
+  audio_urls?: string[]
+  first_frame_image?: string
+  last_frame_image?: string
+  generate_audio?: boolean
+  seed?: number
+  negative_prompt?: string
+  [key: string]: unknown
+}
+
+export interface VideoGenerationResponse {
+  id?: string
+  task_id?: string
+  url?: string
+  metadata?: { url?: string }
+  status?: string
+  progress?: string | number
+  error?: { message?: string; code?: string; type?: string }
+  data?: unknown
+}
+
+export interface VideoGenerationHistoryItem {
+  id: number
+  task_id: string
+  status: string
+  progress?: string
+  result_url?: string
+  submit_time?: number
+  finish_time?: number
+  properties?: {
+    input?: string
+    origin_model_name?: string
+    upstream_model_name?: string
+  }
+}

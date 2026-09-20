@@ -1,0 +1,66 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { useAuthStore } from '@/stores/auth-store'
+import { getSelf } from '@/lib/api'
+import { AuthenticatedLayout } from '@/components/layout'
+import { getBusinessPreview } from '@/features/business-preview/api'
+
+async function redirectSignedOutUser(
+  pathname: string,
+  href: string
+): Promise<never> {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/'
+  if (normalizedPath === '/wallet') {
+    const preview = await getBusinessPreview().catch(() => null)
+    if (preview?.success) {
+      throw redirect({ to: '/business' })
+    }
+  }
+
+  throw redirect({
+    to: '/sign-in',
+    search: { redirect: href },
+  })
+}
+
+export const Route = createFileRoute('/_authenticated')({
+  beforeLoad: async ({ location }) => {
+    const { auth } = useAuthStore.getState()
+
+    // Always validate the server session on the first authenticated navigation.
+    // localStorage is origin-scoped, so it cannot be the source of truth when
+    // switching between synthapi.asia and admin.synthapi.asia.
+	if (!auth.sessionVerified) {
+      const res = await getSelf().catch(() => null)
+      if (res?.success && res.data) {
+        // 验证成功，更新用户信息（可能有变化）
+        auth.setUser(res.data)
+		auth.setSessionVerified(true)
+      } else {
+        // 验证失败或 API 调用失败，清除本地缓存并按公开预览策略跳转
+        auth.reset()
+        await redirectSignedOutUser(location.pathname, location.href)
+      }
+    } else if (!auth.user) {
+      await redirectSignedOutUser(location.pathname, location.href)
+    }
+  },
+  component: AuthenticatedLayout,
+})

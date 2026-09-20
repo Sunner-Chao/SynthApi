@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="455" viewBox="0 0 454 455" fill="none">
+  <defs>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(220 145) rotate(90) scale(174)">
+      <stop stop-color="#84D8FF" stop-opacity=".18"/>
+      <stop offset=".48" stop-color="#285A86" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#020711" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hand" x1="274" y1="153" x2="346" y2="455" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#182A42"/>
+      <stop offset=".48" stop-color="#0A1526"/>
+      <stop offset="1" stop-color="#030812"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="197" y1="141" x2="425" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8FBFF"/>
+      <stop offset=".24" stop-color="#7FDDF5"/>
+      <stop offset=".7" stop-color="#3E91BD"/>
+      <stop offset="1" stop-color="#245C7E"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="18" y1="0" x2="436" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#50D9FF" stop-opacity="0"/>
+      <stop offset=".2" stop-color="#50D9FF" stop-opacity=".72"/>
+      <stop offset=".5" stop-color="#D7F8FF" stop-opacity=".86"/>
+      <stop offset=".8" stop-color="#50D9FF" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#50D9FF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="120" y1="76" x2="320" y2="252" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4ED5F4"/>
+      <stop offset=".5" stop-color="#90B9D5"/>
+      <stop offset="1" stop-color="#347EA8"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="haloBlur" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="11"/>
+    </filter>
+  </defs>
+
+  <circle cx="220" cy="145" r="174" fill="url(#halo)"/>
+  <g opacity=".58" stroke="url(#ring)">
+    <circle cx="220" cy="145" r="40" stroke-width="1.8"/>
+    <circle cx="220" cy="145" r="71" stroke-width="1.35"/>
+    <circle cx="220" cy="145" r="104" stroke-width="1" stroke-dasharray="2 7"/>
+    <circle cx="220" cy="145" r="138" stroke-width=".8" stroke-dasharray="1 10" opacity=".66"/>
+  </g>
+
+  <path d="M18 10H435" stroke="url(#beam)" stroke-width="1.8" opacity=".82"/>
+  <path d="M18 178H435" stroke="url(#beam)" stroke-width="2.8" opacity=".72"/>
+  <path d="M44 182H407" stroke="#56C9EC" stroke-width="1" opacity=".2"/>
+
+  <circle cx="220" cy="145" r="20" fill="#89DDF8" opacity=".18" filter="url(#haloBlur)"/>
+  <circle cx="220" cy="145" r="12" fill="#DFFAFF" opacity=".82" filter="url(#softGlow)"/>
+  <circle cx="220" cy="145" r="8.5" stroke="#F3FDFF" stroke-width="1.8" opacity=".95"/>
+
+  <path d="M205 148C201 137 204 126 213 120C222 114 233 118 239 127C243 134 244 144 245 156L255 234C257 247 261 255 268 249L274 217C277 204 285 197 296 199C307 201 312 211 313 224L320 275C321 286 326 291 331 281L336 240C338 228 348 222 358 224C369 226 374 236 375 248L379 291C380 301 385 304 390 296L392 268C393 256 402 251 411 255C421 259 425 270 426 283L434 369C436 397 446 429 454 455H257C251 434 240 408 222 389C205 371 191 351 184 331C179 316 183 301 194 291C204 282 217 282 227 288C235 293 241 300 245 303C249 307 251 302 245 295C237 260 219 204 205 148Z" fill="#0A1525" stroke="url(#edge)" stroke-width="2.35" filter="url(#softGlow)"/>
+
+  <path d="M236 156C238 193 242 224 245 253C247 274 242 290 236 297" stroke="#CBEFF8" stroke-width="1.8" opacity=".48" stroke-linecap="round"/>
+  <path d="M198 310C210 302 224 304 237 312C244 317 248 325 249 335" stroke="#A9DCEA" stroke-width="1.35" opacity=".3" stroke-linecap="round"/>
+</svg>

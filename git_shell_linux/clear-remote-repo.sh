@@ -178,7 +178,8 @@ commit_message="$(resolve_commit_message)"
 temp_repo="$(mktemp -d -t lstwinhr-clear-XXXXXXXXXX)"
 echo -e "\033[36m[clear-remote-repo] 创建临时仓库副本...\033[0m"
 echo -e "\033[37m[clear-remote-repo] 临时目录: $temp_repo\033[0m"
-if ! git clone --depth 1 --branch "$branch" --single-branch "$remote_url" "$temp_repo"; then
+git clone --depth 1 --branch "$branch" --single-branch "$remote_url" "$temp_repo"
+if [ $? -ne 0 ]; then
     echo "git clone 临时仓库失败。" >&2
     exit 1
 fi
@@ -196,13 +197,15 @@ if [ -z "$tracked_files" ]; then
     exit 0
 fi
 
-if ! git rm -r -f -- .; then
+git rm -r -f -- .
+if [ $? -ne 0 ]; then
     echo "git rm 失败。" >&2
     exit 1
 fi
 
 echo -e "\033[33m[clear-remote-repo] 提交信息: $commit_message\033[0m"
-if ! git commit -m "$commit_message"; then
+git commit -m "$commit_message"
+if [ $? -ne 0 ]; then
     echo "git commit 失败。" >&2
     exit 1
 fi
@@ -222,7 +225,8 @@ fi
 
 echo -e "\033[36m[clear-remote-repo] 推送到远端...\033[0m"
 echo -e "\033[37m[clear-remote-repo] 使用 --force-with-lease 覆盖远端目标分支...\033[0m"
-if ! git push --force-with-lease origin "$branch"; then
+git push --force-with-lease origin "$branch"
+if [ $? -ne 0 ]; then
     echo "git push 失败。" >&2
     exit 1
 fi
