@@ -158,7 +158,8 @@ if [ -z "$remote_url" ]; then
     exit 1
 fi
 
-if ! git fetch --tags origin; then
+git fetch --tags origin
+if [ $? -ne 0 ]; then
     echo "git fetch --tags 失败。" >&2
     exit 1
 fi
@@ -183,7 +184,8 @@ fi
 
 if [ "$remote_exists" = "true" ]; then
     echo -e "\033[36m[delete-remote-tag] 删除远端标签...\033[0m"
-    if ! git push origin ":refs/tags/$resolved_tag_name"; then
+    git push origin ":refs/tags/$resolved_tag_name"
+    if [ $? -ne 0 ]; then
         echo "删除远端标签失败。" >&2
         exit 1
     fi
@@ -192,7 +194,8 @@ fi
 if [ "$KEEP_LOCAL_TAG" != true ]; then
     if git rev-parse "refs/tags/$resolved_tag_name" >/dev/null 2>&1; then
         echo -e "\033[36m[delete-remote-tag] 删除本地标签...\033[0m"
-        if ! git tag -d "$resolved_tag_name"; then
+        git tag -d "$resolved_tag_name"
+        if [ $? -ne 0 ]; then
             echo "删除本地标签失败。" >&2
             exit 1
         fi

@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh SynthAPI R2 monitor
+[Timer]
+OnBootSec=30
+OnUnitInactiveSec=120
+Unit=r2-monitor.service
+[Install]
+WantedBy=timers.target

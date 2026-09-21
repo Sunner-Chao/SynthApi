@@ -1,0 +1,3147 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+.usage-command-center {
+  --background: #020815;
+  --foreground: #dceeff;
+  --card: #04152b;
+  --card-foreground: #dceeff;
+  --popover: #06182f;
+  --popover-foreground: #dceeff;
+  --primary: #159df2;
+  --primary-foreground: #f2fbff;
+  --secondary: #0a2445;
+  --secondary-foreground: #d2e9ff;
+  --muted: #091d38;
+  --muted-foreground: #7da4ce;
+  --accent: #0c2c54;
+  --accent-foreground: #eff8ff;
+  --border: rgba(31, 143, 239, 0.44);
+  --input: rgba(31, 132, 221, 0.5);
+  --ring: #38aaff;
+  --hud-cyan: #18aaff;
+  --hud-blue: #377eff;
+  --hud-violet: #8064ff;
+  --hud-teal: #1bc9bf;
+  --hud-ink: #010713;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100svh;
+  min-height: 720px;
+  overflow: hidden;
+  color: #dceeff;
+  color-scheme: dark;
+  background:
+    radial-gradient(
+      ellipse at 50% 116%,
+      rgba(20, 92, 214, 0.44) 0,
+      rgba(11, 42, 104, 0.2) 29%,
+      transparent 56%
+    ),
+    radial-gradient(
+      ellipse at 50% -8%,
+      rgba(12, 72, 164, 0.25),
+      transparent 43%
+    ),
+    radial-gradient(circle at 9% 31%, rgba(12, 76, 156, 0.13), transparent 28%),
+    radial-gradient(
+      circle at 91% 34%,
+      rgba(83, 54, 191, 0.11),
+      transparent 29%
+    ),
+    linear-gradient(180deg, #00040c 0%, #010817 48%, #010611 100%);
+  font-family: Inter, 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+.usage-command-center *,
+.usage-command-center *::before,
+.usage-command-center *::after {
+  box-sizing: border-box;
+  letter-spacing: 0;
+}
+
+.usage-command-center::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(0, 3, 10, 0.84),
+      transparent 12%,
+      transparent 88%,
+      rgba(0, 3, 10, 0.84)
+    ),
+    linear-gradient(
+      180deg,
+      rgba(0, 2, 8, 0.12),
+      transparent 57%,
+      rgba(0, 2, 8, 0.3)
+    );
+  box-shadow: inset 0 0 150px rgba(0, 15, 47, 0.72);
+}
+
+.command-grid-backdrop {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.command-grid-backdrop::before {
+  position: absolute;
+  top: -8%;
+  right: -2%;
+  left: -2%;
+  height: 38%;
+  content: '';
+  opacity: 0.66;
+  background:
+    radial-gradient(circle at 8% 31%, #286dff 0 2px, transparent 3px),
+    radial-gradient(circle at 17% 10%, #725cff 0 2px, transparent 3px),
+    radial-gradient(circle at 27% 34%, #12a6ff 0 3px, transparent 4px),
+    radial-gradient(circle at 36% 18%, #1cc4ff 0 2px, transparent 3px),
+    radial-gradient(circle at 48% 40%, #316eff 0 2px, transparent 3px),
+    radial-gradient(circle at 62% 17%, #825cff 0 3px, transparent 4px),
+    radial-gradient(circle at 74% 35%, #1aa9ff 0 2px, transparent 3px),
+    radial-gradient(circle at 87% 9%, #655cff 0 2px, transparent 3px),
+    radial-gradient(circle at 95% 38%, #1da6ff 0 3px, transparent 4px),
+    linear-gradient(
+      24deg,
+      transparent 0 45%,
+      rgba(22, 114, 230, 0.31) 45.2% 45.35%,
+      transparent 45.55% 100%
+    ),
+    linear-gradient(
+      153deg,
+      transparent 0 55%,
+      rgba(64, 76, 232, 0.25) 55.2% 55.35%,
+      transparent 55.55% 100%
+    ),
+    linear-gradient(
+      35deg,
+      transparent 0 69%,
+      rgba(15, 137, 230, 0.22) 69.2% 69.35%,
+      transparent 69.55% 100%
+    ),
+    linear-gradient(
+      138deg,
+      transparent 0 30%,
+      rgba(115, 73, 244, 0.18) 30.2% 30.35%,
+      transparent 30.55% 100%
+    );
+  background-size:
+    auto,
+    auto,
+    auto,
+    auto,
+    auto,
+    auto,
+    auto,
+    auto,
+    auto,
+    430px 250px,
+    510px 270px,
+    620px 280px,
+    700px 320px;
+  filter: drop-shadow(0 0 5px rgba(37, 126, 255, 0.28));
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 48%,
+    transparent 96%
+  );
+  mask-image: linear-gradient(180deg, #000 0%, #000 48%, transparent 96%);
+}
+
+.command-grid-backdrop::after {
+  position: absolute;
+  right: -8%;
+  bottom: -18%;
+  left: -8%;
+  height: 54%;
+  content: '';
+  opacity: 0.58;
+  background:
+    linear-gradient(rgba(24, 123, 226, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 123, 226, 0.2) 1px, transparent 1px),
+    radial-gradient(
+      ellipse at 50% 72%,
+      rgba(39, 112, 255, 0.21),
+      transparent 58%
+    );
+  background-size:
+    58px 34px,
+    58px 34px,
+    auto;
+  transform: perspective(520px) rotateX(62deg);
+  transform-origin: center bottom;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 31%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent, #000 31%, #000 100%);
+}
+
+.command-heading {
+  position: absolute;
+  z-index: 7;
+  top: 24px;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 66px;
+  align-items: center;
+  justify-content: flex-start;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.command-heading h1 {
+  margin: 0;
+  color: #dceeff;
+  font-size: 42px;
+  line-height: 1.02;
+  font-weight: 760;
+  text-align: center;
+  text-shadow:
+    0 0 8px rgba(135, 193, 255, 0.75),
+    0 0 24px rgba(37, 129, 255, 0.52);
+}
+
+.command-heading p {
+  margin: 7px 0 0;
+  color: #9cbce8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.command-title-mark {
+  position: absolute;
+  top: -8px;
+  width: 335px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(23, 167, 255, 0.38),
+    rgba(121, 92, 255, 0.84),
+    rgba(23, 167, 255, 0.38),
+    transparent
+  );
+  box-shadow: 0 0 15px rgba(63, 116, 255, 0.52);
+}
+
+.command-title-wing {
+  position: absolute;
+  top: 44px;
+  width: 230px;
+  height: 16px;
+  opacity: 0.68;
+  border-top: 1px solid rgba(44, 141, 240, 0.54);
+}
+
+.command-title-wing::after {
+  position: absolute;
+  top: -2px;
+  width: 44px;
+  height: 3px;
+  content: '';
+  background: linear-gradient(90deg, transparent, #3aa7ff);
+  box-shadow: 0 0 8px rgba(38, 151, 255, 0.72);
+}
+
+.command-title-wing-left {
+  right: calc(50% + 300px);
+  transform: skewX(-32deg);
+}
+
+.command-title-wing-left::after {
+  right: 0;
+}
+
+.command-title-wing-right {
+  left: calc(50% + 300px);
+  transform: skewX(32deg);
+}
+
+.command-title-wing-right::after {
+  left: 0;
+  transform: scaleX(-1);
+}
+
+/* Page-level HUD: sits on the same row as the title, anchored top-right. */
+.command-hud {
+  position: absolute;
+  top: 2px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.command-live-state {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid rgba(35, 156, 249, 0.62);
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 53, 98, 0.92),
+    rgba(5, 31, 65, 0.94)
+  );
+  color: #b9ddff;
+  font-size: 13px;
+  box-shadow:
+    inset 0 0 14px rgba(29, 119, 218, 0.14),
+    0 0 10px rgba(24, 129, 239, 0.16);
+}
+
+.command-live-state > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2bd4ad;
+  box-shadow: 0 0 10px rgba(43, 212, 173, 0.9);
+}
+
+.command-live-state.is-syncing > span {
+  background: #28adff;
+  animation: command-pulse 1.2s ease-in-out infinite;
+}
+
+.command-icon-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(35, 156, 249, 0.62);
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 53, 98, 0.92),
+    rgba(5, 31, 65, 0.94)
+  );
+  color: #a9d9ff;
+  box-shadow: inset 0 0 14px rgba(29, 119, 218, 0.14);
+}
+
+.command-icon-button:hover {
+  color: #eaf7ff;
+  background: rgba(13, 69, 126, 0.96);
+}
+
+.command-icon-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.command-layout {
+  position: absolute;
+  z-index: 2;
+  top: 84px;
+  right: 14px;
+  bottom: 244px;
+  left: 14px;
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(285px, 14fr) minmax(0, 72fr) minmax(285px, 14fr);
+  gap: 16px;
+  perspective: 1800px;
+}
+
+.command-rail {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  min-width: 0;
+  height: calc(100% + 2px);
+  margin-top: 15px;
+  align-content: stretch;
+  gap: 16px;
+  transform-style: preserve-3d;
+}
+
+.command-rail-left {
+  grid-template-rows: 42fr 27fr 31fr;
+  transform: translate(6px, 40px) perspective(1200px) rotateY(7deg) scaleX(0.9);
+  transform-origin: right center;
+}
+
+.command-rail-right {
+  grid-template-rows: 1.02fr 0.99fr 0.99fr;
+  transform: translate(-6px, 40px) perspective(1200px) rotateY(-7deg)
+    scaleX(0.9);
+  transform-origin: left center;
+}
+
+@media (min-width: 1600px) {
+  .command-layout {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .command-core-shell {
+    align-self: start;
+  }
+
+  .command-rail-left > .command-panel:nth-child(2) {
+    transform: scaleY(0.986);
+    transform-origin: top;
+  }
+
+  .command-rail-left > .command-panel:nth-child(3) {
+    transform: none;
+  }
+
+  .command-rail-right > .command-panel:nth-child(1) {
+    transform: scaleY(0.99);
+    transform-origin: top;
+  }
+
+  .command-rail-right > .command-panel:nth-child(2) {
+    transform: none;
+  }
+
+  .command-rail-right > .command-panel:nth-child(3) {
+    transform: none;
+  }
+}
+
+.command-panel {
+  --panel-shape: polygon(
+    0 6%,
+    1% 3%,
+    5% 1%,
+    20% 1.8%,
+    35% 2.6%,
+    50% 3%,
+    65% 2.6%,
+    80% 1.8%,
+    95% 1%,
+    99% 3%,
+    100% 6%,
+    100% 94%,
+    99% 97%,
+    95% 99%,
+    80% 98.2%,
+    65% 97.4%,
+    50% 97%,
+    35% 97.4%,
+    20% 98.2%,
+    5% 99%,
+    1% 97%,
+    0 94%
+  );
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 1px;
+  clip-path: var(--panel-shape);
+  background: linear-gradient(
+    138deg,
+    rgba(46, 164, 255, 0.98),
+    rgba(17, 93, 187, 0.56) 45%,
+    rgba(67, 87, 239, 0.92)
+  );
+  filter: drop-shadow(0 0 5px rgba(20, 130, 246, 0.4))
+    drop-shadow(0 0 16px rgba(26, 88, 205, 0.14));
+}
+
+.command-panel::after {
+  position: absolute;
+  z-index: 0;
+  inset: 2px;
+  content: '';
+  clip-path: var(--panel-shape);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8, 34, 68, 0.75),
+      transparent 31%,
+      rgba(1, 9, 23, 0.32)
+    ),
+    linear-gradient(145deg, rgba(3, 18, 38, 0.97), rgba(1, 9, 22, 0.98));
+  box-shadow:
+    inset 0 0 40px rgba(10, 84, 171, 0.1),
+    inset 0 0 0 1px rgba(56, 147, 239, 0.08);
+}
+
+.command-panel-frame {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+}
+
+.command-panel-frame-outer {
+  stroke: rgba(62, 173, 255, 0.96);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 3px rgba(66, 176, 255, 0.88))
+    drop-shadow(0 0 10px rgba(45, 105, 239, 0.42));
+}
+
+.command-panel-frame-inner {
+  stroke: rgba(66, 119, 226, 0.56);
+  stroke-width: 1;
+  filter: drop-shadow(0 0 4px rgba(55, 131, 245, 0.34));
+}
+
+.command-panel-cut {
+  position: absolute;
+  z-index: 6;
+  top: 20px;
+  right: 18px;
+  width: 38px;
+  height: 5px;
+  opacity: 0.92;
+  background: radial-gradient(circle, #3b9fff 0 2px, transparent 2.5px) 0 0 /
+    9px 5px repeat-x;
+  filter: drop-shadow(0 0 4px rgba(60, 147, 255, 0.9));
+}
+
+.command-panel-title {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(37, 125, 216, 0.34);
+  background: linear-gradient(
+    90deg,
+    rgba(6, 31, 63, 0.82),
+    rgba(4, 19, 42, 0.32)
+  );
+  color: #d3e9ff;
+  font-size: 15px;
+  font-weight: 720;
+  text-shadow: 0 0 8px rgba(69, 156, 255, 0.4);
+}
+
+.command-panel-title::after {
+  position: absolute;
+  bottom: -1px;
+  left: 18px;
+  width: 96px;
+  height: 1px;
+  content: '';
+  background: linear-gradient(90deg, #20a9ff, transparent);
+  box-shadow: 0 0 7px rgba(32, 169, 255, 0.72);
+}
+
+.command-panel-title > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.command-panel-title svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #22a8ff;
+}
+
+.command-panel-title > svg:last-child {
+  display: none;
+}
+
+.command-panel-content {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: calc(100% - 44px);
+  min-height: 0;
+  padding: 12px 20px 14px;
+}
+
+.command-panel-content > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.command-panel-content .recharts-responsive-container {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Recharts writes fixed pixel dimensions to the inner wrapper and SVG. A
+   percentage max-size here creates a cyclic constraint inside transformed
+   side rails and Chrome collapses both nodes to 0x0. */
+.command-panel-content .recharts-wrapper,
+.command-panel-content .recharts-surface {
+  max-width: none;
+  max-height: none;
+}
+
+.command-core-shell {
+  --core-shape: polygon(
+    0 5.6%,
+    0.45% 2.6%,
+    1.25% 1.2%,
+    2.9% 0.8%,
+    9% 2.2%,
+    20% 4.2%,
+    33% 6%,
+    44% 7.15%,
+    50% 7.45%,
+    56% 7.15%,
+    67% 6%,
+    80% 4.2%,
+    91% 2.2%,
+    97.1% 0.8%,
+    98.75% 1.2%,
+    99.55% 2.6%,
+    100% 5.6%,
+    100% 95.4%,
+    99.55% 97.9%,
+    98.65% 99.1%,
+    97.1% 99.5%,
+    91% 98.9%,
+    80% 97.8%,
+    67% 96.3%,
+    56% 95.25%,
+    50% 94.95%,
+    44% 95.25%,
+    33% 96.3%,
+    20% 97.8%,
+    9% 98.9%,
+    2.9% 99.5%,
+    1.35% 99.1%,
+    0.45% 97.9%,
+    0 95.4%
+  );
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 3px;
+  clip-path: var(--core-shape);
+  background: linear-gradient(
+    102deg,
+    #31a9ff 0%,
+    #6089ff 31%,
+    #28b1ff 52%,
+    #7d5fff 78%,
+    #2aa7ff 100%
+  );
+  filter: drop-shadow(0 0 5px rgba(62, 160, 255, 0.88))
+    drop-shadow(0 0 14px rgba(77, 84, 255, 0.5))
+    drop-shadow(0 0 30px rgba(21, 113, 238, 0.24));
+}
+
+.command-core-glass {
+  position: absolute;
+  z-index: 0;
+  inset: 4px;
+  clip-path: var(--core-shape);
+  background:
+    linear-gradient(
+      166deg,
+      rgba(9, 43, 83, 0.84),
+      rgba(1, 12, 29, 0.97) 42%,
+      rgba(2, 16, 38, 0.98)
+    ),
+    linear-gradient(rgba(25, 103, 191, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(25, 103, 191, 0.045) 1px, transparent 1px);
+  background-size:
+    auto,
+    44px 44px,
+    44px 44px;
+  box-shadow:
+    inset 0 0 80px rgba(10, 81, 175, 0.14),
+    inset 0 0 0 2px rgba(62, 139, 242, 0.18);
+}
+
+.command-core-glass::before,
+.command-core-glass::after {
+  position: absolute;
+  width: 41%;
+  height: 110px;
+  content: '';
+  opacity: 0.35;
+  background:
+    linear-gradient(
+      165deg,
+      transparent 0 47%,
+      rgba(41, 133, 239, 0.38) 47.2% 47.6%,
+      transparent 47.8%
+    ),
+    linear-gradient(
+      14deg,
+      transparent 0 67%,
+      rgba(124, 84, 255, 0.28) 67.2% 67.6%,
+      transparent 67.8%
+    );
+}
+
+.command-core-glass::before {
+  top: 10px;
+  left: 2%;
+}
+
+.command-core-glass::after {
+  right: 2%;
+  bottom: 8px;
+  transform: scale(-1);
+}
+
+.command-core-frame {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+}
+
+.command-core-frame-outer {
+  stroke: #79c8ff;
+  stroke-width: 2.4;
+  filter: drop-shadow(0 0 3px rgba(107, 196, 255, 1))
+    drop-shadow(0 0 9px rgba(50, 135, 255, 0.92))
+    drop-shadow(0 0 22px rgba(85, 76, 255, 0.64));
+}
+
+.command-core-frame-inner {
+  stroke: rgba(48, 146, 255, 0.78);
+  stroke-width: 1.3;
+  filter: drop-shadow(0 0 6px rgba(48, 133, 255, 0.52));
+}
+
+.command-core-frame-fold {
+  stroke: rgba(84, 125, 246, 0.58);
+  stroke-width: 1.1;
+  filter: drop-shadow(0 0 4px rgba(51, 138, 255, 0.42));
+}
+
+.command-core-edge {
+  position: absolute;
+  z-index: 4;
+  left: 8%;
+  width: 84%;
+  height: 72px;
+  pointer-events: none;
+  opacity: 0.96;
+  filter: drop-shadow(0 0 6px rgba(56, 151, 255, 0.85));
+}
+
+.command-core-edge-top {
+  top: -39px;
+  border-bottom: 2px solid rgba(83, 183, 255, 0.96);
+  border-radius: 0 0 50% 50%;
+}
+
+.command-core-edge-bottom {
+  bottom: -39px;
+  border-top: 2px solid rgba(120, 91, 255, 0.96);
+  border-radius: 50% 50% 0 0;
+}
+
+.command-core {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 78px 36px 57px;
+  flex-direction: column;
+  perspective: 2200px;
+}
+
+.command-core-corners {
+  position: absolute;
+  z-index: 0;
+  inset: 13px 14px 19px;
+  padding: 1px;
+  clip-path: var(--core-shape);
+  pointer-events: none;
+  background: linear-gradient(
+    108deg,
+    rgba(35, 154, 255, 0.76),
+    rgba(57, 106, 231, 0.2) 31%,
+    rgba(39, 146, 255, 0.43) 56%,
+    rgba(120, 83, 255, 0.68)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.command-kpi-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 15px;
+  margin-bottom: 14px;
+}
+
+.command-kpi:nth-child(2) {
+  margin-top: 28px;
+  transform: perspective(1200px) rotateY(1deg);
+}
+
+.command-kpi:nth-child(3) {
+  margin-top: 44px;
+}
+
+.command-kpi:nth-child(4) {
+  margin-top: 41px;
+  transform: perspective(1200px) rotateY(-1deg);
+}
+
+.command-kpi:nth-child(5) {
+  margin-top: 22px;
+  transform: perspective(1200px) rotateY(-2deg) translateY(-2px);
+  transform-origin: left center;
+}
+
+.command-kpi:nth-child(1) {
+  transform: perspective(1200px) rotateY(2deg) translateY(-2px);
+  transform-origin: right center;
+}
+
+.command-kpi {
+  --kpi-shape: polygon(
+    0 8%,
+    3% 1.5%,
+    20% 3%,
+    50% 5%,
+    80% 3%,
+    97% 1.5%,
+    100% 8%,
+    100% 92%,
+    97% 98.5%,
+    80% 97%,
+    50% 95%,
+    20% 97%,
+    3% 98.5%,
+    0 92%
+  );
+  position: relative;
+  min-width: 0;
+  height: 128px;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 15px 16px;
+  clip-path: var(--kpi-shape);
+  background: linear-gradient(
+    122deg,
+    rgba(35, 149, 246, 0.72),
+    rgba(31, 90, 194, 0.35) 53%,
+    rgba(90, 76, 238, 0.64)
+  );
+  filter: drop-shadow(0 0 7px rgba(24, 121, 235, 0.23));
+}
+
+.command-kpi::after {
+  position: absolute;
+  z-index: 0;
+  inset: 1px;
+  content: '';
+  clip-path: var(--kpi-shape);
+  background:
+    linear-gradient(145deg, rgba(7, 36, 72, 0.94), rgba(3, 20, 45, 0.89)),
+    linear-gradient(90deg, rgba(39, 137, 235, 0.06) 1px, transparent 1px);
+  background-size:
+    auto,
+    32px 100%;
+  box-shadow: inset 0 0 25px rgba(11, 92, 186, 0.08);
+}
+
+.command-kpi::before {
+  position: absolute;
+  z-index: 2;
+  top: 1px;
+  left: 13px;
+  width: 34%;
+  height: 2px;
+  content: '';
+  background: linear-gradient(90deg, #25acff, transparent);
+  box-shadow: 0 0 8px rgba(37, 172, 255, 0.86);
+}
+
+.command-kpi-frame {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: rgba(43, 160, 255, 0.74);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px rgba(42, 162, 255, 0.72))
+    drop-shadow(0 0 8px rgba(54, 97, 241, 0.26));
+}
+
+.command-kpi-topline,
+.command-kpi-value,
+.command-kpi-scope,
+.command-kpi-spark,
+.command-spark-empty {
+  position: relative;
+  z-index: 1;
+}
+
+.command-kpi-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #90b3d8;
+  font-size: 15px;
+}
+
+.command-kpi-topline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-kpi-topline svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #3da8f7;
+}
+
+.command-kpi-value {
+  max-width: 100%;
+  margin-top: 7px;
+  overflow: hidden;
+  color: #73b8ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 30px;
+  line-height: 1.05;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 11px rgba(53, 145, 255, 0.46);
+}
+
+.command-kpi-scope {
+  margin-top: 4px;
+  color: #567fa9;
+  font-size: 10px;
+}
+
+.command-kpi-spark,
+.command-spark-empty {
+  position: absolute;
+  right: 12px;
+  bottom: 5px;
+  left: 12px;
+  height: 34px;
+  opacity: 0.94;
+}
+
+.command-log-console {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.command-log-console > div:first-child {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.command-log-console > div:last-child:not(:first-child) {
+  flex: 0 0 auto;
+}
+
+.usage-command-center
+  .command-log-console
+  > div
+  > div:first-child:not(.command-log-table) {
+  position: relative;
+  flex: 0 0 auto;
+  border: 1px solid rgba(32, 136, 226, 0.46);
+  border-radius: 5px 5px 16px 16px / 5px 5px 10px 10px;
+  background: linear-gradient(
+    135deg,
+    rgba(5, 31, 62, 0.9),
+    rgba(3, 19, 43, 0.86)
+  );
+  box-shadow:
+    inset 0 0 22px rgba(10, 80, 160, 0.08),
+    0 0 10px rgba(20, 104, 209, 0.08);
+}
+
+.usage-command-center .command-log-console input,
+.usage-command-center .command-log-console button,
+.usage-command-center .command-log-console [data-slot='select-trigger'] {
+  border-color: rgba(38, 141, 226, 0.49);
+  border-radius: 4px 4px 9px 9px / 4px 4px 6px 6px;
+  background-color: rgba(3, 22, 47, 0.88);
+  color: #bcdcff;
+}
+
+.usage-command-center .command-log-console input::placeholder {
+  color: #5f87ad;
+}
+
+.usage-command-center .command-log-console button:hover {
+  background-color: rgba(10, 51, 93, 0.92);
+}
+
+.usage-command-center .command-log-console [data-slot='table'] {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  color: #c4e0ff;
+  background: rgba(2, 15, 34, 0.94);
+}
+
+.usage-command-center .command-log-table {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  border-color: rgba(29, 131, 222, 0.57);
+  border-radius: 5px 5px 24px 24px / 5px 5px 13px 13px;
+  background: rgba(2, 15, 34, 0.94);
+  box-shadow:
+    inset 0 0 28px rgba(9, 75, 151, 0.09),
+    0 0 11px rgba(18, 104, 214, 0.08);
+  scrollbar-color: rgba(37, 127, 217, 0.75) rgba(3, 22, 45, 0.5);
+  scrollbar-width: thin;
+}
+
+.usage-command-center .command-log-table [data-slot='table-header'] {
+  background: rgba(5, 37, 73, 0.98);
+}
+
+.usage-command-center .command-log-table [data-slot='table-head'] {
+  height: 28px;
+  padding-right: 3px;
+  padding-left: 3px;
+  border-right: 1px solid rgba(32, 105, 179, 0.23);
+  border-color: rgba(31, 114, 198, 0.43);
+  color: #b6d5f2;
+  font-size: 9px;
+  font-weight: 720;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.usage-command-center .command-log-table [data-slot='table-head'] > div {
+  width: 100%;
+  justify-content: center;
+  margin: 0;
+}
+
+.usage-command-center .command-log-table [data-slot='table-head'] button {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  justify-content: center;
+  margin-inline-start: 0 !important;
+  padding-right: 5px;
+  padding-left: 5px;
+}
+
+.usage-command-center .command-log-table [data-slot='table-head'] *,
+.usage-command-center .command-log-table [data-slot='table-cell'] button,
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [data-slot='badge'] {
+  font-size: 9px !important;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.usage-command-center .command-log-table [data-slot='table-row'] {
+  border-color: rgba(27, 95, 160, 0.33);
+  background: rgba(3, 21, 44, 0.78);
+}
+
+.usage-command-center
+  .command-log-table
+  [data-slot='table-row']:nth-child(even) {
+  background: rgba(4, 28, 57, 0.76);
+}
+
+.usage-command-center .command-log-table [data-slot='table-row']:hover {
+  background: rgba(8, 49, 93, 0.9);
+}
+
+.usage-command-center .command-log-table [data-slot='table-cell'] {
+  height: 36px;
+  overflow: hidden;
+  border-right: 1px solid rgba(26, 99, 169, 0.14);
+  border-color: rgba(26, 99, 169, 0.22);
+  color: #bedbfa;
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.usage-command-center .command-log-cell {
+  height: 36px;
+  padding: 2px 3px !important;
+  vertical-align: middle;
+}
+
+/* Compact every nested control the log cells render: badges, avatars and
+   detail buttons all shrink together so nine fields fit without scrolling. */
+.usage-command-center .command-log-table [data-slot='table-cell'] * {
+  letter-spacing: 0;
+}
+
+.usage-command-center .command-log-table [data-slot='table-cell'] .h-6,
+.usage-command-center .command-log-table [data-slot='table-cell'] .h-7 {
+  height: 16px;
+}
+
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [data-slot='avatar'] {
+  width: 15px;
+  height: 15px;
+}
+
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [data-slot='badge'],
+.usage-command-center .command-log-table [data-slot='table-cell'] .rounded-md {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.usage-command-center .command-log-table [data-slot='table-cell'] svg {
+  width: 10px;
+  height: 10px;
+}
+
+.usage-command-center .command-log-time > div {
+  gap: 2px;
+}
+
+.usage-command-center .command-log-timing .grid {
+  gap: 3px;
+}
+
+.usage-command-center .command-log-time,
+.usage-command-center .command-log-channel,
+.usage-command-center .command-log-token,
+.usage-command-center .command-log-timing {
+  gap: 1px !important;
+}
+
+/* Secondary lines stay, but at a size that reads as annotation, not content.
+   `command-log-cache` carries real billing values, so it is never hidden. */
+.usage-command-center .command-log-secondary,
+.usage-command-center .command-log-cache {
+  font-size: 8px !important;
+  line-height: 1.12;
+  opacity: 0.78;
+}
+
+.usage-command-center .command-log-cache {
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.usage-command-center .command-log-cache > span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px !important;
+}
+
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  :is(.command-log-time, .command-log-channel, .command-log-user),
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  :is(.command-log-time, .command-log-channel, .command-log-user)
+  * {
+  font-size: 8.5px !important;
+  line-height: 1.1;
+}
+
+.usage-command-center .command-log-time,
+.usage-command-center .command-log-channel,
+.usage-command-center .command-log-token,
+.usage-command-center .command-log-user,
+.usage-command-center .command-log-timing {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(1),
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(1) {
+  transform: perspective(1200px) rotateY(1.4deg) translateY(-2px);
+  transform-origin: right center;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(2),
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(2) {
+  transform: perspective(1200px) rotateY(0.7deg) translateY(-1px);
+  transform-origin: right center;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(8),
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(9),
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(6),
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(7) {
+  transform: perspective(1200px) rotateY(-0.9deg) translateY(-1px);
+  transform-origin: left center;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(4),
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(6),
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(3),
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(5) {
+  transform: translateY(1px);
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(5),
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(4) {
+  transform: translateY(2px);
+}
+
+.usage-command-center .command-log-table thead tr,
+.usage-command-center .command-log-table tbody tr:nth-child(1) {
+  --command-curve-full: 6px;
+  --command-curve-near: 5px;
+  --command-curve-mid: 4px;
+  --command-curve-edge: 2px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(2) {
+  --command-curve-full: 5px;
+  --command-curve-near: 4px;
+  --command-curve-mid: 3px;
+  --command-curve-edge: 2px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(3) {
+  --command-curve-full: 3px;
+  --command-curve-near: 2px;
+  --command-curve-mid: 2px;
+  --command-curve-edge: 1px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(4) {
+  --command-curve-full: 1px;
+  --command-curve-near: 1px;
+  --command-curve-mid: 1px;
+  --command-curve-edge: 0px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(5),
+.usage-command-center .command-log-table tbody tr:nth-child(6) {
+  --command-curve-full: 0px;
+  --command-curve-near: 0px;
+  --command-curve-mid: 0px;
+  --command-curve-edge: 0px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(7) {
+  --command-curve-full: -1px;
+  --command-curve-near: -1px;
+  --command-curve-mid: -1px;
+  --command-curve-edge: 0px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(8) {
+  --command-curve-full: -3px;
+  --command-curve-near: -2px;
+  --command-curve-mid: -2px;
+  --command-curve-edge: -1px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(9) {
+  --command-curve-full: -5px;
+  --command-curve-near: -4px;
+  --command-curve-mid: -3px;
+  --command-curve-edge: -2px;
+}
+
+.usage-command-center .command-log-table tbody tr:nth-child(10) {
+  --command-curve-full: -6px;
+  --command-curve-near: -5px;
+  --command-curve-mid: -4px;
+  --command-curve-edge: -2px;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(2)
+  > *,
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(8)
+  > * {
+  translate: 0 var(--command-curve-edge, 0);
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(3)
+  > *,
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(7)
+  > *,
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(2)
+  > *,
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(6)
+  > * {
+  translate: 0 var(--command-curve-mid, 0);
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(4)
+  > *,
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(6)
+  > *,
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(3)
+  > *,
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(5)
+  > * {
+  translate: 0 var(--command-curve-near, 0);
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(5)
+  > *,
+.usage-command-center.is-user
+  .command-log-table
+  :is([data-slot='table-head'], [data-slot='table-cell']):nth-child(4)
+  > * {
+  translate: 0 var(--command-curve-full, 0);
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(1) {
+  width: 11%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(2) {
+  width: 8%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(3) {
+  width: 9%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(4) {
+  width: 13%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(5) {
+  width: 13%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(6) {
+  width: 16%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(7) {
+  width: 12%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(8) {
+  width: 12%;
+}
+
+.usage-command-center.is-admin
+  .command-log-table
+  [data-slot='table-head']:nth-child(9) {
+  width: 6%;
+}
+
+.usage-command-center.is-user
+  .command-log-table
+  [data-slot='table-head']:nth-child(1) {
+  width: 13%;
+}
+
+.usage-command-center.is-user
+  .command-log-table
+  [data-slot='table-head']:nth-child(2) {
+  width: 19%;
+}
+
+.usage-command-center.is-user
+  .command-log-table
+  [data-slot='table-head']:nth-child(3) {
+  width: 14%;
+}
+
+.usage-command-center.is-user
+  .command-log-table
+  [data-slot='table-head']:nth-child(4) {
+  width: 21%;
+}
+
+.usage-command-center.is-user
+  .command-log-table
+  [data-slot='table-head']:nth-child(5) {
+  width: 14%;
+}
+
+.usage-command-center.is-user
+  .command-log-table
+  [data-slot='table-head']:nth-child(6) {
+  width: 12%;
+}
+
+.usage-command-center.is-user
+  .command-log-table
+  [data-slot='table-head']:nth-child(7) {
+  width: 7%;
+}
+
+/* The column defs hard-code Tailwind text sizes for the non-command tables;
+   inside the cockpit the compact scale wins. */
+.usage-command-center .command-log-table [data-slot='table-cell'] .text-xs,
+.usage-command-center .command-log-table [data-slot='table-cell'] .text-sm,
+.usage-command-center .command-log-table [data-slot='table-cell'] .\!text-xs,
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [class*='text-\[11px\]'],
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [class*='text-\[10px\]'] {
+  font-size: 9px !important;
+}
+
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  .text-muted-foreground\/70.text-\[10px\] {
+  font-size: 8px !important;
+}
+
+/* Give truncating columns real room instead of clipping to a fixed px width. */
+.usage-command-center .command-log-channel,
+.usage-command-center .command-log-token,
+.usage-command-center .command-log-user {
+  max-width: 100% !important;
+}
+
+.usage-command-center .command-log-table [data-slot='table-cell'] .truncate {
+  max-width: 100% !important;
+}
+
+/* Desktop hides duplicated identifiers (channel name, user id, token meta) —
+   those are all repeated in the details dialog. Cache tokens are not. */
+@media (min-width: 641px) {
+  .usage-command-center .command-log-secondary {
+    display: none;
+  }
+
+  .usage-command-center .command-log-cache {
+    display: flex;
+  }
+}
+
+.command-donut-wrap {
+  position: relative;
+  height: 196px;
+}
+
+.command-donut-wrap::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 72%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(38, 147, 237, 0.16);
+  border-radius: 50%;
+  content: '';
+  box-shadow:
+    inset 0 0 24px rgba(25, 125, 226, 0.08),
+    0 0 20px rgba(25, 125, 226, 0.06);
+}
+
+.command-donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  width: 112px;
+  transform: translate(-50%, -50%);
+  align-items: center;
+  flex-direction: column;
+  pointer-events: none;
+  text-align: center;
+}
+
+.command-donut-center span {
+  color: #7da3ca;
+  font-size: 11px;
+}
+
+.command-donut-center strong {
+  color: #d9edff;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.command-donut-center small {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: #96bde2;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-donut-center em {
+  color: #5f94bf;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.15;
+  font-style: normal;
+}
+
+.command-model-legend {
+  display: grid;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.command-model-legend > div {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  color: #89acd0;
+  font-size: 12px;
+}
+
+.command-model-legend > div > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: 0 0 7px currentColor;
+}
+
+.command-model-legend em {
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-model-legend strong {
+  color: #b8d6f2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+}
+
+.command-live-value,
+.command-trend-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.command-live-value span,
+.command-trend-value span {
+  width: 100%;
+  color: #789fc6;
+  font-size: 10px;
+}
+
+.command-live-value strong,
+.command-trend-value strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #c4dfff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 22px;
+  line-height: 1.1;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 9px rgba(54, 144, 255, 0.38);
+}
+
+.command-live-value em,
+.command-trend-value em {
+  color: #79a9d7;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.command-small-chart {
+  height: auto;
+  min-height: 0;
+  margin-top: 3px;
+  flex: 1 1 auto;
+}
+
+.command-live-panel .command-panel-content,
+.command-panel-content:has(> .command-live-value) {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.command-live-panel .command-live-value,
+.command-panel-content > .command-live-value {
+  flex: 0 0 auto;
+}
+
+.command-progress-list {
+  display: grid;
+  gap: 14px;
+}
+
+.command-progress > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  color: #82a7cc;
+  font-size: 11px;
+}
+
+.command-progress strong {
+  color: #b5d4ef;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.command-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(34, 111, 183, 0.24);
+  border-radius: 2px;
+  background: rgba(18, 65, 111, 0.38);
+}
+
+.command-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  box-shadow: 0 0 9px currentColor;
+}
+
+.command-progress-cyan {
+  color: #17aaff;
+  background: linear-gradient(90deg, #168ee4, #22bdff);
+}
+
+.command-progress-teal {
+  color: #18c9bd;
+  background: linear-gradient(90deg, #139b9b, #20d7c0);
+}
+
+.command-progress-violet {
+  color: #7b63ff;
+  background: linear-gradient(90deg, #3b6cff, #8564ff);
+}
+
+.command-panel-footnote {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(39, 110, 180, 0.25);
+  color: #5c82a7;
+  font-size: 11px;
+}
+
+.command-status-panel .command-panel-content,
+.command-cost-panel .command-panel-content {
+  display: flex;
+  min-height: 0;
+  padding: 12px 20px 14px;
+  flex-direction: column;
+}
+
+/* Two metrics only: distribute from the top with a real gap so the second row
+   can never collide with the row above it. */
+.command-status-panel .command-progress-list {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  gap: 18px;
+}
+
+.command-cost-panel .command-trend-value {
+  flex: 0 0 34px;
+}
+
+.command-cost-panel .command-chart-compact {
+  height: auto;
+  min-height: 0;
+  margin-top: 3px;
+  flex: 1;
+}
+
+.command-chart {
+  height: calc(100% - 24px);
+  min-height: 100px;
+}
+
+.command-chart-compact {
+  height: calc(100% - 48px);
+  min-height: 88px;
+}
+
+.command-trend-legend {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 12px;
+  color: #7a9fc4;
+  font-size: 11px;
+}
+
+.command-trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.command-trend-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.command-trend-legend .is-cyan {
+  background: #19aaff;
+  box-shadow: 0 0 8px rgba(25, 170, 255, 0.85);
+}
+
+.command-deck {
+  position: absolute;
+  z-index: 1;
+  right: 12%;
+  bottom: 6px;
+  left: 12%;
+  height: 210px;
+  pointer-events: none;
+  perspective: 900px;
+}
+
+/* Low machined bay: a flat elliptical slab, not stacked discs. */
+.command-deck-body {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  width: 72%;
+  height: 96px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(60, 150, 236, 0.5);
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at 50% 34%,
+    rgba(20, 68, 134, 0.5) 0 28%,
+    rgba(6, 26, 58, 0.94) 46%,
+    rgba(2, 10, 26, 0.99) 78%
+  );
+  box-shadow:
+    0 6px 0 rgba(3, 12, 30, 0.96),
+    0 12px 26px rgba(6, 26, 66, 0.72),
+    inset 0 0 34px rgba(14, 76, 156, 0.24),
+    inset 0 -10px 22px rgba(1, 7, 20, 0.9);
+}
+
+.command-deck-rim {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  width: 60%;
+  height: 74px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(74, 170, 250, 0.62);
+  border-radius: 50%;
+  box-shadow:
+    0 0 9px rgba(52, 150, 246, 0.42),
+    inset 0 0 16px rgba(40, 128, 226, 0.22);
+}
+
+.command-deck-arc {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  border: 1px solid transparent;
+}
+
+.command-deck-arc-outer {
+  bottom: 18px;
+  width: 92%;
+  height: 118px;
+  border-top-color: rgba(46, 140, 230, 0.32);
+  border-bottom-color: rgba(96, 132, 255, 0.44);
+  box-shadow: 0 0 14px rgba(38, 122, 214, 0.24);
+}
+
+.command-deck-arc-inner {
+  bottom: 38px;
+  width: 44%;
+  height: 54px;
+  border-top-color: rgba(126, 96, 255, 0.5);
+  border-bottom-color: rgba(58, 170, 255, 0.56);
+  box-shadow: 0 0 12px rgba(78, 118, 246, 0.34);
+}
+
+/* Sparse warm service markers, matching the reference's amber accents. */
+.command-deck-mark {
+  position: absolute;
+  bottom: 58px;
+  width: 22px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 158, 84, 0.86));
+  box-shadow: 0 0 7px rgba(255, 150, 70, 0.6);
+}
+
+.command-deck-mark-a {
+  left: 27%;
+}
+
+.command-deck-mark-b {
+  right: 27%;
+  transform: scaleX(-1);
+}
+
+.command-deck-core {
+  position: absolute;
+  bottom: 62px;
+  left: 50%;
+  width: 13%;
+  height: 15px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(122, 208, 255, 0.6);
+  box-shadow:
+    0 0 16px #63c6ff,
+    0 0 44px rgba(41, 126, 255, 0.7);
+}
+
+/* Vertical light column rising out of the bay centre. */
+.command-deck-beam {
+  position: absolute;
+  bottom: 62px;
+  left: 50%;
+  width: 12%;
+  height: 150px;
+  transform: translateX(-50%);
+  clip-path: polygon(38% 0, 62% 0, 78% 100%, 22% 100%);
+  opacity: 0.4;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(84, 178, 255, 0.36) 62%,
+    rgba(140, 214, 255, 0.6)
+  );
+  filter: blur(5px);
+}
+
+.command-deck-glow {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 86%;
+  height: 130px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  opacity: 0.5;
+  background: radial-gradient(
+    ellipse at 50% 62%,
+    rgba(38, 122, 236, 0.32),
+    transparent 68%
+  );
+  filter: blur(10px);
+}
+
+@keyframes command-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (max-width: 1999px) and (min-width: 1600px) {
+  .command-heading h1 {
+    font-size: 36px;
+  }
+
+  .command-heading {
+    top: 18px;
+  }
+
+  .command-hud {
+    top: 1px;
+    right: 14px;
+    gap: 7px;
+  }
+
+  .command-live-state {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+    gap: 7px;
+  }
+
+  .command-live-state > span {
+    width: 7px;
+    height: 7px;
+  }
+
+  .command-icon-button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .command-icon-button svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .command-layout {
+    top: 73px;
+    bottom: 198px;
+    gap: 12px;
+  }
+
+  .command-core {
+    padding: 69px 27px 49px;
+  }
+
+  .command-kpi-grid {
+    gap: 10px;
+  }
+
+  .command-kpi:nth-child(2) {
+    margin-top: 18px;
+  }
+
+  .command-kpi:nth-child(3) {
+    margin-top: 30px;
+  }
+
+  .command-kpi:nth-child(4) {
+    margin-top: 28px;
+  }
+
+  .command-kpi:nth-child(5) {
+    margin-top: 15px;
+  }
+
+  .command-kpi {
+    height: 116px;
+    padding: 12px 13px;
+  }
+
+  .command-kpi-value {
+    font-size: 23px;
+  }
+
+  .command-panel-title {
+    height: 47px;
+    padding: 0 17px;
+    font-size: 15px;
+  }
+
+  .command-panel-content {
+    height: calc(100% - 47px);
+    padding: 12px 14px 14px;
+  }
+
+  .command-donut-wrap {
+    height: 145px;
+  }
+
+  .command-model-legend {
+    gap: 6px;
+  }
+
+  .command-live-value strong,
+  .command-trend-value strong {
+    font-size: 20px;
+  }
+
+  .command-deck {
+    right: 15%;
+    bottom: 4px;
+    left: 15%;
+    height: 150px;
+  }
+
+  .command-deck-body {
+    bottom: 18px;
+    height: 70px;
+  }
+
+  .command-deck-rim {
+    bottom: 22px;
+    height: 54px;
+  }
+
+  .command-deck-arc-outer {
+    bottom: 12px;
+    height: 86px;
+  }
+
+  .command-deck-arc-inner {
+    bottom: 28px;
+    height: 40px;
+  }
+
+  .command-deck-mark {
+    bottom: 42px;
+  }
+
+  .command-deck-core {
+    bottom: 45px;
+    height: 11px;
+  }
+
+  .command-deck-beam {
+    bottom: 45px;
+    height: 104px;
+  }
+
+  .command-deck-glow {
+    height: 96px;
+  }
+
+  .command-readout {
+    min-width: 84px;
+    max-width: 112px;
+    padding: 3px 7px;
+  }
+
+  .command-readout-value {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 1599px) {
+  .usage-command-center {
+    height: 100%;
+    min-height: 100svh;
+    overflow: auto;
+  }
+
+  .command-heading {
+    position: relative;
+    top: 0;
+    height: 100px;
+    padding-top: 18px;
+  }
+
+  .command-heading h1 {
+    font-size: 32px;
+  }
+
+  .command-hud {
+    top: 2px;
+    right: 12px;
+    gap: 6px;
+  }
+
+  .command-live-state {
+    height: 28px;
+    padding: 0 8px;
+    font-size: 11px;
+    gap: 6px;
+  }
+
+  .command-live-state > span {
+    width: 6px;
+    height: 6px;
+  }
+
+  .command-icon-button {
+    width: 28px;
+    height: 28px;
+  }
+
+  .command-icon-button svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .command-title-wing {
+    display: none;
+  }
+
+  .command-layout {
+    position: relative;
+    inset: auto;
+    display: grid;
+    min-height: 0;
+    padding: 4px 16px 40px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 15px;
+  }
+
+  .command-core-shell {
+    min-height: 880px;
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .command-core {
+    padding: 68px 24px 48px;
+  }
+
+  .command-kpi:nth-child(n) {
+    margin-top: 0;
+  }
+
+  .command-rail {
+    height: auto;
+    margin-top: 0;
+    transform: none;
+  }
+
+  .command-rail-left,
+  .command-rail-right {
+    grid-template-rows: repeat(3, minmax(235px, auto));
+  }
+
+  .command-panel {
+    min-height: 235px;
+  }
+
+  .command-model-panel {
+    min-height: 390px;
+  }
+
+  .command-donut-wrap {
+    height: 210px;
+  }
+
+  .command-deck {
+    display: none;
+  }
+
+  /* Stacked rails: title bars get narrow, so let the HUD wrap instead of
+     crushing the panel title. */
+  .command-trend-panel .command-panel-title,
+  .command-live-panel .command-panel-title,
+  .command-tokens-panel .command-panel-title,
+  .command-cost-panel .command-panel-title,
+  .command-model-panel .command-panel-title {
+    height: auto;
+    min-height: 47px;
+    padding: 7px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .command-trend-panel,
+  .command-live-panel,
+  .command-tokens-panel,
+  .command-cost-panel {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .command-trend-panel .command-panel-title,
+  .command-live-panel .command-panel-title,
+  .command-tokens-panel .command-panel-title,
+  .command-cost-panel .command-panel-title {
+    flex: 0 0 auto;
+  }
+
+  .command-trend-panel .command-panel-content,
+  .command-live-panel .command-panel-content,
+  .command-tokens-panel .command-panel-content,
+  .command-cost-panel .command-panel-content {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .command-readout {
+    align-items: flex-start;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+@media (max-width: 1099px) {
+  .command-layout {
+    display: flex;
+    padding-right: 12px;
+    padding-left: 12px;
+    flex-direction: column;
+  }
+
+  .command-core-shell {
+    order: 1;
+  }
+
+  .command-rail-left {
+    order: 2;
+  }
+
+  .command-rail-right {
+    order: 3;
+  }
+
+  .command-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .command-kpi:nth-child(4),
+  .command-kpi:nth-child(5) {
+    grid-column: span 1;
+  }
+
+  .command-core-shell {
+    min-height: 1030px;
+  }
+
+  .command-core {
+    padding-top: 58px;
+  }
+
+  .command-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  .command-panel {
+    min-height: 270px;
+  }
+
+  .command-model-panel {
+    grid-row: span 2;
+    min-height: 555px;
+  }
+}
+
+@media (max-width: 767px) {
+  .usage-command-center {
+    min-height: 100svh;
+  }
+
+  .command-grid-backdrop::after {
+    display: none;
+  }
+
+  .command-heading {
+    height: 84px;
+    padding: 16px 12px 12px;
+  }
+
+  .command-heading h1 {
+    max-width: calc(100% - 24px);
+    font-size: 24px;
+    line-height: 1.16;
+  }
+
+  .command-hud {
+    top: 16px;
+    right: 12px;
+    gap: 5px;
+  }
+
+  .command-live-state {
+    height: 26px;
+    padding: 0 7px;
+    font-size: 10px;
+    gap: 5px;
+  }
+
+  .command-live-state > span {
+    width: 5px;
+    height: 5px;
+  }
+
+  .command-icon-button {
+    width: 26px;
+    height: 26px;
+  }
+
+  .command-icon-button svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .command-heading p {
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  .command-title-mark {
+    width: 210px;
+  }
+
+  .command-readout {
+    width: 100%;
+    max-width: none;
+    align-items: flex-start;
+  }
+
+  .command-layout {
+    padding: 4px 8px 24px;
+    gap: 10px;
+  }
+
+  .command-core-shell {
+    min-height: 0;
+    overflow: visible;
+    padding: 1px;
+    clip-path: none;
+    background: rgba(42, 148, 239, 0.66);
+    filter: none;
+  }
+
+  .command-core-glass {
+    inset: 1px;
+    clip-path: none;
+  }
+
+  .command-core-edge,
+  .command-core-frame,
+  .command-core-corners {
+    display: none;
+  }
+
+  .command-core {
+    height: auto;
+    padding: 10px;
+  }
+
+  .command-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .command-kpi {
+    height: 115px;
+    padding: 11px;
+  }
+
+  .command-kpi:nth-child(4) {
+    grid-column: auto;
+  }
+
+  .command-kpi:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+
+  .command-kpi-value {
+    font-size: 20px;
+  }
+
+  .command-kpi-topline {
+    font-size: 11px;
+  }
+
+  .command-log-console {
+    min-height: 0;
+  }
+
+  .usage-command-center
+    .command-log-console
+    > div
+    > div:first-child:not(.command-log-table) {
+    padding: 8px;
+  }
+
+  .command-rail {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .command-panel,
+  .command-model-panel {
+    min-height: 240px;
+    grid-row: auto;
+  }
+
+  .command-model-panel {
+    min-height: 400px;
+  }
+
+  .command-panel-title {
+    height: 47px;
+    padding: 0 16px;
+    font-size: 15px;
+  }
+
+  .command-panel-content {
+    height: calc(100% - 47px);
+    padding: 12px 14px 12px;
+  }
+
+  .command-donut-wrap {
+    height: 210px;
+  }
+
+  .command-live-value strong,
+  .command-trend-value strong {
+    font-size: 24px;
+  }
+}
+
+@media (max-height: 950px) and (min-width: 1600px) {
+  .command-heading {
+    top: 12px;
+  }
+
+  .command-heading h1 {
+    font-size: 32px;
+  }
+
+  .command-heading p {
+    margin-top: 3px;
+    font-size: 11px;
+  }
+
+  .command-layout {
+    top: 59px;
+    bottom: 136px;
+  }
+
+  .command-core {
+    padding: 55px 22px 41px;
+  }
+
+  .command-kpi {
+    height: 96px;
+    padding: 9px 11px;
+  }
+
+  .command-kpi:nth-child(2) {
+    margin-top: 8px;
+  }
+
+  .command-kpi:nth-child(3) {
+    margin-top: 13px;
+  }
+
+  .command-kpi:nth-child(4) {
+    margin-top: 12px;
+  }
+
+  .command-kpi:nth-child(5) {
+    margin-top: 7px;
+  }
+
+  .command-kpi-value {
+    margin-top: 4px;
+    font-size: 20px;
+  }
+
+  .command-kpi-spark,
+  .command-spark-empty {
+    height: 24px;
+  }
+
+  .command-panel-title {
+    height: 42px;
+    font-size: 14px;
+  }
+
+  .command-panel-content {
+    height: calc(100% - 42px);
+    padding: 9px 12px;
+  }
+
+  .command-donut-wrap {
+    height: 150px;
+  }
+
+  .command-model-legend {
+    gap: 4px;
+  }
+
+  .command-deck {
+    bottom: 4px;
+    height: 122px;
+  }
+
+  .command-deck-body {
+    bottom: 14px;
+    height: 58px;
+  }
+
+  .command-deck-rim {
+    bottom: 17px;
+    height: 44px;
+  }
+
+  .command-deck-arc-outer {
+    bottom: 9px;
+    height: 72px;
+  }
+
+  .command-deck-arc-inner {
+    bottom: 23px;
+    height: 32px;
+  }
+
+  .command-deck-mark,
+  .command-deck-core {
+    bottom: 35px;
+  }
+
+  .command-deck-core {
+    height: 9px;
+  }
+
+  .command-deck-beam {
+    bottom: 35px;
+    height: 84px;
+  }
+
+  .command-deck-glow {
+    height: 78px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-live-state.is-syncing > span {
+    animation: none;
+  }
+}
+
+/* ---- Trend/Cost panel title bars host fixed readout windows ---- */
+.command-trend-panel .command-panel-title,
+.command-live-panel .command-panel-title,
+.command-tokens-panel .command-panel-title,
+.command-cost-panel .command-panel-title {
+  padding-right: 12px;
+  gap: 10px;
+}
+
+.command-trend-panel .command-panel-title > span:first-child,
+.command-live-panel .command-panel-title > span:first-child,
+.command-tokens-panel .command-panel-title > span:first-child,
+.command-cost-panel .command-panel-title > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ---- Fixed trend readout window (replaces clipped floating tooltip) ---- */
+.command-readout {
+  display: flex;
+  min-width: 78px;
+  max-width: 118px;
+  margin-right: 5px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 3px 8px;
+  border: 1px solid rgba(58, 150, 240, 0.5);
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 40, 80, 0.94),
+    rgba(3, 20, 46, 0.96)
+  );
+  box-shadow:
+    inset 0 0 12px rgba(28, 116, 214, 0.16),
+    0 0 9px rgba(22, 110, 210, 0.14);
+  pointer-events: none;
+  transform: translateY(2px);
+}
+
+.command-readout-label {
+  color: #7ba3cc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.command-readout-value {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-readout.is-violet .command-readout-value {
+  color: #b3a4ff;
+  text-shadow: 0 0 9px rgba(122, 98, 255, 0.44);
+}
+
+.command-readout.is-cyan .command-readout-value {
+  color: #75d2ff;
+  text-shadow: 0 0 9px rgba(25, 170, 255, 0.44);
+}
+
+.command-readout.is-teal .command-readout-value {
+  color: #70ded6;
+  text-shadow: 0 0 9px rgba(27, 201, 191, 0.4);
+}
+
+.command-readout.is-magenta .command-readout-value {
+  color: #d0a8ff;
+  text-shadow: 0 0 9px rgba(154, 92, 255, 0.44);
+}
+
+/* ---- Desktop filter zone: collapsed by default, explicit toggle ---- */
+.command-filter-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.command-filter-summary-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.usage-command-center .command-filter-toggle {
+  display: inline-flex;
+  height: 30px;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid rgba(38, 141, 226, 0.55);
+  border-radius: 4px 4px 9px 9px / 4px 4px 6px 6px;
+  background-color: rgba(3, 22, 47, 0.9);
+  color: #bcdcff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.usage-command-center .command-filter-toggle:hover {
+  background-color: rgba(10, 51, 93, 0.94);
+}
+
+.usage-command-center .command-filter-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.command-token-ratio-summary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: #86acd1;
+  font-size: 10px;
+}
+
+.command-token-ratio-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: #78a7d4;
+  white-space: nowrap;
+}
+
+.command-token-ratio-label svg {
+  width: 13px;
+  height: 13px;
+  color: #24b8ff;
+}
+
+.command-token-ratio-list {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.command-token-ratio-chip,
+.command-token-ratio-more {
+  display: inline-flex;
+  height: 23px;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid rgba(34, 137, 220, 0.4);
+  border-radius: 3px 3px 7px 7px / 3px 3px 5px 5px;
+  background: rgba(5, 34, 68, 0.82);
+  box-shadow: inset 0 0 8px rgba(20, 113, 207, 0.08);
+  white-space: nowrap;
+}
+
+.command-token-ratio-chip em {
+  max-width: 96px;
+  overflow: hidden;
+  color: #a8c8e8;
+  font-style: normal;
+  text-overflow: ellipsis;
+}
+
+.command-token-ratio-chip strong {
+  color: #47dbc5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+}
+
+.command-token-ratio-more {
+  flex: 0 0 auto;
+  color: #81bce8;
+}
+
+.command-token-ratio-empty {
+  overflow: hidden;
+  color: #6289b2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1799px) {
+  .command-token-ratio-label {
+    font-size: 0;
+  }
+
+  .command-token-ratio-label svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* ---- Rail bottom clearance: unify the two lowest panels ---- */
+.command-status-panel .command-progress-list,
+.command-cost-panel .command-chart-compact {
+  padding-bottom: 4px;
+}
+
+/* Last progress row was overlapping the footnote (ghosted text) because the
+   list distributed with space-between against a zero-gap grid. */
+.command-status-panel .command-progress-list {
+  align-content: start;
+  gap: 18px;
+}
+
+.command-status-panel .command-progress-list > .command-progress:last-child {
+  margin-bottom: 0;
+}
+
+.command-status-panel .command-panel-footnote {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 9px;
+}
+
+.command-status-panel .command-panel-content,
+.command-cost-panel .command-panel-content {
+  padding-bottom: 16px;
+}
+
+/* Keep viewport-specific sizing after the shared readout declarations. */
+@media (max-width: 1999px) and (min-width: 1600px) {
+  .command-live-panel .command-panel-content,
+  .command-tokens-panel .command-panel-content,
+  .command-cost-panel .command-panel-content {
+    padding-top: 9px;
+    padding-bottom: 11px;
+  }
+
+  .command-readout {
+    min-width: 84px;
+    max-width: 106px;
+    padding: 3px 7px;
+  }
+
+  .command-readout-value {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 1599px) {
+  .command-readout {
+    min-width: 0;
+    max-width: none;
+    margin-right: 0;
+    align-items: flex-start;
+    transform: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .command-readout {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+/* Keep the central screen lower than the side rails while preserving a
+   measured gap above the deck at each desktop format. This must remain after
+   the base .command-core-shell rule or its height is overridden. */
+@media (min-width: 2000px) {
+  .command-core-shell {
+    height: calc(100% + 20px);
+  }
+}
+
+@media (max-width: 1999px) and (min-width: 1600px) {
+  .command-core-shell {
+    height: calc(100% + 30px);
+  }
+}
+
+@media (max-height: 950px) and (min-width: 1600px) {
+  .command-core-shell {
+    height: calc(100% + 4px);
+  }
+}
+
+/* Responsive type scale: keep the cockpit readable without scaling its frame
+   geometry. Values change at layout breakpoints, so text and controls stay in
+   proportion to the actual screen format. */
+.usage-command-center {
+  --command-axis-font-size: 8px;
+  --command-font-micro: 8px;
+  --command-font-table: 9px;
+  --command-font-small: 10px;
+  --command-font-body: 11px;
+  --command-font-label: 12px;
+  --command-font-panel: 15px;
+  --command-font-metric: 22px;
+  --command-font-title: 42px;
+  font-size: var(--command-font-body);
+}
+
+@media (min-width: 2000px) {
+  .usage-command-center {
+    --command-axis-font-size: 9px;
+    --command-font-micro: 9px;
+    --command-font-table: 10px;
+    --command-font-small: 11px;
+    --command-font-body: 12px;
+    --command-font-label: 13px;
+    --command-font-panel: 16px;
+    --command-font-metric: 24px;
+    --command-font-title: 46px;
+  }
+}
+
+@media (max-width: 1599px) {
+  .usage-command-center {
+    --command-axis-font-size: 8px;
+    --command-font-micro: 8px;
+    --command-font-table: 9px;
+    --command-font-small: 10px;
+    --command-font-body: 11px;
+    --command-font-label: 12px;
+    --command-font-panel: 14px;
+    --command-font-metric: 20px;
+    --command-font-title: 32px;
+  }
+}
+
+@media (max-width: 767px) {
+  .usage-command-center {
+    --command-axis-font-size: 9px;
+    --command-font-micro: 9px;
+    --command-font-table: 10px;
+    --command-font-small: 11px;
+    --command-font-body: 12px;
+    --command-font-label: 13px;
+    --command-font-panel: 14px;
+    --command-font-metric: 22px;
+    --command-font-title: 24px;
+  }
+}
+
+@media (max-height: 950px) and (min-width: 1600px) {
+  .usage-command-center {
+    --command-axis-font-size: 7px;
+    --command-font-micro: 7px;
+    --command-font-table: 8px;
+    --command-font-small: 9px;
+    --command-font-body: 10px;
+    --command-font-label: 11px;
+    --command-font-panel: 14px;
+    --command-font-metric: 20px;
+    --command-font-title: 32px;
+  }
+}
+
+.usage-command-center .command-heading h1 {
+  font-size: var(--command-font-title);
+}
+
+.usage-command-center .command-heading p,
+.usage-command-center .command-live-state,
+.usage-command-center .command-filter-toggle,
+.usage-command-center .command-model-legend > div,
+.usage-command-center .command-progress strong,
+.usage-command-center .command-readout-label,
+.usage-command-center .command-panel-footnote,
+.usage-command-center .command-trend-legend {
+  font-size: var(--command-font-body);
+}
+
+.usage-command-center .command-panel-title {
+  font-size: var(--command-font-panel);
+}
+
+.usage-command-center .command-kpi-topline,
+.usage-command-center .command-kpi-scope,
+.usage-command-center .command-donut-center span,
+.usage-command-center .command-donut-center small,
+.usage-command-center .command-live-value span,
+.usage-command-center .command-trend-value span,
+.usage-command-center .command-live-value em,
+.usage-command-center .command-trend-value em,
+.usage-command-center .command-progress > div:first-child {
+  font-size: var(--command-font-small);
+}
+
+.usage-command-center .command-kpi-value,
+.usage-command-center .command-live-value strong,
+.usage-command-center .command-trend-value strong,
+.usage-command-center .command-donut-center strong {
+  font-size: var(--command-font-metric);
+}
+
+.usage-command-center .command-readout-value {
+  font-size: var(--command-font-label);
+}
+
+.usage-command-center .command-donut-center em {
+  font-size: var(--command-font-micro);
+}
+
+.usage-command-center .command-log-table [data-slot='table-head'],
+.usage-command-center .command-log-table [data-slot='table-cell'],
+.usage-command-center .command-log-table [data-slot='table-head'] *,
+.usage-command-center .command-log-table [data-slot='table-cell'] button,
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [data-slot='badge'],
+.usage-command-center .command-log-table [data-slot='table-cell'] .text-xs,
+.usage-command-center .command-log-table [data-slot='table-cell'] .text-sm,
+.usage-command-center .command-log-table [data-slot='table-cell'] .\!text-xs,
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [class*='text-\[11px\]'],
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  [class*='text-\[10px\]'] {
+  font-size: var(--command-font-table) !important;
+}
+
+.usage-command-center .command-log-secondary,
+.usage-command-center .command-log-cache,
+.usage-command-center .command-log-cache > span,
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  .text-muted-foreground\/70.text-\[10px\] {
+  font-size: var(--command-font-micro) !important;
+}
+
+/* Every field has its own width, but all content shares that field's centre
+   line. This preserves useful widths while making the table visually
+   symmetric and orderly. */
+.usage-command-center .command-log-table [data-slot='table-cell'] {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.usage-command-center .command-log-table [data-slot='table-cell'] > * {
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  :is(
+    .command-log-time,
+    .command-log-channel,
+    .command-log-token,
+    .command-log-user,
+    .command-log-timing
+  ) {
+  align-items: center;
+  text-align: center;
+}
+
+.usage-command-center
+  .command-log-table
+  [data-slot='table-cell']
+  :is(
+    .command-log-time,
+    .command-log-channel,
+    .command-log-token,
+    .command-log-user
+  )
+  > * {
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.usage-command-center .command-log-table .command-log-timing .grid {
+  width: 100%;
+  justify-items: center;
+}
+
+.usage-command-center .command-log-table .command-log-timing .grid > *,
+.usage-command-center
+  .command-log-table
+  .command-log-timing
+  .usage-log-throughput,
+.usage-command-center .command-log-table .command-log-cache {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.usage-command-center .command-view-switch {
+  border-color: rgba(73, 164, 230, 0.28);
+  background: rgba(5, 22, 45, 0.72);
+  color: #a9d9ff;
+  box-shadow: inset 0 0 0 1px rgba(52, 151, 226, 0.08);
+}
+
+.usage-command-center .command-view-switch:hover {
+  border-color: rgba(73, 178, 246, 0.52);
+  background: rgba(10, 42, 78, 0.86);
+  color: #e5f5ff;
+}
+
+.usage-command-center .command-log-table [data-slot='table-cell'] .w-fit,
+.usage-command-center .command-log-table [data-slot='table-cell'] .inline-flex {
+  margin-right: auto;
+  margin-left: auto;
+}
+
+/* Axis labels inherit the screen-specific scale. Dense time labels are angled
+   by Recharts; keep their line box tight so neighbouring ticks cannot collide. */
+.usage-command-center .recharts-cartesian-axis-tick-value {
+  font-size: var(--command-axis-font-size);
+  letter-spacing: 0;
+}

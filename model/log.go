@@ -1,0 +1,751 @@
+package model
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/bytedance/gopkg/util/gopool"
+	"gorm.io/gorm"
+)
+
+func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm.DB, error) {
+	if value == "" {
+		return tx, nil
+	}
+	if strings.Contains(value, "%") {
+		pattern, err := sanitizeLikePattern(value)
+		if err != nil {
+			return nil, err
+		}
+		return tx.Where(column+" LIKE ? ESCAPE '!'", pattern), nil
+	}
+	return tx.Where(column+" = ?", value), nil
+}
+
+type Log struct {
+	MediaKind         string `json:"media_kind" gorm:"type:varchar(12);default:'';index:idx_logs_media_created,priority:1;index:idx_logs_user_media_created,priority:2"`
+	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
+	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1;index:idx_logs_user_media_created,priority:1"`
+	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_media_created,priority:2;index:idx_logs_user_media_created,priority:3"`
+	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
+	Content           string `json:"content"`
+	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
+	TokenName         string `json:"token_name" gorm:"index;default:''"`
+	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+	Quota             int    `json:"quota" gorm:"default:0"`
+	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
+	UseTime           int    `json:"use_time" gorm:"default:0"`
+	IsStream          bool   `json:"is_stream"`
+	ChannelId         int    `json:"channel" gorm:"index"`
+	ChannelName       string `json:"channel_name" gorm:"->"`
+	TokenId           int    `json:"token_id" gorm:"default:0;index"`
+	Group             string `json:"group" gorm:"index"`
+	Ip                string `json:"ip" gorm:"index;default:''"`
+	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
+	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
+	Other             string `json:"other"`
+}
+
+// don't use iota, avoid change log type value
+const (
+	LogTypeUnknown = 0
+	LogTypeTopup   = 1
+	LogTypeConsume = 2
+	LogTypeManage  = 3
+	LogTypeSystem  = 4
+	LogTypeError   = 5
+	LogTypeRefund  = 6
+)
+
+const (
+	ingressLineOfficial = "official"
+	ingressLineFast     = "fast"
+)
+
+func appendIngressLogInfo(c *gin.Context, other map[string]interface{}) map[string]interface{} {
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	if node := strings.TrimSpace(common.NodeName); node != "" {
+		// Keep the worker marker top-level so it remains visible to both
+		// administrators and users after admin-only fields are filtered.
+		other["worker_node"] = node
+	}
+	if c != nil {
+		if active := common.GetContextKeyInt(c, constant.ContextKeyChannelConcurrencyActive); active > 0 {
+			other["channel_concurrency_active"] = active
+		}
+		if limit := common.GetContextKeyInt(c, constant.ContextKeyChannelConcurrencyLimit); limit > 0 {
+			other["channel_concurrency_limit"] = limit
+		}
+	}
+	if c == nil || c.Request == nil {
+		return other
+	}
+	host, line := classifyIngressHost(c.Request.Host)
+	if line == "" {
+		return other
+	}
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	other["ingress_line"] = line
+	if host != "" {
+		other["ingress_host"] = host
+	}
+	return other
+}
+
+func classifyIngressHost(value string) (string, string) {
+	host := strings.ToLower(strings.TrimSpace(value))
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+	host = strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+
+	switch host {
+	case "116.62.113.242":
+		return host, ingressLineFast
+	case "synthapi.asia", "api.synthapi.asia":
+		return host, ingressLineOfficial
+	default:
+		return "", ""
+	}
+}
+
+func formatUserLogs(logs []*Log, startIdx int) {
+	for i := range logs {
+		logs[i].ChannelName = ""
+		var otherMap map[string]interface{}
+		otherMap, _ = common.StrToMap(logs[i].Other)
+		if otherMap != nil {
+			// Remove admin-only debug fields.
+			delete(otherMap, "admin_info")
+			// delete(otherMap, "reject_reason")
+			delete(otherMap, "stream_status")
+		}
+		logs[i].Other = common.MapToJsonStr(otherMap)
+		logs[i].Id = startIdx + i + 1
+	}
+}
+
+func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
+	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
+	formatUserLogs(logs, 0)
+	return logs, err
+}
+
+func RecordLog(userId int, logType int, content string) {
+	if logType == LogTypeConsume && !common.LogConsumeEnabled {
+		return
+	}
+	username, _ := GetUsernameById(userId, false)
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      logType,
+		Content:   content,
+	}
+	err := LOG_DB.Create(log).Error
+	if err != nil {
+		common.SysLog("failed to record log: " + err.Error())
+	}
+}
+
+// RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
+func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo map[string]interface{}) {
+	if logType == LogTypeConsume && !common.LogConsumeEnabled {
+		return
+	}
+	username, _ := GetUsernameById(userId, false)
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      logType,
+		Content:   content,
+	}
+	if len(adminInfo) > 0 {
+		other := map[string]interface{}{
+			"admin_info": adminInfo,
+		}
+		log.Other = common.MapToJsonStr(other)
+	}
+	if err := LOG_DB.Create(log).Error; err != nil {
+		common.SysLog("failed to record log: " + err.Error())
+	}
+}
+
+const paymentAuditSchemaVersion = 2
+
+// PaymentAuditInfo describes how a balance-affecting payment event reached the
+// application. Keep provider payloads and credentials out of this structure.
+type PaymentAuditInfo struct {
+	Event                 string
+	Source                string
+	TradeNo               string
+	ProviderTradeNo       string
+	ReferenceId           string
+	PaymentMethod         string
+	PaymentProvider       string
+	CallbackPaymentMethod string
+	CallerIp              string
+}
+
+func paymentAuditServerIp() string {
+	if configured := strings.TrimSpace(os.Getenv("AUDIT_SERVER_IP")); configured != "" {
+		return configured
+	}
+	return strings.TrimSpace(common.GetIp())
+}
+
+func paymentAuditNodeName() string {
+	if configured := strings.TrimSpace(common.NodeName); configured != "" {
+		return configured
+	}
+	hostname, _ := os.Hostname()
+	return strings.TrimSpace(hostname)
+}
+
+func normalizePaymentAuditSource(source string, callerIp *string) string {
+	source = strings.TrimSpace(source)
+	*callerIp = strings.TrimSpace(*callerIp)
+	if *callerIp != "" && net.ParseIP(*callerIp) == nil {
+		source = *callerIp
+		*callerIp = ""
+	}
+	return source
+}
+
+func buildPaymentAuditAdminInfo(audit PaymentAuditInfo) map[string]interface{} {
+	audit.Source = normalizePaymentAuditSource(audit.Source, &audit.CallerIp)
+	adminInfo := map[string]interface{}{
+		"audit_schema_version": paymentAuditSchemaVersion,
+		"server_ip":            paymentAuditServerIp(),
+		"node_name":            paymentAuditNodeName(),
+		"version":              strings.TrimSpace(common.Version),
+	}
+	fields := map[string]string{
+		"event":                   audit.Event,
+		"source":                  audit.Source,
+		"trade_no":                audit.TradeNo,
+		"provider_trade_no":       audit.ProviderTradeNo,
+		"reference_id":            audit.ReferenceId,
+		"payment_method":          audit.PaymentMethod,
+		"payment_provider":        audit.PaymentProvider,
+		"callback_payment_method": audit.CallbackPaymentMethod,
+		"caller_ip":               audit.CallerIp,
+	}
+	for key, value := range fields {
+		if value = strings.TrimSpace(value); value != "" {
+			adminInfo[key] = value
+		}
+	}
+	return adminInfo
+}
+
+func RecordPaymentLog(userId int, content string, audit PaymentAuditInfo) {
+	if audit.Event == "topup_completed" && audit.TradeNo != "" {
+		if err := GrantInviteRewardAfterPayment(audit.TradeNo); err != nil {
+			common.SysLog(fmt.Sprintf("failed to settle affiliate reward for trade %s: %v", audit.TradeNo, err))
+		}
+		if err := SettleAffiliateMilestoneRebate(audit.TradeNo); err != nil {
+			common.SysLog(fmt.Sprintf("failed to settle affiliate milestone rebate for trade %s: %v", audit.TradeNo, err))
+		}
+	}
+	username, _ := GetUsernameById(userId, false)
+	callerIp := strings.TrimSpace(audit.CallerIp)
+	adminInfo := buildPaymentAuditAdminInfo(audit)
+	if value, ok := adminInfo["caller_ip"].(string); ok {
+		callerIp = value
+	} else {
+		callerIp = ""
+	}
+	other := map[string]interface{}{
+		"admin_info": adminInfo,
+	}
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeTopup,
+		Content:   content,
+		Ip:        callerIp,
+		Other:     common.MapToJsonStr(other),
+	}
+	if err := LOG_DB.Create(log).Error; err != nil {
+		common.SysLog("failed to record payment log: " + err.Error())
+	}
+}
+
+func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
+	RecordPaymentLog(userId, content, PaymentAuditInfo{
+		Event:                 "topup_completed",
+		Source:                "callback",
+		PaymentMethod:         paymentMethod,
+		PaymentProvider:       callbackPaymentMethod,
+		CallbackPaymentMethod: callbackPaymentMethod,
+		CallerIp:              callerIp,
+	})
+}
+
+func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
+	isStream bool, group string, other map[string]interface{}) {
+	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
+	username := c.GetString("username")
+	requestId := c.GetString(common.RequestIdKey)
+	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
+	other = appendIngressLogInfo(c, other)
+	otherStr := common.MapToJsonStr(other)
+	// 判断是否需要记录 IP
+	needRecordIp := false
+	if settingMap, err := GetUserSetting(userId, false); err == nil {
+		if settingMap.RecordIpLog {
+			needRecordIp = true
+		}
+	}
+	log := &Log{
+		UserId:           userId,
+		Username:         username,
+		CreatedAt:        common.GetTimestamp(),
+		Type:             LogTypeError,
+		Content:          content,
+		PromptTokens:     0,
+		CompletionTokens: 0,
+		TokenName:        tokenName,
+		ModelName:        modelName,
+		Quota:            0,
+		ChannelId:        channelId,
+		TokenId:          tokenId,
+		UseTime:          useTimeSeconds,
+		IsStream:         isStream,
+		Group:            group,
+		Ip: func() string {
+			if needRecordIp {
+				return c.ClientIP()
+			}
+			return ""
+		}(),
+		RequestId:         requestId,
+		UpstreamRequestId: upstreamRequestId,
+		Other:             otherStr,
+	}
+	err := LOG_DB.Create(log).Error
+	if err != nil {
+		logger.LogError(c, "failed to record log: "+err.Error())
+	}
+}
+
+type RecordConsumeLogParams struct {
+	ChannelId        int                    `json:"channel_id"`
+	PromptTokens     int                    `json:"prompt_tokens"`
+	CompletionTokens int                    `json:"completion_tokens"`
+	ModelName        string                 `json:"model_name"`
+	TokenName        string                 `json:"token_name"`
+	Quota            int                    `json:"quota"`
+	Content          string                 `json:"content"`
+	TokenId          int                    `json:"token_id"`
+	UseTimeSeconds   int                    `json:"use_time_seconds"`
+	IsStream         bool                   `json:"is_stream"`
+	Group            string                 `json:"group"`
+	Other            map[string]interface{} `json:"other"`
+}
+
+func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	if !common.LogConsumeEnabled {
+		return
+	}
+	// The complete accounting and relay trace are persisted in Log.Other below.
+	// Keep the text log concise so high request volume does not duplicate large
+	// JSON documents into both the application log and the system journal.
+	logger.LogInfo(c, fmt.Sprintf(
+		"record consume log: user_id=%d channel_id=%d token_id=%d model=%q group=%q prompt_tokens=%d completion_tokens=%d quota=%d stream=%t use_time_s=%d",
+		userId,
+		params.ChannelId,
+		params.TokenId,
+		params.ModelName,
+		params.Group,
+		params.PromptTokens,
+		params.CompletionTokens,
+		params.Quota,
+		params.IsStream,
+		params.UseTimeSeconds,
+	))
+	username := c.GetString("username")
+	requestId := c.GetString(common.RequestIdKey)
+	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
+	params.Other = appendIngressLogInfo(c, params.Other)
+	otherStr := common.MapToJsonStr(params.Other)
+	// 判断是否需要记录 IP
+	needRecordIp := false
+	if settingMap, err := GetUserSetting(userId, false); err == nil {
+		if settingMap.RecordIpLog {
+			needRecordIp = true
+		}
+	}
+	log := &Log{
+		UserId:           userId,
+		Username:         username,
+		CreatedAt:        common.GetTimestamp(),
+		Type:             LogTypeConsume,
+		Content:          params.Content,
+		PromptTokens:     params.PromptTokens,
+		CompletionTokens: params.CompletionTokens,
+		TokenName:        params.TokenName,
+		ModelName:        params.ModelName,
+		Quota:            params.Quota,
+		ChannelId:        params.ChannelId,
+		TokenId:          params.TokenId,
+		UseTime:          params.UseTimeSeconds,
+		IsStream:         params.IsStream,
+		Group:            params.Group,
+		Ip: func() string {
+			if needRecordIp {
+				return c.ClientIP()
+			}
+			return ""
+		}(),
+		RequestId:         requestId,
+		UpstreamRequestId: upstreamRequestId,
+		Other:             otherStr,
+	}
+	err := LOG_DB.Create(log).Error
+	if err != nil {
+		logger.LogError(c, "failed to record log: "+err.Error())
+	}
+	if common.DataExportEnabled {
+		gopool.Go(func() {
+			LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
+		})
+	}
+}
+
+type RecordTaskBillingLogParams struct {
+	UserId    int
+	LogType   int
+	Content   string
+	ChannelId int
+	ModelName string
+	Quota     int
+	TokenId   int
+	Group     string
+	Other     map[string]interface{}
+}
+
+func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
+	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
+		return
+	}
+	username, _ := GetUsernameById(params.UserId, false)
+	tokenName := ""
+	if params.TokenId > 0 {
+		if token, err := GetTokenById(params.TokenId); err == nil {
+			tokenName = token.Name
+		}
+	}
+	log := &Log{
+		UserId:    params.UserId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      params.LogType,
+		Content:   params.Content,
+		TokenName: tokenName,
+		ModelName: params.ModelName,
+		Quota:     params.Quota,
+		ChannelId: params.ChannelId,
+		TokenId:   params.TokenId,
+		Group:     params.Group,
+		Other:     common.MapToJsonStr(params.Other),
+	}
+	err := LOG_DB.Create(log).Error
+	if err != nil {
+		common.SysLog("failed to record task billing log: " + err.Error())
+	}
+}
+
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, mediaKind ...string) (logs []*Log, total int64, err error) {
+	var tx *gorm.DB
+	if logType == LogTypeUnknown {
+		tx = LOG_DB
+	} else {
+		tx = LOG_DB.Where("logs.type = ?", logType)
+	}
+
+	tx = applyMediaLogFilter(tx, mediaKind)
+
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
+		return nil, 0, err
+	}
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.username", username); err != nil {
+		return nil, 0, err
+	}
+	if tokenName != "" {
+		tx = tx.Where("logs.token_name = ?", tokenName)
+	}
+	if requestId != "" {
+		tx = tx.Where("logs.request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	}
+	if channel != 0 {
+		tx = tx.Where("logs.channel_id = ?", channel)
+	}
+	if group != "" {
+		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	err = tx.Model(&Log{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	err = tx.Order("logs.created_at desc, logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	channelIds := types.NewSet[int]()
+	for _, log := range logs {
+		if log.ChannelId != 0 {
+			channelIds.Add(log.ChannelId)
+		}
+	}
+
+	if channelIds.Len() > 0 {
+		var channels []struct {
+			Id   int    `gorm:"column:id"`
+			Name string `gorm:"column:name"`
+		}
+		if common.MemoryCacheEnabled {
+			// Cache get channel
+			for _, channelId := range channelIds.Items() {
+				if cacheChannel, err := CacheGetChannel(channelId); err == nil {
+					channels = append(channels, struct {
+						Id   int    `gorm:"column:id"`
+						Name string `gorm:"column:name"`
+					}{
+						Id:   channelId,
+						Name: cacheChannel.Name,
+					})
+				}
+			}
+		} else {
+			// Bulk query channels from DB
+			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+				return logs, total, err
+			}
+		}
+		channelMap := make(map[int]string, len(channels))
+		for _, channel := range channels {
+			channelMap[channel.Id] = channel.Name
+		}
+		for i := range logs {
+			logs[i].ChannelName = channelMap[logs[i].ChannelId]
+		}
+	}
+
+	return logs, total, err
+}
+
+const logSearchCountLimit = 10000
+
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, mediaKind ...string) (logs []*Log, total int64, err error) {
+	var tx *gorm.DB
+	if logType == LogTypeUnknown {
+		tx = LOG_DB.Where("logs.user_id = ?", userId)
+	} else {
+		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+	}
+
+	tx = applyMediaLogFilter(tx, mediaKind)
+
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
+		return nil, 0, err
+	}
+	if tokenName != "" {
+		tx = tx.Where("logs.token_name = ?", tokenName)
+	}
+	if requestId != "" {
+		tx = tx.Where("logs.request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	}
+	if group != "" {
+		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
+	if err != nil {
+		common.SysError("failed to count user logs: " + err.Error())
+		return nil, 0, errors.New("查询日志失败")
+	}
+	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	if err != nil {
+		common.SysError("failed to search user logs: " + err.Error())
+		return nil, 0, errors.New("查询日志失败")
+	}
+
+	formatUserLogs(logs, startIdx)
+	return logs, total, err
+}
+
+type Stat struct {
+	Quota int `json:"quota"`
+	Rpm   int `json:"rpm"`
+	Tpm   int `json:"tpm"`
+}
+
+// applyNonAdminLogScope keeps administrative traffic visible in the log table,
+// but excludes it from aggregate usage statistics. Admin requests are control
+// plane activity and must not inflate the user-facing total cost or throughput
+// figures shown on the usage-logs page.
+func applyNonAdminLogScope(tx *gorm.DB) (*gorm.DB, error) {
+	if DB == nil {
+		return tx, nil
+	}
+
+	var adminUserIDs []int
+	if err := DB.Model(&User{}).
+		Where("role >= ?", common.RoleAdminUser).
+		Pluck("id", &adminUserIDs).Error; err != nil {
+		return nil, err
+	}
+	if len(adminUserIDs) > 0 {
+		tx = tx.Where("user_id NOT IN ?", adminUserIDs)
+	}
+	return tx, nil
+}
+
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, mediaKind ...string) (stat Stat, err error) {
+	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
+
+	// 为rpm和tpm创建单独的查询
+	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
+
+	tx = applyMediaLogFilter(tx, mediaKind)
+	rpmTpmQuery = applyMediaLogFilter(rpmTpmQuery, mediaKind)
+
+	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "username", username); err != nil {
+		return stat, err
+	}
+	if tokenName != "" {
+		tx = tx.Where("token_name = ?", tokenName)
+		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if tx, err = applyExplicitLogTextFilter(tx, "model_name", modelName); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "model_name", modelName); err != nil {
+		return stat, err
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
+		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
+	}
+	if group != "" {
+		tx = tx.Where(logGroupCol+" = ?", group)
+		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+	if tx, err = applyNonAdminLogScope(tx); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyNonAdminLogScope(rpmTpmQuery); err != nil {
+		return stat, err
+	}
+
+	tx = tx.Where("type = ?", LogTypeConsume)
+	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
+
+	// 只统计最近60秒的rpm和tpm
+	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
+
+	// 执行查询
+	if err := tx.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query log stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query rpm/tpm stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	return stat, nil
+}
+
+func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
+	tx := LOG_DB.Table("logs").Select("ifnull(sum(prompt_tokens),0) + ifnull(sum(completion_tokens),0)")
+	if username != "" {
+		tx = tx.Where("username = ?", username)
+	}
+	if tokenName != "" {
+		tx = tx.Where("token_name = ?", tokenName)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if modelName != "" {
+		tx = tx.Where("model_name = ?", modelName)
+	}
+	tx.Where("type = ?", LogTypeConsume).Scan(&token)
+	return token
+}
+
+func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {
+	var total int64 = 0
+
+	for {
+		if nil != ctx.Err() {
+			return total, ctx.Err()
+		}
+
+		result := LOG_DB.Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
+		if nil != result.Error {
+			return total, result.Error
+		}
+
+		total += result.RowsAffected
+
+		if result.RowsAffected < int64(limit) {
+			break
+		}
+	}
+
+	return total, nil
+}

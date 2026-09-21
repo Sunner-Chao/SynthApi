@@ -25,7 +25,7 @@ ORG=""
 NO_SET_REMOTE=false
 NO_PUSH=false
 NO_CONFIG=false
-SHOW_HELP=false
+VISIBILITY_SET=false
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
@@ -40,10 +40,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--private)
             PRIVATE=true
+            VISIBILITY_SET=true
             shift
             ;;
         --public)
             PRIVATE=false
+            VISIBILITY_SET=true
             shift
             ;;
         --protocol)
@@ -75,8 +77,8 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            SHOW_HELP=true
-            shift
+            show_help
+            exit 0
             ;;
         *)
             shift
@@ -137,13 +139,11 @@ read_choice() {
         read -r input
 
         if [[ -z "$input" ]]; then
-            CHOICE_RESULT="$default"
-            return 0
+            return "$default"
         fi
 
         if [[ "$input" =~ ^[0-9]+$ ]] && [[ "$input" -ge 1 ]] && [[ "$input" -le "$max" ]]; then
-            CHOICE_RESULT="$input"
-            return 0
+            return "$input"
         fi
 
         error "输入无效，请输入 1-$max"
@@ -221,10 +221,10 @@ create_with_gh() {
         args+=(--description "$desc")
     fi
 
-    step "使用 gh 创建 GitHub 仓库" >&2
-    info "目标仓库: $target" >&2
+    step "使用 gh 创建 GitHub 仓库"
+    info "目标仓库: $target"
 
-    gh "${args[@]}" >&2 || true
+    gh "${args[@]}" 2>&1 || true
 
     local repo_json
     repo_json=$(gh repo view "$target" --json url,sshUrl,nameWithOwner,visibility 2>/dev/null)
@@ -248,11 +248,11 @@ create_with_api() {
     local uri
     if [[ -n "$org" ]]; then
         uri="orgs/$org/repos"
-        step "通过 GitHub API 创建组织仓库" >&2
-        info "组织: $org" >&2
+        step "通过 GitHub API 创建组织仓库"
+        info "组织: $org"
     else
         uri="user/repos"
-        step "通过 GitHub API 创建个人仓库" >&2
+        step "通过 GitHub API 创建个人仓库"
     fi
 
     local result
@@ -263,7 +263,7 @@ create_with_api() {
 
 get_repo_info_from_json() {
     local json="$1"
-    printf '%s' "$json" | python3 -c "
+    python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 print(f\"{data.get('nameWithOwner', data.get('full_name', ''))}|{data.get('url', data.get('html_url', ''))}|{data.get('sshUrl', data.get('ssh_url', ''))}|{data.get('visibility', 'public' if not data.get('private', False) else 'private')}\")
@@ -285,16 +285,10 @@ ensure_remote() {
     step "配置 Git 远程"
     if [[ -n "$existing" ]]; then
         info "更新远程 $REMOTE_NAME -> $remote_url"
-        if ! git remote set-url "$REMOTE_NAME" "$remote_url"; then
-            error "更新远程 $REMOTE_NAME 失败"
-            exit 1
-        fi
+        git remote set-url "$REMOTE_NAME" "$remote_url"
     else
         info "新增远程 $REMOTE_NAME -> $remote_url"
-        if ! git remote add "$REMOTE_NAME" "$remote_url"; then
-            error "新增远程 $REMOTE_NAME 失败"
-            exit 1
-        fi
+        git remote add "$REMOTE_NAME" "$remote_url"
     fi
 }
 
@@ -325,10 +319,7 @@ ensure_initial_push() {
 
     step "初次推送"
     info "推送当前分支到远程..."
-    if ! git push -u "$REMOTE_NAME" "$branch"; then
-        error "初次推送失败，请检查远程仓库权限、SSH/HTTPS 认证或分支保护设置"
-        exit 1
-    fi
+    git push -u "$REMOTE_NAME" "$branch"
 }
 
 # ===== 权限管理函数 =====
@@ -356,7 +347,7 @@ set_visibility() {
         "$default_num"
 
     read_choice "请选择" 2 "$default_num"
-    local choice="$CHOICE_RESULT"
+    local choice=$?
 
     local new_visibility
     if [[ $choice -eq 1 ]]; then
@@ -468,7 +459,7 @@ manage_collaborators() {
         1
 
     read_choice "请选择操作" 3 1
-    local action="$CHOICE_RESULT"
+    local action=$?
 
     if [[ $action -eq 3 ]]; then return; fi
 
@@ -498,7 +489,7 @@ manage_collaborators() {
         echo -e "${GRAY}  $i. 返回上级${NC}"
 
         read_choice "请选择" "$i" "$i"
-        local select="$CHOICE_RESULT"
+        local select=$?
 
         if [[ $select -eq $i ]]; then return; fi
 
@@ -532,7 +523,7 @@ manage_collaborators() {
             3
 
         read_choice "请选择权限" 6 3
-        local perm_choice="$CHOICE_RESULT"
+        local perm_choice=$?
 
         if [[ $perm_choice -eq 6 ]]; then
             warn "已取消"
@@ -579,7 +570,7 @@ configure_permissions() {
         1
 
     read_choice "请选择" 2 1
-    local config_choice="$CHOICE_RESULT"
+    local config_choice=$?
 
     if [[ $config_choice -eq 2 ]]; then
         echo "$initial_visibility"
@@ -597,7 +588,7 @@ configure_permissions() {
             4
 
         read_choice "请选择操作" 4 4
-        local choice="$CHOICE_RESULT"
+        local choice=$?
 
         case $choice in
             1) show_repo_status "$repo" "$current_visibility" ;;
@@ -646,11 +637,6 @@ GitHub 仓库创建与权限管理工具
 EOF
 }
 
-if [[ "$SHOW_HELP" == "true" ]]; then
-    show_help
-    exit 0
-fi
-
 # ===== 交互式询问 =====
 
 ask_interactive() {
@@ -663,48 +649,15 @@ ask_interactive() {
         fi
     fi
 
-    # 询问仓库归属。--org 参数已指定时跳过此步骤。
-    if [[ -z "$ORG" ]]; then
-        show_menu "选择仓库归属" \
-            "personal - 个人仓库" \
-            "organization - 组织仓库" \
-            1
-
-        read_choice "请选择" 2 1
-        local owner_choice="$CHOICE_RESULT"
-
-        if [[ "$owner_choice" -eq 2 ]]; then
-            local available_orgs=()
-            if command -v gh &> /dev/null && gh auth status &> /dev/null; then
-                mapfile -t available_orgs < <(gh api user/orgs --paginate --jq '.[].login' 2>/dev/null)
-            fi
-
-            if [[ "${#available_orgs[@]}" -eq 1 ]]; then
-                ORG="${available_orgs[0]}"
-                info "使用组织: $ORG"
-            elif [[ "${#available_orgs[@]}" -gt 1 ]]; then
-                show_menu "选择 GitHub 组织" "${available_orgs[@]}" 1
-                read_choice "请选择" "${#available_orgs[@]}" 1
-                ORG="${available_orgs[$((CHOICE_RESULT - 1))]}"
-            else
-                echo -e "${CYAN}请输入 GitHub 组织名称${NC}"
-                read -r ORG
-                if [[ -z "$ORG" ]]; then
-                    error "组织名称不能为空"
-                    exit 1
-                fi
-            fi
-        fi
-    fi
     # 询问可见性
-    if [[ "$PRIVATE" != "true" ]] && [[ -z "$PS_PRIVATE" ]]; then
+    if [[ "$VISIBILITY_SET" != "true" ]]; then
         show_menu "选择仓库可见性" \
             "public - 公开" \
             "private - 私有" \
             1
 
         read_choice "请选择" 2 1
-        local vis_choice="$CHOICE_RESULT"
+        local vis_choice=$?
         if [[ $vis_choice -eq 2 ]]; then
             PRIVATE=true
         fi

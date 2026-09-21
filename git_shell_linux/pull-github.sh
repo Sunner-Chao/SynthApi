@@ -156,7 +156,7 @@ normalize_version_ref() {
 }
 
 get_remote_version_tags() {
-    git ls-remote --tags origin 2>/dev/null | while read -r line; do
+    git ls-remote --tags origin 2>/dev/null | while read line; do
         if [ -z "$line" ]; then continue; fi
         ref=$(echo "$line" | awk '{print $2}')
         if [ -z "$ref" ]; then continue; fi
@@ -199,12 +199,7 @@ resolve_version_choice() {
         requested=''
     fi
     
-    remote_tags=()
-    while IFS= read -r tag; do
-        if [ -n "$tag" ]; then
-            remote_tags+=("$tag")
-        fi
-    done < <(get_remote_version_tags)
+    mapfile -t remote_tags < <(get_remote_version_tags)
     if [ ${#remote_tags[@]} -eq 0 ]; then
         echo -e "\033[33m[pull-github] 当前远端没有可用版本标签，将继续使用默认分支。\033[0m"
         VERSION_CHOICE_RESULT=""
@@ -283,7 +278,8 @@ ensure_origin_url() {
     
     local current_origin=$(git remote get-url origin 2>/dev/null || true)
     if [ -z "$current_origin" ]; then
-        if ! git remote add origin "$resolved_repository_url"; then
+        git remote add origin "$resolved_repository_url"
+        if [ $? -ne 0 ]; then
             echo "配置 origin 远程失败。" >&2
             exit 1
         fi
@@ -291,7 +287,8 @@ ensure_origin_url() {
     fi
     
     if [ "$(echo "$current_origin" | tr -d '[:space:]')" != "$(echo "$resolved_repository_url" | tr -d '[:space:]')" ]; then
-        if ! git remote set-url origin "$resolved_repository_url"; then
+        git remote set-url origin "$resolved_repository_url"
+        if [ $? -ne 0 ]; then
             echo "更新 origin 远程失败。" >&2
             exit 1
         fi
@@ -300,10 +297,6 @@ ensure_origin_url() {
 
 get_status_lines() {
     git status --short 2>/dev/null || true
-}
-
-trim_count() {
-    echo "$1" | tr -d '[:space:]'
 }
 
 has_unmerged_files() {
@@ -320,18 +313,18 @@ write_status_summary() {
     
     local tracked=$(echo "$lines" | grep -v '^??' | wc -l)
     local untracked=$(echo "$lines" | grep '^??' | wc -l)
-    echo -e "\033[33m[pull-github] 当前工作区存在改动：已跟踪改动 $(trim_count "$tracked") 个，未跟踪文件 $(trim_count "$untracked") 个。\033[0m"
+    echo -e "\033[33m[pull-github] 当前工作区存在改动：已跟踪改动 ${tracked##*( )} 个，未跟踪文件 ${untracked##*( )} 个。\033[0m"
 }
 
 get_remote_default_branch() {
     local head_info=$(git ls-remote --symref origin HEAD 2>/dev/null || true)
-    local branch=$(echo "$head_info" | awk '/^ref:/ { sub(/^refs\/heads\//, "", $2); print $2; exit }')
-    if [ -z "$branch" ]; then
+    local head_line=$(echo "$head_info" | grep '^ref:' | head -1)
+    if [ -z "$head_line" ]; then
         echo ""
         return
     fi
     
-    echo "$branch" | tr -d '[:space:]'
+    echo "$head_line" | sed -E 's|^ref:\s*refs/heads/(\S+).*|\1|'
 }
 
 ensure_local_branch() {
@@ -344,15 +337,14 @@ ensure_local_branch() {
     fi
     
     if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
-        if ! git checkout "$branch"; then
-            echo "切换到分支 $branch 失败。" >&2
-            exit 1
-        fi
+        git checkout "$branch"
     else
-        if ! git checkout -b "$branch" --track "origin/$branch"; then
-            echo "切换到分支 $branch 失败。" >&2
-            exit 1
-        fi
+        git checkout -b "$branch" --track "origin/$branch"
+    fi
+    
+    if [ $? -ne 0 ]; then
+        echo "切换到分支 $branch 失败。" >&2
+        exit 1
     fi
 }
 
@@ -360,17 +352,20 @@ invoke_full_branch_pull() {
     local branch="$1"
     
     echo -e "\033[36m[pull-github] 全量拉取默认分支: $branch\033[0m"
-    if ! git checkout -f -B "$branch" "origin/$branch"; then
+    git checkout -f -B "$branch" "origin/$branch"
+    if [ $? -ne 0 ]; then
         echo "检出远端分支 $branch 失败。" >&2
         exit 1
     fi
     
-    if ! git reset --hard "origin/$branch"; then
+    git reset --hard "origin/$branch"
+    if [ $? -ne 0 ]; then
         echo "git reset --hard 失败。" >&2
         exit 1
     fi
     
-    if ! git clean -fd; then
+    git clean -fd
+    if [ $? -ne 0 ]; then
         echo "git clean -fd 失败。" >&2
         exit 1
     fi
@@ -387,7 +382,8 @@ invoke_update_branch_pull() {
     ensure_local_branch "$branch"
     write_status_summary "$(get_status_lines)"
     echo -e "\033[36m[pull-github] 拉取默认分支最新更新...\033[0m"
-    if ! git pull --rebase --autostash origin "$branch"; then
+    git pull --rebase --autostash origin "$branch"
+    if [ $? -ne 0 ]; then
         echo "git pull --rebase 失败。常见原因：本地冲突、远端变更复杂或当前工作区不干净。" >&2
         exit 1
     fi
@@ -399,7 +395,8 @@ invoke_full_version_pull() {
     echo -e "\033[36m[pull-github] 全量切换到版本标签: $version_ref\033[0m"
     git reset --hard HEAD >/dev/null 2>&1 || true
     git clean -fd >/dev/null 2>&1 || true
-    if ! git checkout -f "$version_ref"; then
+    git checkout -f "$version_ref"
+    if [ $? -ne 0 ]; then
         echo "切换到版本标签 $version_ref 失败。" >&2
         exit 1
     fi
@@ -415,14 +412,15 @@ invoke_update_version_pull() {
     
     local status_lines=$(get_status_lines)
     local tracked_changes=$(echo "$status_lines" | grep -v '^??' | wc -l)
-    if [ "$(trim_count "$tracked_changes")" -gt 0 ]; then
+    if [ "${tracked_changes##*( )}" -gt 0 ]; then
         echo "当前工作区存在已跟踪改动，无法安全切换到指定版本 $version_ref。请先提交/清理，或改用全量拉取。" >&2
         exit 1
     fi
     
     write_status_summary "$status_lines"
     echo -e "\033[36m[pull-github] 切换到版本标签: $version_ref\033[0m"
-    if ! git checkout "$version_ref"; then
+    git checkout "$version_ref"
+    if [ $? -ne 0 ]; then
         echo "切换到版本标签 $version_ref 失败。" >&2
         exit 1
     fi
@@ -439,21 +437,24 @@ pull_submodules() {
     echo -e "\033[36m[pull-github] 检测到子模块，开始同步子模块...\033[0m"
 
     # 确保子模块已初始化
-    if ! git submodule init; then
+    git submodule init
+    if [ $? -ne 0 ]; then
         echo -e "\033[33m[pull-github] git submodule init 失败，跳过子模块同步。\033[0m" >&2
         return
     fi
 
     if [ "$pull_mode" = "full_override" ]; then
         # 全量模式：强制更新子模块到远端对应提交
-        if ! git submodule update --init --force --recursive; then
+        git submodule update --init --force --recursive
+        if [ $? -ne 0 ]; then
             echo -e "\033[33m[pull-github] 子模块全量更新失败，请手动检查。\033[0m" >&2
             return
         fi
         echo -e "\033[32m[pull-github] 子模块已全量同步完成。\033[0m"
     else
         # 更新模式：拉取子模块远端最新内容
-        if ! git submodule update --init --recursive --remote; then
+        git submodule update --init --recursive --remote
+        if [ $? -ne 0 ]; then
             echo -e "\033[33m[pull-github] 子模块更新失败，请手动检查。\033[0m" >&2
             return
         fi
@@ -466,7 +467,8 @@ ensure_repository_context
 ensure_origin_url "$resolved_repository_url"
 
 echo -e "\033[36m[pull-github] 获取远端最新信息...\033[0m"
-if ! git fetch --tags origin; then
+git fetch --tags origin
+if [ $? -ne 0 ]; then
     echo "git fetch 失败。请先检查远端仓库地址、SSH 配置或网络。" >&2
     exit 1
 fi

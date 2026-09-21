@@ -1,0 +1,428 @@
+package service
+
+import (
+	"errors"
+	"math"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/gin-gonic/gin"
+)
+
+const (
+	smartFailoverMaxCandidates        = 4
+	smartFailoverMaxPriceIncreaseRate = 0.35
+	routePerfHintHours                = 24
+	routePerfHintTTL                  = time.Minute
+	routePerfMinRequests              = 5
+	routeNeutralScore                 = 50.0
+)
+
+type smartFailoverGroupState struct {
+	BaseGroup string
+	ModelName string
+	Groups    []string
+	Index     int
+}
+
+type RetryParam struct {
+	Ctx          *gin.Context
+	TokenGroup   string
+	ModelName    string
+	Retry        *int
+	resetNextTry bool
+	skipDepth    int
+}
+
+func (p *RetryParam) GetRetry() int {
+	if p.Retry == nil {
+		return 0
+	}
+	return *p.Retry
+}
+
+func (p *RetryParam) SetRetry(retry int) {
+	p.Retry = &retry
+}
+
+func (p *RetryParam) IncreaseRetry() {
+	if p.resetNextTry {
+		p.resetNextTry = false
+		return
+	}
+	if p.Retry == nil {
+		p.Retry = new(int)
+	}
+	*p.Retry++
+}
+
+func (p *RetryParam) ResetRetryNextTry() {
+	p.resetNextTry = true
+}
+
+func NextSmartFailoverGroup(c *gin.Context, baseGroup string, modelName string) (string, bool) {
+	baseGroup = strings.TrimSpace(baseGroup)
+	modelName = strings.TrimSpace(modelName)
+	if c == nil || common.RetryTimes <= 0 || !setting.IsAutoCrossGroupRetryEnabled() ||
+		!common.GetContextKeyBool(c, constant.ContextKeyTokenCrossGroupRetry) ||
+		baseGroup == "" || modelName == "" || baseGroup == "auto" {
+		return "", false
+	}
+	if _, isSmartGroup := setting.GetSmartGroupSources(baseGroup); isSmartGroup {
+		return "", false
+	}
+
+	var state *smartFailoverGroupState
+	if value, exists := common.GetContextKey(c, constant.ContextKeySmartFailoverGroups); exists {
+		if cached, ok := value.(*smartFailoverGroupState); ok &&
+			cached.BaseGroup == baseGroup &&
+			cached.ModelName == modelName {
+			state = cached
+		}
+	}
+	if state == nil {
+		state = &smartFailoverGroupState{
+			BaseGroup: baseGroup,
+			ModelName: modelName,
+			Groups:    buildSmartFailoverGroups(c, baseGroup, modelName),
+		}
+		common.SetContextKey(c, constant.ContextKeySmartFailoverGroups, state)
+	}
+
+	for state.Index < len(state.Groups) {
+		group := state.Groups[state.Index]
+		state.Index++
+		if strings.TrimSpace(group) == "" || group == baseGroup {
+			continue
+		}
+		return group, true
+	}
+	return "", false
+}
+
+func buildSmartFailoverGroups(c *gin.Context, baseGroup string, modelName string) []string {
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	usableGroups := GetUserUsableGroups(userGroup)
+	if _, ok := usableGroups[baseGroup]; !ok {
+		return nil
+	}
+
+	baseRatio := GetUserGroupRatio(userGroup, baseGroup)
+	if baseRatio <= 0 {
+		return nil
+	}
+	maxRatio := baseRatio * (1 + smartFailoverMaxPriceIncreaseRate)
+
+	type candidate struct {
+		group string
+		ratio float64
+		diff  float64
+		score float64
+	}
+	hints := perfmetrics.GetGroupRouteHints(modelName, routePerfHintHours, routePerfHintTTL)
+	candidates := make([]candidate, 0)
+	for group := range ratio_setting.GetGroupRatioCopy() {
+		group = strings.TrimSpace(group)
+		if group == "" || group == baseGroup || group == "auto" {
+			continue
+		}
+		if _, ok := usableGroups[group]; !ok {
+			continue
+		}
+		if _, isSmartGroup := setting.GetSmartGroupSources(group); isSmartGroup {
+			continue
+		}
+		ratio := GetUserGroupRatio(userGroup, group)
+		if ratio <= 0 || ratio > maxRatio {
+			continue
+		}
+		channel, err := selectRequestChannel(c, group, modelName, 0)
+		if err != nil || channel == nil {
+			continue
+		}
+		diff := math.Abs(ratio - baseRatio)
+		candidates = append(candidates, candidate{
+			group: group,
+			ratio: ratio,
+			diff:  diff,
+			score: routeGroupSelectionScore(hints[group]),
+		})
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if math.Abs(candidates[i].score-candidates[j].score) > 1 {
+			return candidates[i].score > candidates[j].score
+		}
+		if candidates[i].diff == candidates[j].diff {
+			return candidates[i].ratio < candidates[j].ratio
+		}
+		return candidates[i].diff < candidates[j].diff
+	})
+
+	limit := smartFailoverMaxCandidates
+	if len(candidates) < limit {
+		limit = len(candidates)
+	}
+	groups := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		groups = append(groups, candidates[i].group)
+	}
+	return groups
+}
+
+// CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
+// 尝试获取一个满足要求的随机渠道。
+//
+// For "auto" tokenGroup with cross-group Retry enabled:
+// 对于启用了跨分组重试的 "auto" tokenGroup：
+//
+//   - Each group will exhaust all its priorities before moving to the next group.
+//     每个分组会用完所有优先级后才会切换到下一个分组。
+//
+//   - Uses ContextKeyAutoGroupIndex to track current group index.
+//     使用 ContextKeyAutoGroupIndex 跟踪当前分组索引。
+//
+//   - Uses ContextKeyAutoGroupRetryIndex to track the global Retry count when current group started.
+//     使用 ContextKeyAutoGroupRetryIndex 跟踪当前分组开始时的全局重试次数。
+//
+//   - priorityRetry = Retry - startRetryIndex, represents the priority level within current group.
+//     priorityRetry = Retry - startRetryIndex，表示当前分组内的优先级级别。
+//
+//   - When GetRandomSatisfiedChannel returns nil (priorities exhausted), moves to next group.
+//     当 GetRandomSatisfiedChannel 返回 nil（优先级用完）时，切换到下一个分组。
+//
+// Example flow (2 groups, each with 2 priorities, RetryTimes=3):
+// 示例流程（2个分组，每个有2个优先级，RetryTimes=3）：
+//
+//	Retry=0: GroupA, priority0 (startRetryIndex=0, priorityRetry=0)
+//	         分组A, 优先级0
+//
+//	Retry=1: GroupA, priority1 (startRetryIndex=0, priorityRetry=1)
+//	         分组A, 优先级1
+//
+//	Retry=2: GroupA exhausted → GroupB, priority0 (startRetryIndex=2, priorityRetry=0)
+//	         分组A用完 → 分组B, 优先级0
+//
+//	Retry=3: GroupB, priority1 (startRetryIndex=2, priorityRetry=1)
+//	         分组B, 优先级1
+func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
+	var channel *model.Channel
+	var err error
+	selectGroup := param.TokenGroup
+	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	smartGroups, isSmartGroup := setting.GetSmartGroupSources(param.TokenGroup)
+
+	if param.TokenGroup == "auto" || isSmartGroup {
+		autoGroups := smartGroups
+		if param.TokenGroup == "auto" {
+			autoGroups = GetRequestAutoGroups(param.Ctx, userGroup)
+			// The configured order is part of the request's routing contract. Keep
+			// its snapshot in the context so an admin change takes effect even if
+			// this request is already inside the client/server retry loop.
+			configuredOrder := strings.Join(autoGroups, "\x00")
+			if previousOrder, exists := common.GetContextKey(param.Ctx, constant.ContextKeyAutoGroupOrder); exists {
+				if previous, ok := previousOrder.(string); ok && previous != configuredOrder {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, 0)
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupRetryIndex, 0)
+					param.SetRetry(0)
+					param.ResetRetryNextTry()
+				}
+			}
+			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupOrder, configuredOrder)
+			// Auto order is an explicit priority contract. Keep the configured
+			// order stable so a recovered higher-priority group is tried first.
+			// A failed Auto group is skipped on the client's next retry. If every
+			// group is cooling down, keep the full list as a last-resort route.
+			failedGroups := GetAutoRouteFailedGroups(param.Ctx, param.ModelName)
+			if len(failedGroups) > 0 {
+				availableGroups := make([]string, 0, len(autoGroups))
+				for _, group := range autoGroups {
+					if _, failed := failedGroups[group]; !failed {
+						availableGroups = append(availableGroups, group)
+					}
+				}
+				if len(availableGroups) > 0 {
+					autoGroups = availableGroups
+				}
+			}
+		} else {
+			autoGroups = sortGroupsByRoutePerformance(autoGroups, param.ModelName)
+		}
+		if len(autoGroups) == 0 {
+			if param.TokenGroup == "auto" {
+				return nil, selectGroup, errors.New("auto groups is not enabled")
+			}
+			return nil, selectGroup, errors.New("smart group has no source groups")
+		}
+
+		// startGroupIndex: the group index to start searching from
+		// startGroupIndex: 开始搜索的分组索引
+		startGroupIndex := 0
+		crossGroupRetry := setting.IsAutoCrossGroupRetryEnabled() && common.RetryTimes > 0 &&
+			common.GetContextKeyBool(param.Ctx, constant.ContextKeyTokenCrossGroupRetry)
+
+		if lastGroupIndex, exists := common.GetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex); exists {
+			if idx, ok := lastGroupIndex.(int); ok {
+				startGroupIndex = idx
+			}
+		}
+
+		for i := startGroupIndex; i < len(autoGroups); i++ {
+			autoGroup := autoGroups[i]
+			// Keep the candidate group visible to the caller even when no channel
+			// can be selected. This lets Auto cool down the actual failed group
+			// instead of leaving UsingGroup as the literal "auto" value.
+			selectGroup = autoGroup
+			common.SetContextKey(param.Ctx, constant.ContextKeyUsingGroup, autoGroup)
+			// Calculate priorityRetry for current group
+			// 计算当前分组的 priorityRetry
+			priorityRetry := param.GetRetry()
+			// If moved to a new group, reset priorityRetry and update startRetryIndex
+			// 如果切换到新分组，重置 priorityRetry 并更新 startRetryIndex
+			if i > startGroupIndex {
+				priorityRetry = 0
+			}
+			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
+
+			channel, _ = selectRequestChannel(param.Ctx, autoGroup, param.ModelName, priorityRetry)
+			if ShouldSkipChannelForImportedAccountFailover(param.Ctx, channel) {
+				MarkImportedAccountChannelExcluded(param.Ctx, channel.Id)
+				if param.skipDepth > 100 {
+					return nil, selectGroup, errors.New("no imported account channel available after low quota filtering")
+				}
+				param.skipDepth++
+				defer func() {
+					param.skipDepth--
+				}()
+				param.ResetRetryNextTry()
+				return CacheGetRandomSatisfiedChannel(param)
+			}
+			if channel == nil {
+				if param.GetRetry() > 0 && !crossGroupRetry {
+					break
+				}
+				// Current group has no available channel for this model, try next group
+				// 当前分组没有该模型的可用渠道，尝试下一个分组
+				logger.LogDebug(param.Ctx, "No available channel in group %s for model %s at priorityRetry %d, trying next group", autoGroup, param.ModelName, priorityRetry)
+				// 重置状态以尝试下一个分组
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupRetryIndex, 0)
+				// Reset retry counter so outer loop can continue for next group
+				// 重置重试计数器，以便外层循环可以为下一个分组继续
+				param.SetRetry(0)
+				continue
+			}
+			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, autoGroup)
+			if param.TokenGroup == "auto" {
+				MarkAutoRouteSelection(param.Ctx, param.ModelName, autoGroup)
+			}
+			selectGroup = autoGroup
+			logger.LogDebug(param.Ctx, "Auto selected group: %s", autoGroup)
+
+			// Prepare state for next retry
+			// 为下一次重试准备状态
+			if crossGroupRetry && priorityRetry >= common.RetryTimes {
+				// Current group has exhausted all retries, prepare to switch to next group
+				// This request still uses current group, but next retry will use next group
+				// 当前分组已用完所有重试次数，准备切换到下一个分组
+				// 本次请求仍使用当前分组，但下次重试将使用下一个分组
+				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (priorityRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, priorityRetry, common.RetryTimes)
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
+				// Reset retry counter so outer loop can continue for next group
+				// 重置重试计数器，以便外层循环可以为下一个分组继续
+				param.SetRetry(0)
+				param.ResetRetryNextTry()
+			} else {
+				// Stay in current group, save current state
+				// 保持在当前分组，保存当前状态
+				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i)
+			}
+			break
+		}
+	} else {
+		channel, err = selectRequestChannel(param.Ctx, param.TokenGroup, param.ModelName, param.GetRetry())
+		if err == nil && ShouldSkipChannelForImportedAccountFailover(param.Ctx, channel) {
+			MarkImportedAccountChannelExcluded(param.Ctx, channel.Id)
+			if param.skipDepth > 100 {
+				return nil, param.TokenGroup, errors.New("no imported account channel available after low quota filtering")
+			}
+			param.skipDepth++
+			defer func() {
+				param.skipDepth--
+			}()
+			param.ResetRetryNextTry()
+			return CacheGetRandomSatisfiedChannel(param)
+		}
+		if err != nil {
+			return nil, param.TokenGroup, err
+		}
+	}
+	if channel == nil && HasChannelCapacityExclusions(param.Ctx) {
+		return nil, selectGroup, ErrAllChannelsAtCapacity
+	}
+	return channel, selectGroup, nil
+}
+
+func CacheGetRandomSatisfiedChannelWaiting(param *RetryParam, maxWait time.Duration) (*model.Channel, string, error, time.Duration) {
+	started := time.Now()
+	deadline := started.Add(maxWait)
+	for {
+		channel, group, err := CacheGetRandomSatisfiedChannel(param)
+		if !errors.Is(err, ErrAllChannelsAtCapacity) || maxWait <= 0 {
+			return channel, group, err, time.Since(started)
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, group, err, time.Since(started)
+		}
+		if !WaitForChannelCapacityChange(param.Ctx.Request.Context(), remaining) {
+			return nil, group, err, time.Since(started)
+		}
+		clearRequestCapacityExclusions(param.Ctx)
+	}
+}
+
+func sortGroupsByRoutePerformance(groups []string, modelName string) []string {
+	if len(groups) < 2 {
+		return groups
+	}
+	hints := perfmetrics.GetGroupRouteHints(modelName, routePerfHintHours, routePerfHintTTL)
+	if len(hints) == 0 {
+		return groups
+	}
+	sortedGroups := append([]string(nil), groups...)
+	sort.SliceStable(sortedGroups, func(i, j int) bool {
+		left := routeGroupSelectionScore(hints[sortedGroups[i]])
+		right := routeGroupSelectionScore(hints[sortedGroups[j]])
+		if math.Abs(left-right) <= 1 {
+			return false
+		}
+		return left > right
+	})
+	return sortedGroups
+}
+
+func routeGroupSelectionScore(hint perfmetrics.GroupRouteHint) float64 {
+	if hint.RequestCount < routePerfMinRequests {
+		return routeNeutralScore
+	}
+	score := hint.SuccessRate
+	if hint.AvgTtftMs > 0 {
+		score -= math.Min(float64(hint.AvgTtftMs)/1000*2, 30)
+	}
+	if hint.AvgLatencyMs > 0 {
+		score -= math.Min(float64(hint.AvgLatencyMs)/1000*0.5, 25)
+	}
+	if hint.RequestCount < routePerfMinRequests*4 {
+		score -= 5
+	}
+	return score
+}
