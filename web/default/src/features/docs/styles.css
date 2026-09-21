@@ -220,6 +220,15 @@
 .docs-breadcrumb a:hover {
   color: var(--docs-green-deep);
 }
+.docs-breadcrumb button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.docs-breadcrumb button:hover { color: var(--docs-green-deep); }
 .docs-breadcrumb svg {
   width: 13px;
 }
@@ -1061,6 +1070,23 @@
   color: #14a367;
 }
 
+.docs-tutorial-steps { display: grid; gap: 10px; margin-top: 20px; }
+.docs-tutorial-steps article { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 13px; padding: 15px 16px; border: 1px solid #e1e7f0; border-radius: 9px; background: #fbfcfe; }
+.docs-tutorial-steps article > span { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 50%; background: #eef3ff; color: #3064e3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 800; }
+.docs-tutorial-steps strong { color: #17233f; font-size: 14px; }
+.docs-tutorial-steps p { margin: 4px 0 7px; color: #667085; font-size: 13px; line-height: 1.65; }
+.docs-tutorial-steps button { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: #2454c6; cursor: pointer; font-size: 12px; font-weight: 700; }
+.docs-tutorial-steps button svg { width: 13px; }
+.docs-tutorial-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
+.docs-resource-button { display: inline-flex; min-height: 35px; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid #d9e2f0; border-radius: 7px; background: #fff; color: #3155a5; cursor: pointer; font-size: 12px; font-weight: 700; }
+.docs-resource-button:hover { border-color: #adc2f5; background: #f7f9ff; }
+.docs-resource-button svg { width: 14px; }
+.docs-resource-button--primary { border-color: #3064e3; background: #3064e3; color: #fff; }
+.docs-resource-button--primary:hover { border-color: #2454c6; background: #2454c6; color: #fff; }
+.docs-resource-button.is-disabled { cursor: not-allowed; opacity: .58; }
+.docs-tutorial-note { display: flex; align-items: flex-start; gap: 7px; margin-top: 13px; color: #7a8495; font-size: 11px; line-height: 1.55; }
+.docs-tutorial-note svg { width: 14px; flex: 0 0 auto; margin-top: 1px; }
+
 .docs-error-table {
   margin-top: 18px;
   border-top: 1px solid var(--docs-border);
@@ -1453,6 +1479,12 @@
 .dark .docs-overview-grid button { border-color: #30405f; background: #131d31; color: #d9e1f2; }
 .dark .docs-overview-grid button strong { color: #b5c6ff; }
 .dark .docs-overview-grid button span { color: #aab5c9; }
+.dark .docs-tutorial-steps article { border-color: #30405f; background: #131d31; }
+.dark .docs-tutorial-steps strong { color: #f2f5ff; }
+.dark .docs-tutorial-steps p, .dark .docs-tutorial-note { color: #aab5c9; }
+.dark .docs-resource-button { border-color: #30405f; background: #131d31; color: #b5c6ff; }
+.dark .docs-resource-button:hover { border-color: #5275e8; background: #172442; }
+.dark .docs-resource-button--primary { border-color: #5275e8; background: #5275e8; color: #fff; }
 .dark .docs-callout--info { border-color: #354c86; background: #152343; color: #b9caff; }
 .dark .docs-client-addresses > div { border-color: #30405f; background: #131d31; }
 .dark .docs-client-addresses strong { color: #d9e1f2; }

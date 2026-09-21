@@ -15,10 +15,14 @@ import {
   ChevronRight,
   Code2,
   Copy,
+  Download,
   ExternalLink,
+  FileText,
   Image as ImageIcon,
   KeyRound,
+  ListChecks,
   MessageSquareText,
+  PlayCircle,
   Search,
   Server,
   ShieldCheck,
@@ -36,6 +40,7 @@ const anthropicBaseUrl = `${siteBaseUrl}/anthropic/v1`
 type DocsTopic = 'overview' | 'text' | 'image' | 'video' | 'tasks'
 type DocsSection =
   | 'overview'
+  | 'tutorial'
   | 'authentication'
   | 'base-url'
   | 'models'
@@ -62,6 +67,13 @@ const navGroups = [
       { id: 'authentication', label: '身份认证', topic: 'overview' },
       { id: 'base-url', label: '线路与 Base URL', topic: 'overview' },
       { id: 'models', label: '模型列表', topic: 'overview' },
+    ],
+  },
+  {
+    title: '新手教程',
+    icon: ListChecks,
+    items: [
+      { id: 'tutorial', label: '完整上手教程', topic: 'overview' },
     ],
   },
   {
@@ -431,6 +443,15 @@ const sectionMeta: Record<
   }
 > = {
   overview: topicMeta.overview,
+  tutorial: {
+    label: '完整上手教程',
+    eyebrow: 'BEGINNER GUIDE',
+    title: '从注册到第一次调用，跟着做就能成功',
+    description: '按顺序完成创建密钥、选择模型、发送请求和查看用量四步；不熟悉 API 也可以照着示例操作。',
+    endpoint: '/v1/models',
+    method: 'GET',
+    status: '200',
+  },
   authentication: {
     label: '身份认证',
     eyebrow: 'AUTHENTICATION',
@@ -711,6 +732,7 @@ response, _ := http.DefaultClient.Do(req)`,
 
 const sectionCodeSamples: Partial<Record<DocsSection, typeof codeSamples>> = {
   overview: modelsCodeSamples,
+  tutorial: modelsCodeSamples,
   authentication: modelsCodeSamples,
   'base-url': modelsCodeSamples,
   models: modelsCodeSamples,
@@ -1097,6 +1119,13 @@ function SelectedSection({ section }: { section: DocsSection }) {
   )
 }
 
+const tutorialResources = {
+  guideUrl: '/tutorials/synthapi-beginner-guide.html',
+  markdownUrl: '/tutorials/synthapi-beginner-guide.md',
+  // Keep this empty until a real, maintained video file or channel URL is published.
+  videoUrl: '',
+}
+
 function TopicContent({
   activeSection,
   onSectionChange,
@@ -1148,6 +1177,44 @@ function TopicContent({
 
   return (
     <div key={activeSection} className='docs-section-panel'>
+      {activeSection === 'tutorial' && (
+        <section className='docs-section docs-tutorial-section'>
+          <div className='docs-section-heading'>
+            <div><span>BEGINNER GUIDE</span><h2>四步完成第一次调用</h2></div>
+            <span className='docs-section-index'>00</span>
+          </div>
+          <p>第一次使用时不要一次配置太多参数。先完成下面四步，确认最小请求成功，再逐步接入自己的应用。</p>
+          <div className='docs-tutorial-steps'>
+            <article>
+              <span>01</span>
+              <div><strong>创建 API Key</strong><p>打开右上角“创建密钥”，复制密钥并保存在密码管理器或服务端环境变量中。</p><button type='button' onClick={() => onSectionChange('authentication')}>查看认证方式 <ChevronRight /></button></div>
+            </article>
+            <article>
+              <span>02</span>
+              <div><strong>确认模型和地址</strong><p>把 Base URL 填为 <code>{openAiBaseUrl}</code>，再调用模型列表，复制返回的 <code>id</code>。</p><button type='button' onClick={() => onSectionChange('base-url')}>查看线路设置 <ChevronRight /></button></div>
+            </article>
+            <article>
+              <span>03</span>
+              <div><strong>复制最小请求</strong><p>先用 Chat Completions 发一句简单问题。成功后，再尝试图像、视频或 Responses。</p><button type='button' onClick={() => onSectionChange('chat-completions')}>打开文字示例 <ChevronRight /></button></div>
+            </article>
+            <article>
+              <span>04</span>
+              <div><strong>核对结果和用量</strong><p>图像与视频要保存 <code>task_id</code> 并继续查询；文字、图片和视频费用都可以在日志中核对。</p><button type='button' onClick={() => onSectionChange('billing')}>查看计费说明 <ChevronRight /></button></div>
+            </article>
+          </div>
+          <div className='docs-tutorial-actions'>
+            <a className='docs-resource-button docs-resource-button--primary' href={tutorialResources.guideUrl} target='_blank' rel='noreferrer'><FileText />打开图文手把手教程 <ExternalLink /></a>
+            <a className='docs-resource-button' href={tutorialResources.markdownUrl} download><Download />下载 Markdown 教程</a>
+            {tutorialResources.videoUrl ? (
+              <a className='docs-resource-button' href={tutorialResources.videoUrl} target='_blank' rel='noreferrer'><PlayCircle />观看视频教程 <ExternalLink /></a>
+            ) : (
+              <button className='docs-resource-button is-disabled' type='button' disabled title='视频教程地址尚未配置'><PlayCircle />视频手把手教程即将上线</button>
+            )}
+          </div>
+          <div className='docs-tutorial-note'><PlayCircle /><span>视频入口会在正式视频发布后启用；当前图文教程已可在线打开或下载。</span></div>
+        </section>
+      )}
+
       {activeSection === 'authentication' && <section className='docs-section docs-section--compact'>
         <div className='docs-section-heading'>
           <div>
@@ -1342,9 +1409,9 @@ function TopicContent({
 
 export function Docs() {
   const [activeSection, setActiveSection] = useState<DocsSection>(() => {
-    if (typeof window === 'undefined') return 'chat-completions'
+    if (typeof window === 'undefined') return 'tutorial'
     const hash = window.location.hash.slice(1) as DocsSection
-    return allSections.has(hash) ? hash : 'chat-completions'
+    return allSections.has(hash) ? hash : 'tutorial'
   })
   const activeTopic = topicForSection(activeSection)
   const activeMeta = sectionMeta[activeSection]
@@ -1352,12 +1419,6 @@ export function Docs() {
   const selectSection = (section: DocsSection) => {
     setActiveSection(section)
     window.history.replaceState(null, '', `#${section}`)
-    window.requestAnimationFrame(() => {
-      document.getElementById('docs-selected')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    })
   }
 
   useEffect(() => {
@@ -1381,6 +1442,7 @@ export function Docs() {
           <nav className='docs-topbar-nav' aria-label='文档主导航'>
             {[
               ['概览', 'overview'],
+              ['新手教程', 'tutorial'],
               ['文字模型', 'text'],
               ['图像模型', 'image'],
               ['视频模型', 'video'],
@@ -1413,7 +1475,7 @@ export function Docs() {
             <BookOpen /> SynthAPI API Reference
           </div>
           <div className='docs-breadcrumb'>
-            <a href='#overview'>API 文档</a>
+            <button type='button' onClick={() => selectSection('overview')}>API 文档</button>
             <ChevronRight />
             <span>{activeMeta.label}</span>
           </div>
