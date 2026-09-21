@@ -1122,6 +1122,9 @@ function SelectedSection({ section }: { section: DocsSection }) {
 const tutorialResources = {
   guideUrl: '/tutorials/synthapi-beginner-guide.html',
   markdownUrl: '/tutorials/synthapi-beginner-guide.md',
+  ccSwitchUrl: 'https://ccswitch.io',
+  ccSwitchReleasesUrl: 'https://github.com/farion1231/cc-switch/releases/latest',
+  deepLinkGeneratorUrl: 'https://farion1231.github.io/cc-switch/deplink.html',
   // Keep this empty until a real, maintained video file or channel URL is published.
   videoUrl: '',
 }
@@ -1180,31 +1183,57 @@ function TopicContent({
       {activeSection === 'tutorial' && (
         <section className='docs-section docs-tutorial-section'>
           <div className='docs-section-heading'>
-            <div><span>BEGINNER GUIDE</span><h2>四步完成第一次调用</h2></div>
+            <div><span>CC-SWITCH BEGINNER GUIDE</span><h2>用 CC Switch 导入并切换 SynthAPI</h2></div>
             <span className='docs-section-index'>00</span>
           </div>
-          <p>第一次使用时不要一次配置太多参数。先完成下面四步，确认最小请求成功，再逐步接入自己的应用。</p>
+          <p>推荐给 Claude Code、Codex、Gemini CLI 和其他支持 OpenAI/Anthropic 兼容接口的用户。只需在 CC Switch 保存一次 SynthAPI 配置，就能在多个供应商之间快速切换。</p>
+          <div className='docs-tutorial-callout'>
+            <ListChecks />
+            <div><strong>先准备两样东西</strong><span>一个 SynthAPI API Key，以及 CC Switch 官方客户端。不要从第三方“代下载”页面获取客户端，也不要把真实密钥写进分享链接。</span></div>
+          </div>
           <div className='docs-tutorial-steps'>
             <article>
               <span>01</span>
-              <div><strong>创建 API Key</strong><p>打开右上角“创建密钥”，复制密钥并保存在密码管理器或服务端环境变量中。</p><button type='button' onClick={() => onSectionChange('authentication')}>查看认证方式 <ChevronRight /></button></div>
+              <div><strong>安装 CC Switch</strong><p>从 <a href={tutorialResources.ccSwitchReleasesUrl} target='_blank' rel='noreferrer'>GitHub Releases</a> 下载 Windows、macOS 或 Linux 安装包，或访问 <a href={tutorialResources.ccSwitchUrl} target='_blank' rel='noreferrer'>ccswitch.io</a>。安装后启动，确认能看到应用切换器。</p><a className='docs-tutorial-inline-link' href={tutorialResources.ccSwitchReleasesUrl} target='_blank' rel='noreferrer'>打开官方下载页 <ExternalLink /></a></div>
             </article>
             <article>
               <span>02</span>
-              <div><strong>确认模型和地址</strong><p>把 Base URL 填为 <code>{openAiBaseUrl}</code>，再调用模型列表，复制返回的 <code>id</code>。</p><button type='button' onClick={() => onSectionChange('base-url')}>查看线路设置 <ChevronRight /></button></div>
+              <div><strong>在 CC Switch 添加 SynthAPI</strong><p>点击右上角“+”，选择“自定义”或“OpenAI Compatible”预设，名称填写 SynthAPI。API Key 粘贴控制台创建的密钥；OpenAI/Codex Base URL 填 <code>{openAiBaseUrl}</code>。</p><button type='button' onClick={() => onSectionChange('authentication')}>查看密钥说明 <ChevronRight /></button></div>
             </article>
             <article>
               <span>03</span>
-              <div><strong>复制最小请求</strong><p>先用 Chat Completions 发一句简单问题。成功后，再尝试图像、视频或 Responses。</p><button type='button' onClick={() => onSectionChange('chat-completions')}>打开文字示例 <ChevronRight /></button></div>
+              <div><strong>选择对应应用并保存</strong><p>Claude Code 使用 Anthropic 兼容供应商；Codex 使用 OpenAI Responses 供应商；Gemini CLI 使用 OpenAI 兼容或 Gemini 自定义供应商。保存后点“启用”。</p><button type='button' onClick={() => onSectionChange('base-url')}>查看线路设置 <ChevronRight /></button></div>
             </article>
             <article>
               <span>04</span>
-              <div><strong>核对结果和用量</strong><p>图像与视频要保存 <code>task_id</code> 并继续查询；文字、图片和视频费用都可以在日志中核对。</p><button type='button' onClick={() => onSectionChange('billing')}>查看计费说明 <ChevronRight /></button></div>
+              <div><strong>切换并让配置生效</strong><p>点击 SynthAPI 卡片的“启用”。Claude Code/Gemini 通常可热加载；Codex、OpenCode 等工具请关闭当前终端并重新打开。</p><button type='button' onClick={() => onSectionChange('chat-completions')}>打开验证示例 <ChevronRight /></button></div>
+            </article>
+            <article>
+              <span>05</span>
+              <div><strong>发出最小验证请求</strong><p>先请求 <code>GET /v1/models</code>，再发送一句简单文字请求。模型 ID 以模型列表实际返回为准，不要直接猜名称。</p><button type='button' onClick={() => onSectionChange('models')}>查看模型列表 <ChevronRight /></button></div>
+            </article>
+            <article>
+              <span>06</span>
+              <div><strong>切换回其他供应商</strong><p>需要更换线路时，在 CC Switch 选择另一张供应商卡片并启用；不要反复修改同一份配置文件。遇到失败先关闭正在运行的 CLI，再重试。</p><button type='button' onClick={() => onSectionChange('errors')}>查看排查方法 <ChevronRight /></button></div>
             </article>
           </div>
+          <div className='docs-tutorial-subheading'><span>DEEP LINK IMPORT</span><h3>用 ccswitch:// 深链接导入模板</h3></div>
+          <p>CC Switch 支持官方深链接协议。推荐做法是使用官方生成器生成链接：填写应用、供应商名称、端点和模型，API Key 留空或在 CC Switch 导入后再填写。这样不会把真实密钥暴露在浏览器历史、聊天记录或网页 URL 中。</p>
+          <div className='docs-tutorial-link-grid'>
+            <a href={tutorialResources.deepLinkGeneratorUrl} target='_blank' rel='noreferrer'><strong>打开官方深链接生成器</strong><span>生成 <code>ccswitch://v1/import</code> 模板 <ExternalLink /></span></a>
+            <a href='https://github.com/farion1231/cc-switch/blob/main/docs/user-manual/zh/2-providers/2.1-add.md' target='_blank' rel='noreferrer'><strong>查看 CC Switch 导入说明</strong><span>预设、自定义与导入确认流程 <ExternalLink /></span></a>
+          </div>
+          <div className='docs-tutorial-config-table'>
+            <div><strong>Claude Code</strong><code>{anthropicBaseUrl}</code><span>选择 Anthropic Messages；导入后填写 API Key。该地址已包含 <code>/anthropic/v1</code>，不要重复追加路径。</span></div>
+            <div><strong>Codex</strong><code>{openAiBaseUrl}</code><span>选择 Responses 协议；切换后关闭并重新打开终端。</span></div>
+            <div><strong>Gemini CLI</strong><code>{siteBaseUrl}</code><span>按 CC Switch 的 Gemini 供应商字段导入；若客户端要求 OpenAI 兼容 Base URL，则改填 <code>{openAiBaseUrl}</code>。</span></div>
+          </div>
+          <div className='docs-tutorial-subheading'><span>VIDEO HANDS-ON PLAN</span><h3>视频手把手教程拍摄顺序</h3></div>
+          <p>视频将严格复现上面的操作，不展示真实 API Key。录制内容依次为：安装官方 CC Switch、创建 SynthAPI Key、添加自定义供应商、使用深链接导入模板、分别切换 Claude Code/Codex/Gemini、重启需要重启的终端、发送模型列表请求和处理常见错误。</p>
           <div className='docs-tutorial-actions'>
             <a className='docs-resource-button docs-resource-button--primary' href={tutorialResources.guideUrl} target='_blank' rel='noreferrer'><FileText />打开图文手把手教程 <ExternalLink /></a>
             <a className='docs-resource-button' href={tutorialResources.markdownUrl} download><Download />下载 Markdown 教程</a>
+            <a className='docs-resource-button' href={tutorialResources.deepLinkGeneratorUrl} target='_blank' rel='noreferrer'><ExternalLink />打开导入生成器</a>
             {tutorialResources.videoUrl ? (
               <a className='docs-resource-button' href={tutorialResources.videoUrl} target='_blank' rel='noreferrer'><PlayCircle />观看视频教程 <ExternalLink /></a>
             ) : (

@@ -1077,6 +1077,26 @@
 .docs-tutorial-steps p { margin: 4px 0 7px; color: #667085; font-size: 13px; line-height: 1.65; }
 .docs-tutorial-steps button { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: #2454c6; cursor: pointer; font-size: 12px; font-weight: 700; }
 .docs-tutorial-steps button svg { width: 13px; }
+.docs-tutorial-callout { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding: 13px 15px; border: 1px solid #c9d8ff; border-radius: 9px; background: #f4f7ff; color: #46536e; font-size: 13px; line-height: 1.65; }
+.docs-tutorial-callout svg { width: 17px; flex: 0 0 auto; margin-top: 2px; color: #3064e3; }
+.docs-tutorial-callout strong { display: block; margin-bottom: 2px; color: #17233f; }
+.docs-tutorial-callout span { display: block; }
+.docs-tutorial-inline-link { display: inline-flex; align-items: center; gap: 4px; color: #2454c6; font-size: 12px; font-weight: 700; }
+.docs-tutorial-inline-link svg { width: 13px; }
+.docs-tutorial-subheading { margin-top: 28px; }
+.docs-tutorial-subheading > span { color: #98a2b3; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.docs-tutorial-subheading h3 { margin: 4px 0 7px; color: #17233f; font-size: 18px; }
+.docs-tutorial-link-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
+.docs-tutorial-link-grid > a { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 13px 14px; border: 1px solid #d9e2f0; border-radius: 8px; background: #fff; color: #2454c6; }
+.docs-tutorial-link-grid > a:hover { border-color: #adc2f5; background: #f7f9ff; }
+.docs-tutorial-link-grid strong { color: #17233f; font-size: 13px; }
+.docs-tutorial-link-grid span { color: #667085; font-size: 12px; line-height: 1.55; }
+.docs-tutorial-link-grid svg { width: 13px; vertical-align: -2px; }
+.docs-tutorial-config-table { display: grid; gap: 8px; margin-top: 15px; }
+.docs-tutorial-config-table > div { display: grid; grid-template-columns: 105px minmax(170px, 1fr) minmax(0, 1.3fr); align-items: start; gap: 12px; padding: 11px 12px; border: 1px solid #e1e7f0; border-radius: 8px; background: #fbfcfe; }
+.docs-tutorial-config-table strong { color: #17233f; font-size: 13px; }
+.docs-tutorial-config-table code { overflow-wrap: anywhere; color: #3155a5; font-size: 11px; }
+.docs-tutorial-config-table span { color: #667085; font-size: 12px; line-height: 1.55; }
 .docs-tutorial-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
 .docs-resource-button { display: inline-flex; min-height: 35px; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid #d9e2f0; border-radius: 7px; background: #fff; color: #3155a5; cursor: pointer; font-size: 12px; font-weight: 700; }
 .docs-resource-button:hover { border-color: #adc2f5; background: #f7f9ff; }
@@ -1482,6 +1502,14 @@
 .dark .docs-tutorial-steps article { border-color: #30405f; background: #131d31; }
 .dark .docs-tutorial-steps strong { color: #f2f5ff; }
 .dark .docs-tutorial-steps p, .dark .docs-tutorial-note { color: #aab5c9; }
+.dark .docs-tutorial-callout { border-color: #354c86; background: #152343; color: #aab5c9; }
+.dark .docs-tutorial-callout strong, .dark .docs-tutorial-subheading h3, .dark .docs-tutorial-link-grid strong, .dark .docs-tutorial-config-table strong { color: #f2f5ff; }
+.dark .docs-tutorial-callout svg, .dark .docs-tutorial-inline-link, .dark .docs-tutorial-link-grid > a { color: #b5c6ff; }
+.dark .docs-tutorial-subheading > span { color: #8491aa; }
+.dark .docs-tutorial-link-grid > a, .dark .docs-tutorial-config-table > div { border-color: #30405f; background: #131d31; }
+.dark .docs-tutorial-link-grid > a:hover { border-color: #5275e8; background: #172442; }
+.dark .docs-tutorial-link-grid span, .dark .docs-tutorial-config-table span { color: #aab5c9; }
+.dark .docs-tutorial-config-table code { color: #9bb4ff; }
 .dark .docs-resource-button { border-color: #30405f; background: #131d31; color: #b5c6ff; }
 .dark .docs-resource-button:hover { border-color: #5275e8; background: #172442; }
 .dark .docs-resource-button--primary { border-color: #5275e8; background: #5275e8; color: #fff; }
@@ -1505,4 +1533,6 @@
   .docs-overview-grid { grid-template-columns: 1fr; }
   .docs-client-addresses > div { grid-template-columns: 1fr; gap: 5px; }
   .docs-client-addresses strong { grid-row: auto; }
+  .docs-tutorial-link-grid { grid-template-columns: 1fr; }
+  .docs-tutorial-config-table > div { grid-template-columns: 1fr; gap: 4px; }
 }
