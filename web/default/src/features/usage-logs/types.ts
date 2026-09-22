@@ -317,6 +317,9 @@ export interface LogOtherData {
   subscription_remain?: number
   subscription_total?: number
   subscription_discount?: number
+  billing_multiplier?: number
+  billing_multiplier_reason?: string
+  billing_service_tier?: string
   ingress_host?: string
   ingress_line?: ApiIngressLine
   /** Go worker that handled the request (e.g. aliyun-prod or shanghai). */

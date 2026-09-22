@@ -279,6 +279,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 
 	applyUsagePostProcessing(info, &simpleResponse.Usage, responseBody)
+	simpleResponse.Usage.ServiceTier = simpleResponse.ServiceTier
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:

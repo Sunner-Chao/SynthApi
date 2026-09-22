@@ -29,6 +29,7 @@ type TextResponse struct {
 	Model   string                     `json:"model"`
 	Choices []OpenAITextResponseChoice `json:"choices"`
 	Usage   `json:"usage"`
+	ServiceTier string `json:"service_tier,omitempty"`
 }
 
 type OpenAITextResponseChoice struct {
@@ -45,6 +46,7 @@ type OpenAITextResponse struct {
 	Choices []OpenAITextResponseChoice `json:"choices"`
 	Error   any                        `json:"error,omitempty"`
 	Usage   `json:"usage"`
+	ServiceTier string                 `json:"service_tier,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构
@@ -147,6 +149,7 @@ type ChatCompletionsStreamResponse struct {
 	SystemFingerprint *string                               `json:"system_fingerprint"`
 	Choices           []ChatCompletionsStreamResponseChoice `json:"choices"`
 	Usage             *Usage                                `json:"usage"`
+	ServiceTier       string                                `json:"service_tier,omitempty"`
 }
 
 func (c *ChatCompletionsStreamResponse) IsFinished() bool {
@@ -194,6 +197,7 @@ func (c *ChatCompletionsStreamResponse) Copy() *ChatCompletionsStreamResponse {
 		SystemFingerprint: c.SystemFingerprint,
 		Choices:           choices,
 		Usage:             c.Usage,
+		ServiceTier:       c.ServiceTier,
 	}
 }
 
@@ -240,6 +244,7 @@ type Usage struct {
 
 	// OpenRouter Params
 	Cost any `json:"cost,omitempty"`
+	ServiceTier string `json:"-"`
 }
 
 type OpenAIVideoResponse struct {
@@ -290,6 +295,7 @@ type OpenAIResponsesResponse struct {
 	Usage              *Usage             `json:"usage"`
 	User               json.RawMessage    `json:"user"`
 	Metadata           json.RawMessage    `json:"metadata"`
+	ServiceTier        string             `json:"service_tier,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构

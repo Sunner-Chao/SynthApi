@@ -65,6 +65,10 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	chatId := helper.GetResponseID(c)
+	if responsesResp.ServiceTier != "" {
+		// Responses-to-Chat keeps the effective upstream tier for settlement.
+		info.ApplyBillingServiceTier(responsesResp.ServiceTier)
+	}
 	chatResp, usage, err := service.ResponsesResponseToChatCompletionsResponse(&responsesResp, chatId)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -75,6 +79,7 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 		chatResp.Usage = *usage
 	}
+	usage.ServiceTier = responsesResp.ServiceTier
 
 	var responseBody []byte
 	switch info.RelayFormat {
@@ -616,6 +621,9 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 		if responsesResp.Model != "" {
 			model = responsesResp.Model
+		}
+		if responsesResp.ServiceTier != "" {
+			usage.ServiceTier = responsesResp.ServiceTier
 		}
 		if responsesResp.CreatedAt != 0 {
 			createAt = int64(responsesResp.CreatedAt)

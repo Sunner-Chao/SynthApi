@@ -38,3 +38,15 @@ func TestRelayInfoGetFinalRequestRelayFormatNilReceiver(t *testing.T) {
 	var info *RelayInfo
 	require.Equal(t, types.RelayFormat(""), info.GetFinalRequestRelayFormat())
 }
+
+func TestRelayInfoApplyBillingServiceTier(t *testing.T) {
+	info := &RelayInfo{}
+	info.ApplyBillingServiceTier("fast")
+	require.Equal(t, "fast", info.BillingServiceTier)
+	require.Equal(t, float64(2), info.BillingMultiplier())
+	require.Equal(t, "openai_fast_mode", info.PriceData.BillingMultiplierReason)
+
+	info.ApplyBillingServiceTier("default")
+	// A later response must not downgrade a confirmed fast request.
+	require.Equal(t, float64(2), info.BillingMultiplier())
+}

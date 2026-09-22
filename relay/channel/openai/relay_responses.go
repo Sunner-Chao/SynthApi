@@ -56,6 +56,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 
 	// compute usage
 	usage := dto.Usage{}
+	usage.ServiceTier = responsesResponse.ServiceTier
 	if responsesResponse.Usage != nil {
 		usage.PromptTokens = responsesResponse.Usage.InputTokens
 		usage.CompletionTokens = responsesResponse.Usage.OutputTokens
@@ -149,6 +150,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		switch eventType {
 		case "response.completed":
 			streamCompleted = true
+			if decoded && streamResponse.Response != nil {
+				usage.ServiceTier = streamResponse.Response.ServiceTier
+			}
 			if decoded && streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {

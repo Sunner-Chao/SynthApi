@@ -277,6 +277,9 @@ func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData)
 }
 
 func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent string) {
+	if usage != nil && usage.ServiceTier != "" {
+		relayInfo.ApplyBillingServiceTier(usage.ServiceTier)
+	}
 
 	var tieredUsedVars map[string]bool
 	if snap := relayInfo.TieredBillingSnapshot; snap != nil {
@@ -323,6 +326,9 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	quota := calculateAudioQuota(quotaInfo)
 	if tieredOk {
 		quota = tieredQuota
+	}
+	if multiplier := relayInfo.BillingMultiplier(); multiplier != 1 {
+		quota = billingexpr.QuotaRound(float64(quota) * multiplier)
 	}
 
 	totalTokens := usage.TotalTokens

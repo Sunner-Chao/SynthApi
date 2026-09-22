@@ -321,6 +321,9 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
 	originUsage := usage
+	if usage != nil && usage.ServiceTier != "" {
+		relayInfo.ApplyBillingServiceTier(usage.ServiceTier)
+	}
 	if usage == nil {
 		extraContent = append(extraContent, "上游无计费信息")
 	}
@@ -343,6 +346,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			tieredBillingApplied = true
 			tieredResult = tieredRes
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
+		}
+		if multiplier := relayInfo.BillingMultiplier(); multiplier != 1 {
+			summary.Quota = billingexpr.QuotaRound(float64(summary.Quota) * multiplier)
 		}
 	}
 

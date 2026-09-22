@@ -993,9 +993,11 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const quota = row.getValue('quota') as number
-        const other = parseLogOther(log.other)
-        const isSubscription = other?.billing_source === 'subscription'
+		const quota = row.getValue('quota') as number
+		const other = parseLogOther(log.other)
+		const billingMultiplier = Number(other?.billing_multiplier)
+		const isFastBilled = Number.isFinite(billingMultiplier) && billingMultiplier >= 2
+		const isSubscription = other?.billing_source === 'subscription'
 
         if (isSubscription) {
           const subscriptionDisplay = getSubscriptionBillingDisplay(
@@ -1026,7 +1028,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                             : 'border-border bg-muted/50 text-muted-foreground'
                         )}
                       >
-                        {rate} · {formatLogQuota(consumed)}
+						  {rate} · {formatLogQuota(consumed)}
+						  {isFastBilled && (
+							<span className='ml-1 text-amber-700 dark:text-amber-300'>x2</span>
+						  )}
                       </span>
                     </div>
                   }
@@ -1054,7 +1059,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               {quotaDisplay.prefix && (
                 <span className='mr-1'>{quotaDisplay.prefix}</span>
               )}
-              <span>{quotaDisplay.amount}</span>
+				<span>{quotaDisplay.amount}</span>
+				{isFastBilled && (
+					<span className='ml-1 text-amber-700 dark:text-amber-300'>x2</span>
+				)}
             </span>
           </div>
         )

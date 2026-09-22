@@ -171,6 +171,7 @@ type RelayInfo struct {
 	StageMetricsProvider                    RelayStageMetricsProvider
 
 	PriceData types.PriceData
+	BillingServiceTier string
 
 	// TieredBillingSnapshot is a frozen snapshot of tiered billing rules
 	// captured at pre-consume time. Non-nil only when billing mode is "tiered_expr".
@@ -195,6 +196,54 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
+}
+
+// ApplyBillingServiceTier records the effective OpenAI service tier. Fast
+// mode is billed at 2x; all other tiers remain at the normal multiplier.
+func (info *RelayInfo) ApplyBillingServiceTier(tier string) {
+	if info == nil {
+		return
+	}
+	tier = strings.ToLower(strings.TrimSpace(tier))
+	if tier == "" {
+		return
+	}
+	info.BillingServiceTier = tier
+	if tier == "fast" || tier == "priority" {
+		info.PriceData.BillingMultiplier = 2
+		info.PriceData.BillingMultiplierReason = "openai_fast_mode"
+	} else if info.PriceData.BillingMultiplier <= 0 {
+		info.PriceData.BillingMultiplier = 1
+	}
+}
+
+func (info *RelayInfo) BillingMultiplier() float64 {
+	if info == nil || info.PriceData.BillingMultiplier <= 0 {
+		return 1
+	}
+	return info.PriceData.BillingMultiplier
+}
+
+// InitializeBillingServiceTier records an explicitly requested fast tier when
+// the channel is configured to pass service_tier through to the upstream.
+func (info *RelayInfo) InitializeBillingServiceTier() {
+	if info == nil || info.Request == nil || info.RelayFormat == types.RelayFormatOpenAIImage || info.RelayFormat == types.RelayFormatOpenAIAudio {
+		return
+	}
+	if info.ChannelMeta == nil {
+		return
+	}
+	if !info.ChannelOtherSettings.AllowServiceTier && !info.ChannelSetting.PassThroughBodyEnabled && !model_setting.GetGlobalSettings().PassThroughRequestEnabled {
+		return
+	}
+	tier := ""
+	switch request := info.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		_ = common.Unmarshal(request.ServiceTier, &tier)
+	case *dto.OpenAIResponsesRequest:
+		tier = request.ServiceTier
+	}
+	info.ApplyBillingServiceTier(tier)
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
