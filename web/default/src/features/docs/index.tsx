@@ -1065,9 +1065,16 @@ const docsTabs: ReadonlyArray<readonly [string, DocsSection]> = [
 
 // Keep in sync with the 1199.98px breakpoint in styles.css.
 const WIDE_LAYOUT_QUERY = '(min-width: 1200px)'
+// The sidebar replaces the chapter drawer from here up (899.98px breakpoint in styles.css).
+const SIDEBAR_LAYOUT_QUERY = '(min-width: 900px)'
 // Height of the sticky docs sub-nav plus a little breathing room.
 const STICKY_NAV_OFFSET = 56
 const COPY_FEEDBACK_MS = 1400
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+// Highlighted markup outlives remounts, e.g. when the code panel moves across the 1200px breakpoint.
+const highlightCache = new Map<string, string>()
 
 const shortcutLabel =
   typeof navigator !== 'undefined' &&
@@ -1110,18 +1117,21 @@ function useHighlightedCode(
   code: string,
   language: BundledLanguage | null
 ): string | null {
-  const [result, setResult] = useState<{ code: string; html: string } | null>(
+  const cacheKey = language ? `${language}\n${code}` : null
+  const [result, setResult] = useState<{ key: string; html: string } | null>(
     null
   )
 
   useEffect(() => {
-    if (!language) return
+    if (!language || !cacheKey || highlightCache.has(cacheKey)) return
     let cancelled = false
     import('@/components/ai-elements/code-block')
       .then(({ highlightCode }) => highlightCode(code, language))
       .then((markup) => {
         const inner = /<code[^>]*>([\s\S]*)<\/code>/.exec(markup)?.[1]
-        if (!cancelled && inner) setResult({ code, html: inner })
+        if (!inner) return
+        highlightCache.set(cacheKey, inner)
+        if (!cancelled) setResult({ key: cacheKey, html: inner })
       })
       .catch(() => {
         // Highlighting is progressive: the plain-text sample stays visible if shiki fails to load.
@@ -1129,9 +1139,30 @@ function useHighlightedCode(
     return () => {
       cancelled = true
     }
-  }, [code, language])
+  }, [cacheKey, code, language])
 
-  return result?.code === code ? result.html : null
+  if (!cacheKey) return null
+  return (
+    highlightCache.get(cacheKey) ??
+    (result?.key === cacheKey ? result.html : null)
+  )
+}
+
+// Keeps Tab / Shift+Tab inside an open modal container.
+function trapFocus(event: KeyboardEvent, container: HTMLElement) {
+  const focusable = container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+  if (focusable.length === 0) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  const active = document.activeElement
+  const outside = !container.contains(active)
+  if (event.shiftKey && (outside || active === first)) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && (outside || active === last)) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 function CopyButton({
@@ -1363,6 +1394,16 @@ function DocsNav({
                   <a
                     href={`#${item.id}`}
                     onClick={(event) => {
+                      // Leave "open in new tab / window" clicks to the browser.
+                      if (
+                        event.button !== 0 ||
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      ) {
+                        return
+                      }
                       event.preventDefault()
                       onSectionChange(item.id)
                     }}
@@ -2198,6 +2239,7 @@ export function Docs() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const articleRef = useRef<HTMLElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
   const drawerSearchRef = useRef<HTMLInputElement>(null)
   const isWide = useMediaQuery(WIDE_LAYOUT_QUERY)
 
@@ -2223,8 +2265,10 @@ export function Docs() {
   }, [])
 
   useEffect(() => {
-    const syncFromLocation = () =>
+    const syncFromLocation = () => {
       setActiveSection((current) => readSectionFromHash(current))
+      setDrawerOpen(false)
+    }
     window.addEventListener('popstate', syncFromLocation)
     window.addEventListener('hashchange', syncFromLocation)
     return () => {
@@ -2255,16 +2299,32 @@ export function Docs() {
 
   useEffect(() => {
     if (!drawerOpen) return
+    const returnFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
     drawerSearchRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDrawerOpen(false)
+      if (event.key === 'Escape') {
+        setDrawerOpen(false)
+      } else if (event.key === 'Tab' && drawerRef.current) {
+        trapFocus(event, drawerRef.current)
+      }
+    }
+    // Once the sidebar is back (window widened, tablet rotated) the drawer has no place.
+    const sidebarLayout = window.matchMedia(SIDEBAR_LAYOUT_QUERY)
+    const closeWhenSidebarShows = () => {
+      if (sidebarLayout.matches) setDrawerOpen(false)
     }
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKeyDown)
+    sidebarLayout.addEventListener('change', closeWhenSidebarShows)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
+      sidebarLayout.removeEventListener('change', closeWhenSidebarShows)
       document.body.style.overflow = previousOverflow
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
     }
   }, [drawerOpen])
 
@@ -2420,6 +2480,7 @@ export function Docs() {
               onClick={() => setDrawerOpen(false)}
             />
             <div
+              ref={drawerRef}
               id='docs-drawer'
               className='docs-drawer'
               role='dialog'

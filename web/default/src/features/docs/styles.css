@@ -13,7 +13,7 @@
   --docs-accent-soft: #edf2ff;
   --docs-accent-line: #cbd8fb;
   --docs-on-accent: #ffffff;
-  --docs-get: #0d7f57;
+  --docs-get: #0b7350;
   --docs-get-soft: #e3f5ec;
   --docs-post: #2450c4;
   --docs-post-soft: #e9efff;
@@ -22,8 +22,12 @@
   --docs-warn-line: #f0d7a4;
   --docs-danger: #c23f2d;
   --docs-danger-soft: #fde9e6;
-  --docs-ok: #0d7f57;
+  --docs-ok: #0b7350;
   --docs-ok-soft: #e3f5ec;
+  --docs-family-blue: #2a82d8;
+  --docs-family-orange: #df7f26;
+  --docs-family-violet: #7959c4;
+  --docs-family-pink: #c54d8a;
   --docs-code-bg: #0f1729;
   --docs-code-head: #152039;
   --docs-code-line: #22304f;
@@ -97,6 +101,15 @@
 .docs-reference-page :focus-visible {
   outline: 2px solid var(--docs-accent);
   outline-offset: 2px;
+}
+/* Scroll strips and clipped cards would cut an outer ring off, so draw it inside. */
+.docs-topbar-nav button:focus-visible,
+.docs-guide-step summary:focus-visible,
+.docs-code-card :focus-visible {
+  outline-offset: -2px;
+}
+.docs-code-card :focus-visible {
+  outline-color: var(--docs-code-accent);
 }
 
 /* ---------- docs sub-nav (the only sticky bar) ---------- */
@@ -784,7 +797,20 @@
   gap: 12px;
   padding: 12px 14px;
   border: 1px solid var(--docs-line);
+  border-left: 3px solid var(--docs-accent);
   border-radius: 10px;
+}
+.docs-model-family-list > div[data-accent='blue'] {
+  border-left-color: var(--docs-family-blue);
+}
+.docs-model-family-list > div[data-accent='orange'] {
+  border-left-color: var(--docs-family-orange);
+}
+.docs-model-family-list > div[data-accent='violet'] {
+  border-left-color: var(--docs-family-violet);
+}
+.docs-model-family-list > div[data-accent='pink'] {
+  border-left-color: var(--docs-family-pink);
 }
 .docs-model-family-list strong {
   padding-top: 2px;
