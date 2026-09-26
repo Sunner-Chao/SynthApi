@@ -34,6 +34,7 @@ import {
 import { AgentAnswerContent } from './answer'
 import { Composer } from './composer'
 import { Conversations } from './conversations'
+import { useDocking } from './dock'
 import { EmptyState } from './empty-state'
 import { exportConversation, type ExportLabels } from './export'
 import { AgentManagement } from './management'
@@ -99,6 +100,7 @@ export default function AgentPanel(props: {
   const [showHistory, setShowHistory] = useState(false)
   const [width, setWidth] = useState(readPanelWidth)
   const wide = width >= (PANEL_WIDTH.normal + PANEL_WIDTH.wide) / 2
+  const docked = useDocking(width)
   const resize = (value: number) => {
     setWidth(value)
     savePanelWidth(value)
@@ -285,10 +287,12 @@ export default function AgentPanel(props: {
       open
       onOpenChange={(open, details) => {
         if (open) return
+        // Working in the page beside a docked panel, or closing a toast, is not
+        // a click away from the panel.
         if (
           (details.reason === 'outside-press' ||
             details.reason === 'focus-out') &&
-          onToast(details.event)
+          (docked || onToast(details.event))
         ) {
           details.cancel()
           return

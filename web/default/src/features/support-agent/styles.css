@@ -688,3 +688,8 @@ html.agent-resizing * {
     display: none;
   }
 }
+
+/* Docked on wide screens (dock.ts): the signed-in layout makes room for the panel */
+html.support-docked [data-slot='sidebar-wrapper'] {
+  padding-right: var(--support-dock);
+}
