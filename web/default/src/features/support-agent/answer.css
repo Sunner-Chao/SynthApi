@@ -557,6 +557,94 @@ For commercial licensing, please contact support@quantumnous.com
   color: var(--muted-foreground);
   font-size: 12px;
 }
+.agent-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.agent-reason {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  background: var(--background);
+  font-size: 12px;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.agent-reason:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.agent-reason:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.agent-reason.is-on {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+}
+.agent-feedback-thanks {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.agent-ticket-form {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.agent-ticket-form textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  color: var(--foreground);
+  background: var(--background);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.agent-ticket-form textarea:focus-visible {
+  border-color: var(--ring);
+  outline: 2px solid color-mix(in srgb, var(--ring) 25%, transparent);
+}
+.agent-ticket-form-actions {
+  display: flex;
+  gap: 6px;
+}
+.agent-followup {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #10b981 35%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, #10b981 6%, var(--background));
+  font-size: 12.5px;
+}
+.agent-followup .agent-handoff-actions {
+  margin-top: 8px;
+}
+.agent-followup.is-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  color: #0f7b53;
+}
+.dark .agent-followup.is-done {
+  color: #6ee7b7;
+}
+.agent-handoff[data-state='resolved'] {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--muted) 40%, var(--background));
+}
+.agent-handoff[data-state='resolved'] .agent-handoff-status {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
 
 /* Stopped runs, notes and errors */
 .agent-stopped,

@@ -62,6 +62,13 @@ const plainText = (markdown: string) =>
     .trim()
     .slice(0, 1200)
 
+// Toasts sit outside the panel; pressing one (e.g. its close button) is not a click away.
+const onToast = (event: Event) => {
+  const target =
+    event instanceof FocusEvent ? event.relatedTarget : event.target
+  return target instanceof Element && !!target.closest('[data-sonner-toaster]')
+}
+
 export default function AgentPanel(props: {
   userId: number
   onClose: () => void
@@ -126,6 +133,15 @@ export default function AgentPanel(props: {
     turns
       .filter((turn) => turn.response.human_reply && turn.response.handoff_id)
       .map((turn) => turn.response.handoff_id)
+  )
+  const tickets = new Map(thread.tickets.map((ticket) => [ticket.id, ticket]))
+  // A ticket can span several turns (request, notes); only its latest turn shows actions.
+  const lastTicketTurn = new Map(
+    turns.flatMap((turn) =>
+      turn.response.handoff_id
+        ? [[turn.response.handoff_id, turn.id] as const]
+        : []
+    )
   )
   const unread = new Set(replies.unread.map((item) => item.conversation))
   const unreadHere = replies.unread.find(
@@ -239,6 +255,14 @@ export default function AgentPanel(props: {
       open
       onOpenChange={(open, details) => {
         if (open) return
+        if (
+          (details.reason === 'outside-press' ||
+            details.reason === 'focus-out') &&
+          onToast(details.event)
+        ) {
+          details.cancel()
+          return
+        }
         // Escape closes the history layer first, then the panel.
         if (details.reason === 'escape-key' && showHistory) {
           details.cancel()
@@ -398,6 +422,17 @@ export default function AgentPanel(props: {
                               !!turn.response.handoff_id &&
                               repliedHandoffs.has(turn.response.handoff_id)
                             }
+                            ticket={
+                              turn.response.handoff_id
+                                ? tickets.get(turn.response.handoff_id)
+                                : undefined
+                            }
+                            showTicketActions={
+                              !!turn.response.handoff_id &&
+                              lastTicketTurn.get(turn.response.handoff_id) ===
+                                turn.id
+                            }
+                            saved={thread.feedback[turn.id]}
                             canRegenerate={
                               !!turn.question &&
                               turn.id === lastQuestionTurn?.id

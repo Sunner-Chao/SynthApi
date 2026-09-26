@@ -100,10 +100,14 @@ export function useAgentThread(
     .reverse()
     .flatMap((part) => part.turns)
   const failed = run && ['failed', 'interrupted'].includes(run.status)
+  const latest = history.data?.pages[0]
   return {
     history,
     turns,
     run,
+    // Conversation-wide lists; every page carries the same copy.
+    tickets: latest?.tickets ?? [],
+    feedback: latest?.feedback ?? {},
     previousRuns: (history.data?.pages[0]?.runs || []).filter(
       (item) => !active(item) && item.id !== run?.id
     ),

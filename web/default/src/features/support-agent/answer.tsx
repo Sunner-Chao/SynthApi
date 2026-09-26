@@ -20,17 +20,14 @@ import { ExternalLink, Headset } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import {
-  AnswerToolbar,
-  HandoffCard,
-  NextSteps,
-  SourcesRow,
-} from './answer-extras'
+import { NextSteps, SourcesRow } from './answer-extras'
+import { AnswerToolbar } from './answer-toolbar'
 import './answer.css'
+import { HandoffCard, ReplyFollowUp } from './handoff-card'
 import { isPlainClick, resolveLink, useOpenInternal } from './links'
 import { clockTime } from './time'
 import { StepsSummary } from './tool-calls'
-import type { Turn } from './types'
+import type { FeedbackReason, FeedbackVote, Ticket, Turn } from './types'
 
 // Convert verified numeric references in prose, without touching code or links.
 interface MarkdownNode {
@@ -91,6 +88,9 @@ export function AgentAnswerContent(props: {
   admin: boolean
   hasEmail: boolean
   replied: boolean
+  ticket?: Ticket
+  showTicketActions: boolean
+  saved?: { vote: FeedbackVote; reason: FeedbackReason }
   canRegenerate: boolean
   busy: boolean
   onRegenerate: () => void
@@ -186,8 +186,12 @@ export function AgentAnswerContent(props: {
       {answer.status === 'handoff' && (
         <HandoffCard
           handoffId={answer.handoff_id}
-          replied={props.replied}
+          ticket={props.ticket}
+          repliedFallback={props.replied}
           hasEmail={props.hasEmail}
+          showActions={props.showTicketActions}
+          userId={props.userId}
+          conversation={props.conversation}
         />
       )}
       <SourcesRow
@@ -203,9 +207,20 @@ export function AgentAnswerContent(props: {
         }
       />
       <NextSteps answer={answer} conversation={props.conversation} />
+      {human && answer.handoff_id && props.showTicketActions && (
+        <ReplyFollowUp
+          handoffId={answer.handoff_id}
+          ticket={props.ticket}
+          userId={props.userId}
+          conversation={props.conversation}
+        />
+      )}
       <AnswerToolbar
         userId={props.userId}
+        conversation={props.conversation}
         turnId={props.turn.id}
+        question={props.turn.question}
+        saved={props.saved}
         answer={answer.answer}
         human={human || answer.status === 'handoff'}
         canRegenerate={props.canRegenerate}

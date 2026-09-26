@@ -102,12 +102,51 @@ func TestSupportBridgeRejectsInvalidResourceIDs(t *testing.T) {
 	r := gin.New()
 	r.PATCH("/conversations/:conversation", SupportAgentConversationRename)
 	r.GET("/runs/:id", SupportAgentRun)
-	for _, c := range []struct{ method, path string }{{"PATCH", "/conversations/invalid.id"}, {"GET", "/runs/invalid-id"}} {
+	r.POST("/tickets/:id/note", SupportAgentTicketNote)
+	r.POST("/tickets/:id/close", SupportAgentTicketClose)
+	for _, c := range []struct{ method, path string }{
+		{"PATCH", "/conversations/invalid.id"}, {"GET", "/runs/invalid-id"},
+		{"POST", "/tickets/invalid.id/note"}, {"POST", "/tickets/not-a-ticket/close"},
+	} {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(c.method, c.path, strings.NewReader(`{}`)))
 		if w.Code != 400 {
 			t.Fatalf("expected invalid ID rejection: %d", w.Code)
 		}
+	}
+}
+
+func TestSupportFeedbackAndTicketsForwardToCustomerEndpoints(t *testing.T) {
+	var paths []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Support-User") != "42" || r.Header.Get("X-Support-Role") != "user" {
+			t.Errorf("customer identity missing on %s", r.URL.Path)
+		}
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		_, _ = io.WriteString(w, `{"status":"pending"}`)
+	}))
+	defer upstream.Close()
+	t.Setenv("SUPPORT_AGENT_URL", upstream.URL)
+	t.Setenv("SUPPORT_AGENT_SECRET", "server-only")
+	r := gin.New()
+	identity := func(handler gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) { c.Set("id", 42); c.Set("role", common.RoleCommonUser); handler(c) }
+	}
+	r.POST("/feedback", identity(SupportAgentFeedback))
+	r.POST("/tickets", identity(SupportAgentTicketRequest))
+	r.POST("/tickets/:id/note", identity(SupportAgentTicketNote))
+	r.POST("/tickets/:id/close", identity(SupportAgentTicketClose))
+	ticket := "11111111-1111-4111-8111-111111111111"
+	for _, path := range []string{"/feedback", "/tickets", "/tickets/" + ticket + "/note", "/tickets/" + ticket + "/close"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("POST", path, strings.NewReader(`{}`)))
+		if w.Code != 200 {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	want := []string{"POST /v1/feedback", "POST /v1/tickets", "POST /v1/tickets/" + ticket + "/note", "POST /v1/tickets/" + ticket + "/close"}
+	if strings.Join(paths, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected upstream paths: %v", paths)
 	}
 }
 

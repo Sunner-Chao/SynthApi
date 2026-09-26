@@ -33,6 +33,7 @@ export type AgentAnswer = {
   knowledge_version: string
   needs_human: boolean
   human_reply?: boolean
+  user_requested?: boolean
   actions?: AgentAction[]
   tool_calls?: ToolCall[]
 }
@@ -122,8 +123,24 @@ export type AgentRun = {
   tool_calls: ToolCall[]
   error: string
 }
+export type FeedbackVote = 'up' | 'down'
+export type FeedbackReason =
+  | ''
+  | 'inaccurate'
+  | 'unclear'
+  | 'not_working'
+  | 'other'
+export type Ticket = {
+  id: string
+  status: 'pending' | 'replied' | 'resolved'
+  created: number
+  updated: number
+}
 export type HistoryPage = {
   turns: Turn[]
   next_before: string | null
   runs: AgentRun[]
+  // Present from the phase-2 service on; older responses omit them.
+  feedback?: Record<string, { vote: FeedbackVote; reason: FeedbackReason }>
+  tickets?: Ticket[]
 }

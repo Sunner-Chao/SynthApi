@@ -23,12 +23,17 @@ import type {
   HistoryPage,
   Conversation,
   Handoff,
+  FeedbackReason,
+  FeedbackVote,
   Knowledge,
   KnowledgeDocument,
+  Ticket,
   Workflow,
 } from './types'
 
 type Result<T> = { success: boolean; message?: string; data: T }
+// Ticket errors are reported by the caller, which words some of them better.
+const quietErrors = { skipErrorHandler: true, skipBusinessError: true }
 async function unwrap<T>(request: Promise<{ data: Result<T> }>): Promise<T> {
   const response = await request
   if (!response.data.success)
@@ -90,6 +95,32 @@ export const reportAction = (body: {
   unwrap<{ recorded: boolean }>(
     api.post('/api/support-agent/actions/receipt', body)
   )
+export const sendFeedback = (body: {
+  conversation: string
+  turn_id: string
+  vote: FeedbackVote | null
+  reason: FeedbackReason
+}) =>
+  unwrap<{ turn_id: string; vote: FeedbackVote | null; reason: string }>(
+    api.post('/api/support-agent/feedback', body, {
+      skipErrorHandler: true,
+      skipBusinessError: true,
+    })
+  )
+export const requestTicket = (body: {
+  conversation: string
+  question: string
+  note: string
+}) =>
+  unwrap<{ created: boolean; ticket: Ticket }>(
+    api.post('/api/support-agent/tickets', body, quietErrors)
+  )
+export const addTicketNote = (id: string, note: string) =>
+  unwrap<Ticket>(
+    api.post(`/api/support-agent/tickets/${id}/note`, { note }, quietErrors)
+  )
+export const closeTicket = (id: string) =>
+  unwrap<Ticket>(api.post(`/api/support-agent/tickets/${id}/close`))
 export const askAgent = (
   question: string,
   conversation: string,

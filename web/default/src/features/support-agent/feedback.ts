@@ -16,15 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { sendFeedback } from './api'
+import type { FeedbackReason, FeedbackVote, HistoryPage } from './types'
 
-// Votes are remembered in this browser until the feedback API ships, so the
-// thumbs keep their state when the conversation is reopened.
-export type Vote = 'up' | 'down'
-
-const MAX_VOTES = 200
+// Votes are saved with the conversation on the server. Votes given before the
+// feedback API existed are only in this browser; they show until replaced.
 const storageKey = (userId: number) => `support-feedback-${userId}`
 
-function readAll(userId: number): Record<string, Vote> {
+function readAll(userId: number): Record<string, FeedbackVote> {
   try {
     const value: unknown = JSON.parse(
       localStorage.getItem(storageKey(userId)) || '{}'
@@ -32,7 +38,7 @@ function readAll(userId: number): Record<string, Vote> {
     if (!value || typeof value !== 'object') return {}
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).filter(
-        (entry): entry is [string, Vote] =>
+        (entry): entry is [string, FeedbackVote] =>
           entry[1] === 'up' || entry[1] === 'down'
       )
     )
@@ -41,22 +47,60 @@ function readAll(userId: number): Record<string, Vote> {
   }
 }
 
-export const readFeedback = (userId: number, turnId: string): Vote | null =>
+const readFeedback = (userId: number, turnId: string): FeedbackVote | null =>
   readAll(userId)[turnId] ?? null
 
-export function saveFeedback(
-  userId: number,
-  turnId: string,
-  vote: Vote | null
-) {
-  const rest = Object.entries(readAll(userId)).filter(([id]) => id !== turnId)
-  const next = vote ? [...rest, [turnId, vote] as const] : rest
+function forgetLocalVote(userId: number, turnId: string) {
+  const all = readAll(userId)
+  if (!(turnId in all)) return
+  const rest = Object.entries(all).filter(([id]) => id !== turnId)
   try {
     localStorage.setItem(
       storageKey(userId),
-      JSON.stringify(Object.fromEntries(next.slice(-MAX_VOTES)))
+      JSON.stringify(Object.fromEntries(rest))
     )
   } catch {
-    /* The vote still shows for this session. */
+    /* The server copy takes precedence anyway. */
+  }
+}
+
+type Saved = { vote: FeedbackVote; reason: FeedbackReason }
+
+// The vote shown is the one in the conversation's cached history, updated at
+// once on click, so it is current after the panel is reopened or refetched.
+export function useAnswerFeedback(
+  userId: number,
+  conversation: string,
+  turnId: string,
+  saved?: Saved
+) {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
+  const historyKey = ['support-history', userId, conversation]
+  const mutation = useMutation({
+    mutationFn: sendFeedback,
+    retry: 2,
+    onError: () => {
+      toast.error(t('Unable to save your feedback. Please retry.'))
+      void qc.invalidateQueries({ queryKey: historyKey })
+    },
+  })
+  const record = (vote: FeedbackVote | null, reason: FeedbackReason) => {
+    qc.setQueryData<InfiniteData<HistoryPage>>(historyKey, (data) => {
+      if (!data?.pages.length) return data
+      const [first, ...older] = data.pages
+      const others = Object.fromEntries(
+        Object.entries(first.feedback ?? {}).filter(([id]) => id !== turnId)
+      )
+      const feedback = vote ? { ...others, [turnId]: { vote, reason } } : others
+      return { ...data, pages: [{ ...first, feedback }, ...older] }
+    })
+    forgetLocalVote(userId, turnId)
+    mutation.mutate({ conversation, turn_id: turnId, vote, reason })
+  }
+  return {
+    vote: saved ? saved.vote : readFeedback(userId, turnId),
+    reason: saved?.reason ?? '',
+    record,
   }
 }

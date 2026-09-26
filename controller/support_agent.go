@@ -68,6 +68,21 @@ func SupportAgentConversationDelete(c *gin.Context) {
 	}
 	supportAgentProxy(c, "/v1/conversations/"+id, false)
 }
+func SupportAgentFeedback(c *gin.Context)      { supportAgentProxy(c, "/v1/feedback", false) }
+func SupportAgentTicketRequest(c *gin.Context) { supportAgentProxy(c, "/v1/tickets", false) }
+func SupportAgentTicketNote(c *gin.Context)    { supportAgentTicket(c, "note") }
+func SupportAgentTicketClose(c *gin.Context)   { supportAgentTicket(c, "close") }
+
+// Customer-side ticket actions; the support service checks that the ticket belongs to the caller.
+func supportAgentTicket(c *gin.Context, action string) {
+	id := c.Param("id")
+	if !supportTicketID.MatchString(id) {
+		c.JSON(400, gin.H{"success": false, "message": "Invalid ticket"})
+		return
+	}
+	supportAgentProxy(c, "/v1/tickets/"+id+"/"+action, false)
+}
+
 func SupportAgentHealth(c *gin.Context) { supportAgentProxy(c, "/health", false) }
 func SupportAgentPause(c *gin.Context)  { supportAgentProxy(c, "/v1/pause", false) }
 func SupportAgentVerify(c *gin.Context) { supportAgentProxy(c, "/v1/desktop/verify", true) }
