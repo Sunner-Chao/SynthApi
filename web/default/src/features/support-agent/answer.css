@@ -694,8 +694,46 @@ For commercial licensing, please contact support@quantumnous.com
     margin-left: 0;
   }
 }
+/* An answer being written, and one the user stopped */
+.agent-writing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.agent-markdown.is-streaming > :last-child:not(ol, ul)::after,
+.agent-markdown.is-streaming > :is(ol, ul):last-child > li:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 0.45em;
+  height: 1.05em;
+  margin-left: 2px;
+  border-radius: 1px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  opacity: 0.5;
+  animation: agent-caret 1s steps(2, start) infinite;
+}
+@keyframes agent-caret {
+  to {
+    visibility: hidden;
+  }
+}
+.agent-stopped-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .agent-progress-next {
+  .agent-progress-next,
+  .agent-markdown.is-streaming > :last-child::after,
+  .agent-markdown.is-streaming > :is(ol, ul):last-child > li:last-child::after {
     animation: none;
   }
 }

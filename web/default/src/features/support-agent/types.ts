@@ -36,6 +36,10 @@ export type AgentAnswer = {
   user_requested?: boolean
   actions?: AgentAction[]
   tool_calls?: ToolCall[]
+  // Set on an answer the user stopped while it was being written, or that was
+  // cut off (too long, timed out) after part of it had been shown.
+  stopped?: boolean
+  truncated?: boolean
 }
 export type AgentAction = {
   id: string
@@ -122,6 +126,10 @@ export type AgentRun = {
   result: AgentAnswer
   tool_calls: ToolCall[]
   error: string
+  // While running: the answer written so far, once it is known to be grounded.
+  partial?: { answer: string; sources: Source[] }
+  // While queued: how many questions are ahead of this one.
+  queue_ahead?: number
 }
 export type FeedbackVote = 'up' | 'down'
 export type FeedbackReason =

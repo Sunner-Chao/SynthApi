@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { Bot, Headset, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -41,15 +41,19 @@ import { pageContext } from './page-context'
 import { PanelHeader } from './panel-header'
 import { useHandoffQueue, type AgentTab } from './queue'
 import { markRepliesSeen, useSupportReplies } from './replies'
+import { ResizeHandle } from './resize-handle'
 import { maskSecrets } from './secrets'
 import {
+  PANEL_WIDTH,
+  PANEL_WIDTH_VAR,
   persistThread,
   readDraft,
-  readWide,
-  saveWide,
+  readPanelWidth,
+  savePanelWidth,
   storedThread,
   writeDraft,
 } from './storage'
+import { StreamingAnswer } from './streaming-answer'
 import { RunProgress, StoppedSteps } from './tool-calls'
 import type { Turn } from './types'
 import { useAgentThread } from './use-agent-thread'
@@ -93,7 +97,12 @@ export default function AgentPanel(props: {
   const [includePage, setIncludePage] = useState(true)
   const [notice, setNotice] = useState('')
   const [showHistory, setShowHistory] = useState(false)
-  const [wide, setWide] = useState(readWide)
+  const [width, setWidth] = useState(readPanelWidth)
+  const wide = width >= (PANEL_WIDTH.normal + PANEL_WIDTH.wide) / 2
+  const resize = (value: number) => {
+    setWidth(value)
+    savePanelWidth(value)
+  }
   const [exporting, setExporting] = useState(false)
   const view: AgentTab = admin ? props.tab : 'chat'
   const queue = useHandoffQueue()
@@ -111,11 +120,15 @@ export default function AgentPanel(props: {
   const bottom = useRef<HTMLDivElement>(null)
   const focusReply = useRef(!!props.focusReply)
   const scrolled = useRef(false)
+  // True while the reader is at the end of the conversation; then new text is followed.
+  const atEnd = useRef(true)
 
-  // A run that just finished is shown straight away, before history reloads.
+  // A run that just finished (or was stopped with text kept) is shown straight
+  // away, before history reloads.
   const run = thread.run
   const finished =
-    run?.status === 'completed' &&
+    (run?.status === 'completed' ||
+      (run?.status === 'cancelled' && run.result?.stopped)) &&
     run.result &&
     !thread.turns.some(
       (turn) => turn.response.request_id === run.result.request_id
@@ -166,6 +179,11 @@ export default function AgentPanel(props: {
     if (answeredRun) void refetchReplies()
   }, [answeredRun, refetchReplies])
 
+  // Another conversation starts at its end.
+  useEffect(() => {
+    atEnd.current = true
+  }, [conversation])
+
   useEffect(() => {
     if (!lastTurnId && !thread.isPending) return
     if (focusReply.current) {
@@ -179,11 +197,21 @@ export default function AgentPanel(props: {
         return
       }
     }
+    // A question just sent always shows; a finished answer does not pull the
+    // view down when the reader scrolled up while it was being written.
+    if (!thread.isPending && !atEnd.current) return
     bottom.current?.scrollIntoView({
       behavior: scrolled.current ? 'smooth' : 'auto',
     })
     scrolled.current = true
   }, [lastTurnId, thread.isPending])
+
+  // Follow the answer while it is written, unless the reader scrolled up to read.
+  const writtenLength = run?.partial?.answer.length ?? 0
+  useEffect(() => {
+    if (writtenLength && atEnd.current)
+      bottom.current?.scrollIntoView({ block: 'end' })
+  }, [writtenLength])
 
   const updateQuestion = (value: string) => {
     setQuestion(value)
@@ -247,7 +275,9 @@ export default function AgentPanel(props: {
   const announcement =
     run?.status === 'completed' && run.result?.answer
       ? `${t('Answer ready')}: ${plainText(run.result.answer)}`
-      : ''
+      : run?.status === 'cancelled' && run.result?.stopped
+        ? t('Stopped. The answer so far is kept.')
+        : ''
   const lastQuestionTurn = [...turns].reverse().find((turn) => turn.question)
 
   return (
@@ -277,11 +307,10 @@ export default function AgentPanel(props: {
         showOverlay={false}
         showCloseButton={false}
         initialFocus={touch ? undefined : input}
-        className={cn(
-          'support-agent-panel w-full gap-0 shadow-xl',
-          wide ? 'sm:max-w-[760px]' : 'sm:max-w-[480px]'
-        )}
+        style={{ [PANEL_WIDTH_VAR]: `${width}px` } as CSSProperties}
+        className='support-agent-panel w-full gap-0 shadow-xl sm:max-w-[var(--agent-panel-width)]'
       >
+        <ResizeHandle width={width} onCommit={resize} />
         <SheetTitle className='sr-only'>{t('Site assistant')}</SheetTitle>
         <SheetDescription className='sr-only'>
           {t('Answers from the SynthAPI knowledge base')}
@@ -302,10 +331,9 @@ export default function AgentPanel(props: {
             setShowHistory(true)
           }}
           onNew={fresh}
-          onToggleWide={() => {
-            setWide(!wide)
-            saveWide(!wide)
-          }}
+          onToggleWide={() =>
+            resize(wide ? PANEL_WIDTH.normal : PANEL_WIDTH.wide)
+          }
           onExport={exportCurrent}
           onView={(tab) => {
             setShowHistory(false)
@@ -345,6 +373,11 @@ export default function AgentPanel(props: {
                 ref={scroller}
                 className='agent-conversation'
                 aria-busy={thread.isPending}
+                onScroll={(event) => {
+                  const el = event.currentTarget
+                  atEnd.current =
+                    el.scrollHeight - el.scrollTop - el.clientHeight < 80
+                }}
               >
                 {history.isLoading && (
                   <Loader2 className='text-muted-foreground mx-auto my-8 size-5 animate-spin' />
@@ -455,7 +488,11 @@ export default function AgentPanel(props: {
                       <span className='agent-avatar' aria-hidden>
                         <Bot className='size-3.5' />
                       </span>
-                      <RunProgress run={run} />
+                      {run?.partial ? (
+                        <StreamingAnswer runId={run.id} partial={run.partial} />
+                      ) : (
+                        <RunProgress run={run} />
+                      )}
                     </div>
                   </div>
                 )}
@@ -487,7 +524,7 @@ export default function AgentPanel(props: {
                     ))}
                   </details>
                 )}
-                {run?.status === 'cancelled' && (
+                {run?.status === 'cancelled' && !run.result?.stopped && (
                   <p className='agent-inline-note'>
                     {t('Stopped. Your previous messages are saved.')}
                   </p>

@@ -61,17 +61,27 @@ export function writeDraft(userId: number, conversation: string, text: string) {
   }
 }
 
-export function readWide() {
+export const PANEL_WIDTH = { normal: 480, wide: 760, min: 400, max: 960 }
+// CSS variable the panel's width is read from (see ResizeHandle).
+export const PANEL_WIDTH_VAR = '--agent-panel-width'
+const WIDTH_KEY = 'support-panel-width'
+
+export function readPanelWidth() {
   try {
+    const saved = Number(localStorage.getItem(WIDTH_KEY))
+    if (saved >= PANEL_WIDTH.min && saved <= PANEL_WIDTH.max) return saved
+    // Earlier versions only remembered whether the panel was expanded.
     return localStorage.getItem(WIDE_KEY) === '1'
+      ? PANEL_WIDTH.wide
+      : PANEL_WIDTH.normal
   } catch {
-    return false
+    return PANEL_WIDTH.normal
   }
 }
 
-export function saveWide(wide: boolean) {
+export function savePanelWidth(width: number) {
   try {
-    localStorage.setItem(WIDE_KEY, wide ? '1' : '0')
+    localStorage.setItem(WIDTH_KEY, String(Math.round(width)))
   } catch {
     /* Optional browser storage. */
   }

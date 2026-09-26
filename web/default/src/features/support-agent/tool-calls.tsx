@@ -145,11 +145,18 @@ export function RunProgress(props: { run?: AgentRun | null }) {
   const calls = props.run?.tool_calls ?? []
   const queued = !props.run || props.run.status === 'queued'
   const working = calls.some((call) => call.status === 'running')
+  const ahead = queued ? (props.run?.queue_ahead ?? 0) : 0
   return (
     <div className='agent-progress' role='status'>
       <div className='agent-progress-head'>
         <Loader2 className='size-3.5 shrink-0 animate-spin' />
-        <span>{queued ? t('Waiting to start…') : t('Working on it')}</span>
+        <span>
+          {ahead > 0
+            ? t('{{count}} questions ahead of yours…', { count: ahead })
+            : queued
+              ? t('Waiting to start…')
+              : t('Working on it')}
+        </span>
         <span className='agent-progress-time'>
           {t('{{seconds}} s', { seconds: (tenths / 10).toFixed(1) })}
         </span>

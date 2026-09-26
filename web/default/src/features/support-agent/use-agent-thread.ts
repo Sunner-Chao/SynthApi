@@ -28,6 +28,12 @@ import type { AgentRun } from './types'
 
 const active = (run?: AgentRun) =>
   run?.status === 'queued' || run?.status === 'running'
+// While the answer is being written, poll faster so the text grows smoothly.
+const writing = (run?: AgentRun) =>
+  run?.status === 'running' &&
+  run.tool_calls.some(
+    (call) => call.name === 'answer_generation' && call.status === 'running'
+  )
 export function useAgentThread(
   userId: number,
   conversation: string,
@@ -53,11 +59,12 @@ export function useAgentThread(
     queryFn: () => getAgentRun(runId!),
     enabled: !!runId,
     retry: false,
-    refetchInterval: (query) =>
-      query.state.status !== 'error' &&
-      (active(query.state.data) || !query.state.data)
-        ? 1200
-        : false,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (query.state.status === 'error' || (data && !active(data)))
+        return false
+      return writing(data) ? 500 : 1200
+    },
   })
   const run = runQuery.data || currentSubmitted || savedRun
   const submit = useMutation({
@@ -108,8 +115,9 @@ export function useAgentThread(
     // Conversation-wide lists; every page carries the same copy.
     tickets: latest?.tickets ?? [],
     feedback: latest?.feedback ?? {},
+    // A stopped answer that kept its text is a turn now, not an unfinished request.
     previousRuns: (history.data?.pages[0]?.runs || []).filter(
-      (item) => !active(item) && item.id !== run?.id
+      (item) => !active(item) && item.id !== run?.id && !item.result?.stopped
     ),
     isPending: submit.isPending || active(run),
     isError: submit.isError || !!failed,
