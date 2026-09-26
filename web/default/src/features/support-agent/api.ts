@@ -21,13 +21,17 @@ import type {
   AgentAnswer,
   AgentRun,
   HistoryPage,
+  ConsoleOverview,
+  ContextTurn,
   Conversation,
   Handoff,
   FeedbackReason,
   FeedbackVote,
   Knowledge,
   KnowledgeDocument,
+  SupportSettings,
   Ticket,
+  UnresolvedReport,
   Workflow,
 } from './types'
 
@@ -142,14 +146,26 @@ export const resolveHandoff = (id: string) =>
   unwrap<{ resolved: boolean }>(
     api.post(`/api/support-agent/handoffs/${id}/resolve`)
   )
-export const replyHandoff = (id: string, reply_id: string, message: string) =>
+export const replyHandoff = (reply: {
+  id: string
+  replyId: string
+  message: string
+  // Keep an internal knowledge draft of the case.
+  draft: boolean
+}) =>
   unwrap<{
     reply_id: string
     status: string
     email_sent: boolean
     email_status: string
     knowledge_draft_id: string
-  }>(api.post(`/api/support-agent/handoffs/${id}/reply`, { reply_id, message }))
+  }>(
+    api.post(`/api/support-agent/handoffs/${reply.id}/reply`, {
+      reply_id: reply.replyId,
+      message: reply.message,
+      draft: reply.draft,
+    })
+  )
 export const getKnowledge = () =>
   unwrap<{ items: Knowledge[] }>(api.get('/api/support-agent/knowledge'))
 export const getKnowledgeDocument = (id: string) =>
@@ -160,12 +176,34 @@ export const saveKnowledge = (doc: {
   source: string
   audience: string
   content: string
+  expires?: number
 }) =>
   unwrap<{ id: string }>(
     api.post('/api/support-agent/knowledge', doc, { timeout: 120000 })
   )
 
+export const getHandoffContext = (id: string) =>
+  unwrap<{ turns: ContextTurn[] }>(
+    api.get(`/api/support-agent/handoffs/${id}/context`)
+  )
+export const getUnresolved = (days: number) =>
+  unwrap<UnresolvedReport>(
+    api.get('/api/support-agent/admin/unresolved', {
+      params: { days },
+      timeout: 30000,
+    })
+  )
+export const getConsoleOverview = () =>
+  unwrap<ConsoleOverview>(api.get('/api/support-agent/admin/overview'))
+
 export const setDesktopPause = (paused: boolean) =>
   unwrap<{ paused: boolean }>(
     api.post('/api/support-agent/pause', { scope: 'global', paused })
+  )
+
+export const getSupportSettings = () =>
+  unwrap<SupportSettings>(api.get('/api/support-agent/settings'))
+export const saveSupportSettings = (settings: SupportSettings) =>
+  unwrap<SupportSettings>(
+    api.put('/api/support-agent/admin/settings', settings)
   )

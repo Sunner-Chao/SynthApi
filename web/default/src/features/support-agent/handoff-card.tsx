@@ -26,9 +26,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { serviceHoursText, useSupportSettings } from './settings'
 import { TicketForm } from './ticket-form'
 import { useTicketActions } from './tickets'
-import type { Ticket } from './types'
+import type { ServiceHours, Ticket } from './types'
 
 export function SupportContact(props: { ticket?: string }) {
   const { t } = useTranslation()
@@ -67,17 +68,16 @@ const ticketLabel = (id?: string) =>
 
 type Status = Ticket['status']
 
-function statusText(status: Status, hasEmail: boolean, t: TFunction) {
+function statusText(
+  status: Status,
+  hasEmail: boolean,
+  hours: ServiceHours,
+  t: TFunction
+) {
   if (status === 'resolved') return t('This ticket is closed.')
   if (status === 'replied')
     return t('The support team has replied in this conversation.')
-  return hasEmail
-    ? t(
-        'Support is online 9:00–21:00 on weekdays and usually replies within 2 hours. The reply will appear in this conversation and we will email you.'
-      )
-    : t(
-        'Support is online 9:00–21:00 on weekdays and usually replies within 2 hours. The reply will appear in this conversation.'
-      )
+  return serviceHoursText(hours, hasEmail, t)
 }
 
 // Pending: add information (plus WeChat). Replied: confirm it is solved, or say what is still wrong.
@@ -153,6 +153,7 @@ export function HandoffCard(props: {
   conversation: string
 }) {
   const { t } = useTranslation()
+  const settings = useSupportSettings()
   const label = ticketLabel(props.handoffId)
   const status: Status =
     props.ticket?.status ?? (props.repliedFallback ? 'replied' : 'pending')
@@ -173,7 +174,9 @@ export function HandoffCard(props: {
         {label && <span className='agent-ticket-id'>{label}</span>}
         <span className='agent-handoff-status'>{labels[status]}</span>
       </header>
-      {props.showActions && <p>{statusText(status, props.hasEmail, t)}</p>}
+      {props.showActions && (
+        <p>{statusText(status, props.hasEmail, settings.service_hours, t)}</p>
+      )}
       {props.showActions &&
         status === 'pending' &&
         (props.ticket && props.handoffId ? (

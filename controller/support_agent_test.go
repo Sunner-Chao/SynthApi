@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -104,15 +105,53 @@ func TestSupportBridgeRejectsInvalidResourceIDs(t *testing.T) {
 	r.GET("/runs/:id", SupportAgentRun)
 	r.POST("/tickets/:id/note", SupportAgentTicketNote)
 	r.POST("/tickets/:id/close", SupportAgentTicketClose)
+	r.GET("/handoffs/:id/context", SupportAgentHandoffContext)
 	for _, c := range []struct{ method, path string }{
 		{"PATCH", "/conversations/invalid.id"}, {"GET", "/runs/invalid-id"},
 		{"POST", "/tickets/invalid.id/note"}, {"POST", "/tickets/not-a-ticket/close"},
+		{"GET", "/handoffs/not-a-ticket/context"},
 	} {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(c.method, c.path, strings.NewReader(`{}`)))
 		if w.Code != 400 {
 			t.Fatalf("expected invalid ID rejection: %d", w.Code)
 		}
+	}
+}
+
+func TestSupportReplyForwardsTheKnowledgeDraftChoice(t *testing.T) {
+	var bodies []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(raw))
+		_, _ = io.WriteString(w, `{"principal":"device:abc","status":"replied"}`)
+	}))
+	defer upstream.Close()
+	t.Setenv("SUPPORT_AGENT_URL", upstream.URL)
+	t.Setenv("SUPPORT_AGENT_SECRET", "server-only")
+	r := gin.New()
+	r.POST("/handoffs/:id/reply", func(c *gin.Context) {
+		c.Set("id", 4)
+		c.Set("role", common.RoleAdminUser)
+		SupportAgentReply(c)
+	})
+	ticket := "11111111-1111-4111-8111-111111111111"
+	for _, body := range []string{
+		`{"reply_id":"` + ticket + `","message":" done ","draft":false,"extra":1}`,
+		`{"reply_id":"` + ticket + `","message":"done"}`,
+	} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("POST", "/handoffs/"+ticket+"/reply", strings.NewReader(body)))
+		if w.Code != 200 {
+			t.Fatalf("reply failed: %d %s", w.Code, w.Body.String())
+		}
+	}
+	want := []string{
+		`{"reply_id":"` + ticket + `","message":"done","draft":false}`,
+		`{"reply_id":"` + ticket + `","message":"done"}`,
+	}
+	if strings.Join(bodies, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("unexpected upstream bodies: %v", bodies)
 	}
 }
 
@@ -150,24 +189,91 @@ func TestSupportFeedbackAndTicketsForwardToCustomerEndpoints(t *testing.T) {
 	}
 }
 
+func TestSupportConsoleForwardsAsAdministrator(t *testing.T) {
+	var paths []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Support-Role") != "admin" {
+			t.Errorf("administrator role missing on %s", r.URL.Path)
+		}
+		target := r.Method + " " + r.URL.Path
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		paths = append(paths, target)
+		_, _ = io.WriteString(w, `{"items":[{"principal":"device:abc"}],"turns":[]}`)
+	}))
+	defer upstream.Close()
+	t.Setenv("SUPPORT_AGENT_URL", upstream.URL)
+	t.Setenv("SUPPORT_AGENT_SECRET", "server-only")
+	r := gin.New()
+	admin := func(handler gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) { c.Set("id", 4); c.Set("role", common.RoleAdminUser); handler(c) }
+	}
+	r.GET("/handoffs/:id/context", admin(SupportAgentHandoffContext))
+	r.GET("/admin/unresolved", admin(SupportAgentUnresolved))
+	r.GET("/admin/overview", admin(SupportAgentOverview))
+	r.GET("/settings", admin(SupportAgentSettings))
+	r.PUT("/admin/settings", admin(SupportAgentSaveSettings))
+	ticket := "11111111-1111-4111-8111-111111111111"
+	requests := [][2]string{{"GET", "/handoffs/" + ticket + "/context"}, {"GET", "/admin/unresolved?days=30&x=1"},
+		{"GET", "/admin/unresolved"}, {"GET", "/admin/overview"}, {"GET", "/settings"}, {"PUT", "/admin/settings"}}
+	for _, request := range requests {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(request[0], request[1], strings.NewReader(`{"starters":{}}`)))
+		if w.Code != 200 {
+			t.Fatalf("%s: %d %s", request[1], w.Code, w.Body.String())
+		}
+	}
+	want := []string{"GET /v1/handoffs/" + ticket + "/context", "GET /v1/admin/unresolved?days=30",
+		"GET /v1/admin/unresolved?days=7", "GET /v1/admin/overview", "GET /v1/settings", "PUT /v1/admin/settings"}
+	if strings.Join(paths, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected upstream paths: %v", paths)
+	}
+	for _, period := range []string{"0", "91", "week"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/admin/unresolved?days="+period, nil))
+		if w.Code != 400 {
+			t.Fatalf("days=%s should be rejected, got %d", period, w.Code)
+		}
+	}
+}
+
 func TestSupportHandoffsShowSiteAccountIdentity(t *testing.T) {
 	data := map[string]interface{}{"items": []interface{}{
 		map[string]interface{}{"principal": "web:17"},
 		map[string]interface{}{"principal": "device:abc123"},
+		map[string]interface{}{"principal": "web:17"},
+		map[string]interface{}{"principal": "web:18"},
+		map[string]interface{}{"principal": "web:18"},
 	}}
+	lookups := 0
 	got := enrichSupportHandoffUsersWith(data, func(id int, selectAll bool) (*model.User, error) {
-		if id != 17 || selectAll {
-			t.Fatalf("unexpected account lookup: id=%d selectAll=%t", id, selectAll)
+		lookups++
+		if selectAll {
+			t.Fatalf("unexpected full account lookup: id=%d", id)
 		}
-		return &model.User{Id: id, Username: "ada", DisplayName: "Ada", Email: "ada@example.com"}, nil
+		if id == 18 {
+			return nil, errors.New("record not found")
+		}
+		return &model.User{Id: id, Username: "ada", DisplayName: "Ada", Email: "ada@example.com", Quota: 500000,
+			CreatedAt: 1700000000}, nil
 	})
 	items := got.(map[string]interface{})["items"].([]interface{})
-	requester := items[0].(map[string]interface{})["requester"].(map[string]interface{})
-	if requester["id"] != 17 || requester["username"] != "Ada" || requester["email"] != "ada@example.com" {
-		t.Fatalf("account identity was not attached: %#v", requester)
+	for _, index := range []int{0, 2} {
+		requester := items[index].(map[string]interface{})["requester"].(map[string]interface{})
+		if requester["id"] != 17 || requester["username"] != "Ada" || requester["email"] != "ada@example.com" ||
+			requester["quota"] != 500000 || requester["created_at"] != int64(1700000000) {
+			t.Fatalf("account identity was not attached: %#v", requester)
+		}
 	}
-	if _, exists := items[1].(map[string]interface{})["requester"]; exists {
-		t.Fatal("device handoff must not be mapped to a site user")
+	// A device ticket, and two tickets of an account whose lookup failed (looked up once, not retried).
+	for _, index := range []int{1, 3, 4} {
+		if _, exists := items[index].(map[string]interface{})["requester"]; exists {
+			t.Fatalf("item %d must not be mapped to a site user", index)
+		}
+	}
+	if lookups != 2 {
+		t.Fatalf("each account should be looked up once, got %d lookups", lookups)
 	}
 }
 

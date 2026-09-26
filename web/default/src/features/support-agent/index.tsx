@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BellRing, Bot } from 'lucide-react'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
+import { Bot, LayoutDashboard } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ import {
 import { AssistantActionGuide } from './action-guide'
 import { HandoffNotifications, ReplyNotifications } from './notifications'
 import {
+  consoleHref,
   isConversationId,
   openSupportAgent,
   readOpenRequest,
@@ -50,6 +52,10 @@ export function SupportAgentEntry() {
   const { t } = useTranslation()
   const { setOpenMobile } = useSidebar()
   const userId = useAuthStore((s) => s.auth.user?.id)
+  const admin = useAuthStore((s) => (s.auth.user?.role ?? 0) >= 10)
+  const onConsole = useLocation({
+    select: (location) => location.pathname.startsWith('/support-console'),
+  })
   const replies = useSupportReplies(userId)
   const queue = useHandoffQueue()
   const pendingCount =
@@ -78,25 +84,31 @@ export function SupportAgentEntry() {
               {shortcutLabel()}
             </span>
           </SidebarMenuButton>
-          {pendingCount > 0 && (
+          {admin && (
             <SidebarMenuButton
               className='agent-queue-entry mt-1 h-9'
-              tooltip={t('Human review needed')}
-              onClick={() => {
-                setOpenMobile(false)
-                openSupportAgent('handoffs')
-              }}
+              tooltip={t('Support console')}
+              isActive={onConsole}
+              render={
+                <Link
+                  to='/support-console'
+                  search={{ tab: 'tickets' }}
+                  onClick={() => setOpenMobile(false)}
+                />
+              }
             >
-              <BellRing className='size-4 shrink-0' />
-              <span>{t('Pending review')}</span>
-              <span
-                className='agent-queue-count ml-auto'
-                aria-label={t('{{count}} pending questions', {
-                  count: pendingCount,
-                })}
-              >
-                {pendingCount}
-              </span>
+              <LayoutDashboard className='size-4 shrink-0' />
+              <span>{t('Support console')}</span>
+              {pendingCount > 0 && (
+                <span
+                  className='agent-queue-count ml-auto'
+                  aria-label={t('{{count}} pending questions', {
+                    count: pendingCount,
+                  })}
+                >
+                  {pendingCount}
+                </span>
+              )}
             </SidebarMenuButton>
           )}
         </SidebarMenuItem>
@@ -142,7 +154,7 @@ function linkedRequest(): OpenRequest | null {
   return null
 }
 
-function initialState(signedIn: boolean): RootState {
+function initialState(signedIn: boolean, admin: boolean): RootState {
   const linked = linkedRequest()
   if (linked?.conversation && !signedIn) {
     try {
@@ -151,9 +163,12 @@ function initialState(signedIn: boolean): RootState {
       /* The link still works after signing in again. */
     }
   }
+  // Old queue links (?support=handoffs) take administrators to the console
+  // (see SupportAgentRoot); everyone else gets the conversation.
+  const forConsole = !!linked && linked.tab !== 'chat'
   return {
-    open: !!linked && signedIn,
-    request: linked ?? { tab: 'chat' },
+    open: !!linked && signedIn && !(forConsole && admin),
+    request: linked && !forConsole ? linked : { tab: 'chat' },
     session: 0,
   }
 }
@@ -161,7 +176,15 @@ function initialState(signedIn: boolean): RootState {
 export function SupportAgentRoot() {
   const user = useAuthStore((s) => s.auth.user)
   const userId = user?.id
-  const [state, setState] = useState<RootState>(() => initialState(!!userId))
+  const admin = (user?.role ?? 0) >= 10
+  const navigate = useNavigate()
+  // The queue is already on screen in the console; no toast about it there.
+  const onConsole = useLocation({
+    select: (location) => location.pathname.startsWith('/support-console'),
+  })
+  const [state, setState] = useState<RootState>(() =>
+    initialState(!!userId, admin)
+  )
 
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -169,6 +192,14 @@ export function SupportAgentRoot() {
     url.searchParams.delete('assistant')
     window.history.replaceState(window.history.state, '', url)
   }, [])
+
+  useEffect(() => {
+    if (
+      admin &&
+      new URLSearchParams(window.location.search).get('support') === 'handoffs'
+    )
+      void navigate({ href: consoleHref('handoffs') })
+  }, [admin, navigate])
 
   useEffect(() => {
     if (!userId) return
@@ -185,7 +216,18 @@ export function SupportAgentRoot() {
 
   useEffect(() => {
     const show = (event: Event) => {
-      const request = readOpenRequest(event)
+      const asked = readOpenRequest(event)
+      // Queue and knowledge work happens in the support console (administrators);
+      // anyone else asking for it gets the conversation.
+      if (
+        asked.tab !== 'chat' &&
+        (useAuthStore.getState().auth.user?.role ?? 0) >= 10
+      ) {
+        setState((previous) => ({ ...previous, open: false }))
+        void navigate({ href: consoleHref(asked.tab) })
+        return
+      }
+      const request: OpenRequest = { ...asked, tab: 'chat' }
       if (request.conversation && userId)
         persistThread(userId, request.conversation)
       setState((previous) => ({
@@ -213,7 +255,7 @@ export function SupportAgentRoot() {
       window.removeEventListener(SUPPORT_OPEN_EVENT, show)
       window.removeEventListener('keydown', hotkey)
     }
-  }, [userId])
+  }, [userId, navigate])
 
   const { request } = state
   return (
@@ -225,11 +267,11 @@ export function SupportAgentRoot() {
           panelOpen={state.open}
         />
       )}
-      {userId && (user?.role ?? 0) >= 10 && (
+      {userId && admin && (
         <HandoffNotifications
           key={userId}
           userId={userId}
-          panelOpen={state.open}
+          panelOpen={state.open || onConsole}
         />
       )}
       {state.open && userId && (
@@ -237,16 +279,9 @@ export function SupportAgentRoot() {
           <AgentPanel
             key={`${userId}:${state.session}`}
             userId={userId}
-            tab={request.tab}
             initialPrompt={request.prompt}
             initialConversation={request.conversation}
             focusReply={request.focusReply}
-            onTabChange={(tab) =>
-              setState((previous) => ({
-                ...previous,
-                request: { ...previous.request, tab },
-              }))
-            }
             onClose={() =>
               setState((previous) => ({ ...previous, open: false }))
             }

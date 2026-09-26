@@ -48,6 +48,7 @@ import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedTopupOrdersIndexRouteImport } from './routes/_authenticated/topup-orders/index'
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
+import { Route as AuthenticatedSupportConsoleIndexRouteImport } from './routes/_authenticated/support-console/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
@@ -282,6 +283,12 @@ const AuthenticatedSystemSettingsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
+  } as any)
+const AuthenticatedSupportConsoleIndexRoute =
+  AuthenticatedSupportConsoleIndexRouteImport.update({
+    id: '/support-console/',
+    path: '/support-console/',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSubscriptionsIndexRoute =
   AuthenticatedSubscriptionsIndexRouteImport.update({
@@ -543,6 +550,7 @@ export interface FileRoutesByFullPath {
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
+  '/support-console/': typeof AuthenticatedSupportConsoleIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/topup-orders/': typeof AuthenticatedTopupOrdersIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
@@ -616,6 +624,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
+  '/support-console': typeof AuthenticatedSupportConsoleIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
   '/topup-orders': typeof AuthenticatedTopupOrdersIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
@@ -693,6 +702,7 @@ export interface FileRoutesById {
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
+  '/_authenticated/support-console/': typeof AuthenticatedSupportConsoleIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/_authenticated/topup-orders/': typeof AuthenticatedTopupOrdersIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
@@ -769,6 +779,7 @@ export interface FileRouteTypes {
     | '/profile/'
     | '/redemption-codes/'
     | '/subscriptions/'
+    | '/support-console/'
     | '/system-settings/'
     | '/topup-orders/'
     | '/usage-logs/'
@@ -842,6 +853,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/redemption-codes'
     | '/subscriptions'
+    | '/support-console'
     | '/system-settings'
     | '/topup-orders'
     | '/usage-logs'
@@ -918,6 +930,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/subscriptions/'
+    | '/_authenticated/support-console/'
     | '/_authenticated/system-settings/'
     | '/_authenticated/topup-orders/'
     | '/_authenticated/usage-logs/'
@@ -1239,6 +1252,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/system-settings/'
       preLoaderRoute: typeof AuthenticatedSystemSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
+    }
+    '/_authenticated/support-console/': {
+      id: '/_authenticated/support-console/'
+      path: '/support-console'
+      fullPath: '/support-console/'
+      preLoaderRoute: typeof AuthenticatedSupportConsoleIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/subscriptions/': {
       id: '/_authenticated/subscriptions/'
@@ -1597,6 +1617,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
+  AuthenticatedSupportConsoleIndexRoute: typeof AuthenticatedSupportConsoleIndexRoute
   AuthenticatedTopupOrdersIndexRoute: typeof AuthenticatedTopupOrdersIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
@@ -1633,6 +1654,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
+  AuthenticatedSupportConsoleIndexRoute: AuthenticatedSupportConsoleIndexRoute,
   AuthenticatedTopupOrdersIndexRoute: AuthenticatedTopupOrdersIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,

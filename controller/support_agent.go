@@ -99,6 +99,30 @@ func SupportAgentKnowledgeDocument(c *gin.Context) {
 	}
 	supportAgentProxy(c, "/v1/knowledge/"+id, false)
 }
+
+// Support console: a ticket's conversation, unresolved questions grouped by topic, headline
+// counts and the console settings. Administrators only (router), except reading the settings,
+// which every signed-in user needs for the service hours and suggested questions.
+func SupportAgentHandoffContext(c *gin.Context) {
+	id := c.Param("id")
+	if !supportTicketID.MatchString(id) {
+		c.JSON(400, gin.H{"success": false, "message": "Invalid ticket"})
+		return
+	}
+	supportAgentProxy(c, "/v1/handoffs/"+id+"/context", false)
+}
+func SupportAgentUnresolved(c *gin.Context) {
+	days, err := strconv.Atoi(c.DefaultQuery("days", "7"))
+	if err != nil || days < 1 || days > 90 {
+		c.JSON(400, gin.H{"success": false, "message": "Invalid period"})
+		return
+	}
+	supportAgentProxy(c, "/v1/admin/unresolved?days="+strconv.Itoa(days), false)
+}
+func SupportAgentOverview(c *gin.Context)     { supportAgentProxy(c, "/v1/admin/overview", false) }
+func SupportAgentSettings(c *gin.Context)     { supportAgentProxy(c, "/v1/settings", false) }
+func SupportAgentSaveSettings(c *gin.Context) { supportAgentProxy(c, "/v1/admin/settings", false) }
+
 func SupportAgentResolve(c *gin.Context) {
 	id := c.Param("id")
 	if !supportTicketID.MatchString(id) {
@@ -116,6 +140,7 @@ func SupportAgentReply(c *gin.Context) {
 	var body struct {
 		ReplyID string `json:"reply_id"`
 		Message string `json:"message"`
+		Draft   *bool  `json:"draft,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || !supportTicketID.MatchString(body.ReplyID) {
 		c.JSON(400, gin.H{"success": false, "message": "Invalid reply"})
@@ -257,6 +282,8 @@ func enrichSupportHandoffUsersWith(data interface{}, lookup func(int, bool) (*mo
 	if !ok {
 		return data
 	}
+	// One lookup per account, however many of its tickets are listed.
+	users := map[int]*model.User{}
 	for _, raw := range items {
 		item, ok := raw.(map[string]interface{})
 		if !ok {
@@ -270,15 +297,23 @@ func enrichSupportHandoffUsersWith(data interface{}, lookup func(int, bool) (*mo
 		if err != nil {
 			continue
 		}
-		user, err := lookup(userID, false)
-		if err != nil {
+		user, seen := users[userID]
+		if !seen {
+			if user, err = lookup(userID, false); err != nil {
+				user = nil
+			}
+			users[userID] = user
+		}
+		if user == nil {
 			continue
 		}
 		name := strings.TrimSpace(user.DisplayName)
 		if name == "" {
 			name = user.Username
 		}
-		item["requester"] = map[string]interface{}{"id": user.Id, "username": name, "email": user.Email}
+		// Balance and account age help staff judge billing questions at a glance.
+		item["requester"] = map[string]interface{}{"id": user.Id, "username": name, "email": user.Email,
+			"quota": user.Quota, "created_at": user.CreatedAt}
 	}
 	return root
 }

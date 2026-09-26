@@ -86,7 +86,13 @@ export type Handoff = {
   created: number
   reply?: string
   knowledge_draft_id?: string
-  requester?: { id: number; username: string; email: string }
+  requester?: {
+    id: number
+    username: string
+    email: string
+    quota?: number
+    created_at?: number
+  }
 }
 export type Knowledge = {
   id: string
@@ -97,6 +103,68 @@ export type Knowledge = {
   expires: number
 }
 export type KnowledgeDocument = Knowledge & { content: string }
+
+// Support console (administrators). Text arrives with secrets and contact details masked.
+export type ContextTurn = {
+  id: string
+  question: string
+  created: number
+  answer: string
+  status: string
+  human_reply: boolean
+  handoff_id: string
+  stopped: boolean
+  sources: string[]
+}
+// A ticket, or an answer someone marked as not helpful.
+export type UnresolvedItem = {
+  kind: 'ticket' | 'disliked'
+  id: string
+  question: string
+  created: number
+  // Ticket: why it was passed on. Disliked answer: the reason code picked.
+  reason: string
+  status?: string
+  reply?: string
+  answer?: string
+  sources?: string[]
+}
+// Questions that ask the same thing, grouped by the service.
+export type UnresolvedCluster = {
+  id: string
+  title: string
+  count: number
+  tickets: number
+  disliked: number
+  latest: number
+  items: UnresolvedItem[]
+}
+export type UnresolvedReport = {
+  days: number
+  mode: 'semantic' | 'lexical'
+  clusters: UnresolvedCluster[]
+}
+export type ConsoleOverview = {
+  days: number
+  tickets: { pending: number; replied: number; resolved: number }
+  votes: { up: number; down: number }
+  answers: { total: number; handoff: number }
+  // Site tickets only; seconds.
+  first_reply: { median: number | null; count: number }
+}
+
+// Maintained in the support console; read by everyone who opens the assistant.
+export type ServiceHours = {
+  weekdays_only: boolean
+  start: string
+  end: string
+  reply_hours: number
+}
+export type SupportSettings = {
+  service_hours: ServiceHours
+  // Suggested questions for the Chinese interface, by page prefix ("general" elsewhere).
+  starters: Record<string, string[]>
+}
 
 export type Workflow = {
   counts: Record<string, number>

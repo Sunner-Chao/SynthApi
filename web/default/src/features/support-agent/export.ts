@@ -61,14 +61,18 @@ export async function exportConversation(
     turns.unshift(...page.turns)
     before = page.next_before || ''
   } while (before)
-  const url = URL.createObjectURL(
-    new Blob([toMarkdown(title, turns, labels)], {
-      type: 'text/markdown;charset=utf-8',
-    })
+  downloadFile(
+    `synthapi-conversation-${conversation}.md`,
+    toMarkdown(title, turns, labels),
+    'text/markdown;charset=utf-8'
   )
+}
+
+export function downloadFile(name: string, text: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }))
   const link = document.createElement('a')
   link.href = url
-  link.download = `synthapi-conversation-${conversation}.md`
+  link.download = name
   link.click()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

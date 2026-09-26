@@ -20,6 +20,7 @@ import { useState } from 'react'
 import { ArrowRight, MessageSquareText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { generalStarters, type PageContext } from './page-context'
+import { customStarters, useSupportSettings } from './settings'
 import { relativeTime, secondsNow } from './time'
 import type { Conversation } from './types'
 
@@ -38,9 +39,13 @@ export function EmptyState(props: {
   onOpen: (conversation: string) => void
 }) {
   const { t, i18n } = useTranslation()
+  const settings = useSupportSettings()
   const [now] = useState(secondsNow)
   const greeting = t(greetingKey(new Date(now * 1000).getHours()))
-  const starters = props.context?.starters ?? generalStarters
+  // Questions written in the support console are shown as typed.
+  const starters =
+    customStarters(settings, props.context?.prefix, i18n.language) ??
+    (props.context?.starters ?? generalStarters).map((key) => t(key))
   return (
     <div className='agent-empty'>
       <h2>
@@ -66,9 +71,9 @@ export function EmptyState(props: {
             <button
               key={starter}
               type='button'
-              onClick={() => props.onAsk(t(starter))}
+              onClick={() => props.onAsk(starter)}
             >
-              <span>{t(starter)}</span>
+              <span>{starter}</span>
               <ArrowRight className='size-3.5 shrink-0' />
             </button>
           ))}

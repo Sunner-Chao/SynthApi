@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 // Page names reuse the navigation labels. Starters only ask about topics the
 // customer knowledge base covers, so a suggested question never lands in the
 // human queue for lack of sources.
-export type PageContext = { label: string; starters: string[] }
+export type PageContext = { prefix: string; label: string; starters: string[] }
 
 const GENERAL = [
   'How do I start using the API?',
@@ -73,7 +73,8 @@ const PRICING = [
   'Which model should I choose?',
 ]
 
-const PAGES: { prefix: string; label: string; starters: string[] }[] = [
+// The support console can replace these for the Chinese interface, page by page.
+export const PAGES: PageContext[] = [
   { prefix: '/keys', label: 'API Keys', starters: KEYS },
   { prefix: '/usage-logs', label: 'Usage Logs', starters: LOGS },
   { prefix: '/image-logs', label: 'Image Logs', starters: IMAGES },
@@ -100,7 +101,7 @@ export function pageContext(pathname: string): PageContext | null {
   const page = PAGES.find(
     (item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`)
   )
-  return page ? { label: page.label, starters: page.starters } : null
+  return page ?? null
 }
 
 export const generalStarters = GENERAL

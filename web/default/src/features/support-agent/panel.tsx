@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { useLocation } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 import { Bot, Headset, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -37,13 +37,13 @@ import { Conversations } from './conversations'
 import { useDocking } from './dock'
 import { EmptyState } from './empty-state'
 import { exportConversation, type ExportLabels } from './export'
-import { AgentManagement } from './management'
 import { pageContext } from './page-context'
 import { PanelHeader } from './panel-header'
-import { useHandoffQueue, type AgentTab } from './queue'
+import { consoleHref, useHandoffQueue } from './queue'
 import { markRepliesSeen, useSupportReplies } from './replies'
 import { ResizeHandle } from './resize-handle'
 import { maskSecrets } from './secrets'
+import { useSupportSettings } from './settings'
 import {
   PANEL_WIDTH,
   PANEL_WIDTH_VAR,
@@ -77,8 +77,6 @@ const onToast = (event: Event) => {
 export default function AgentPanel(props: {
   userId: number
   onClose: () => void
-  tab: AgentTab
-  onTabChange: (tab: AgentTab) => void
   initialPrompt?: string
   initialConversation?: string
   focusReply?: boolean
@@ -87,7 +85,10 @@ export default function AgentPanel(props: {
   const user = useAuthStore((s) => s.auth.user)
   const admin = (user?.role ?? 0) >= 10
   const page = useLocation({ select: (l) => l.pathname })
+  const navigate = useNavigate()
   const context = pageContext(page)
+  // Loaded with the panel so ticket cards show the current service hours at once.
+  useSupportSettings()
   const touch = useMediaQuery('(pointer: coarse)')
   const [conversation, setConversation] = useState(
     () => props.initialConversation || storedThread(props.userId)
@@ -106,7 +107,6 @@ export default function AgentPanel(props: {
     savePanelWidth(value)
   }
   const [exporting, setExporting] = useState(false)
-  const view: AgentTab = admin ? props.tab : 'chat'
   const queue = useHandoffQueue()
   const pendingCount =
     queue.data?.items.filter((item) => item.status === 'pending').length ?? 0
@@ -320,7 +320,6 @@ export default function AgentPanel(props: {
           {t('Answers from the SynthAPI knowledge base')}
         </SheetDescription>
         <PanelHeader
-          view={view}
           title={title}
           admin={admin}
           pendingCount={pendingCount}
@@ -330,23 +329,20 @@ export default function AgentPanel(props: {
           busy={thread.isPending}
           canExport={turns.length > 0 && !exporting}
           onToggleHistory={() => setShowHistory((value) => !value)}
-          onOpenHistory={() => {
-            props.onTabChange('chat')
-            setShowHistory(true)
-          }}
+          onOpenHistory={() => setShowHistory(true)}
           onNew={fresh}
           onToggleWide={() =>
             resize(wide ? PANEL_WIDTH.normal : PANEL_WIDTH.wide)
           }
           onExport={exportCurrent}
-          onView={(tab) => {
-            setShowHistory(false)
-            props.onTabChange(tab)
+          onOpenConsole={() => {
+            props.onClose()
+            void navigate({ href: consoleHref('handoffs') })
           }}
           onClose={props.onClose}
         />
         <div className='agent-body'>
-          {showHistory && view === 'chat' && (
+          {showHistory && (
             <>
               <button
                 type='button'
@@ -369,206 +365,197 @@ export default function AgentPanel(props: {
               />
             </>
           )}
-          {view !== 'chat' ? (
-            <AgentManagement tab={view} />
-          ) : (
-            <>
-              <div
-                ref={scroller}
-                className='agent-conversation'
-                aria-busy={thread.isPending}
-                onScroll={(event) => {
-                  const el = event.currentTarget
-                  atEnd.current =
-                    el.scrollHeight - el.scrollTop - el.clientHeight < 80
-                }}
-              >
-                {history.isLoading && (
-                  <Loader2 className='text-muted-foreground mx-auto my-8 size-5 animate-spin' />
-                )}
-                {history.isError && (
-                  <p className='text-destructive text-sm'>
-                    {t('Unable to load conversation. Please retry.')}
-                    <Button
-                      size='sm'
-                      variant='ghost'
-                      onClick={() => {
-                        void history.refetch()
-                      }}
-                    >
-                      {t('Retry')}
-                    </Button>
-                  </p>
-                )}
-                {showEmpty && (
-                  <EmptyState
-                    name={user?.display_name || user?.username || ''}
-                    context={context}
-                    recent={replies.recent
-                      .filter((item) => item.conversation !== conversation)
-                      .slice(0, 3)}
-                    onAsk={send}
-                    onOpen={selectConversation}
-                  />
-                )}
-                {history.hasNextPage && (
+          <>
+            <div
+              ref={scroller}
+              className='agent-conversation'
+              aria-busy={thread.isPending}
+              onScroll={(event) => {
+                const el = event.currentTarget
+                atEnd.current =
+                  el.scrollHeight - el.scrollTop - el.clientHeight < 80
+              }}
+            >
+              {history.isLoading && (
+                <Loader2 className='text-muted-foreground mx-auto my-8 size-5 animate-spin' />
+              )}
+              {history.isError && (
+                <p className='text-destructive text-sm'>
+                  {t('Unable to load conversation. Please retry.')}
                   <Button
                     size='sm'
                     variant='ghost'
-                    className='mx-auto mb-4 flex'
-                    disabled={history.isFetchingNextPage}
                     onClick={() => {
-                      void history.fetchNextPage()
+                      void history.refetch()
                     }}
                   >
-                    {t('Load earlier messages')}
+                    {t('Retry')}
                   </Button>
-                )}
-                {turns.map((turn) => {
-                  const human = !!turn.response.human_reply
-                  return (
-                    <article
-                      key={turn.id}
-                      className='agent-turn'
-                      data-human-reply={human || undefined}
-                    >
-                      {turn.question && (
-                        <div className='agent-user-message'>
-                          {turn.question}
-                        </div>
-                      )}
-                      <div className='agent-bot-row'>
-                        <span
-                          className={cn('agent-avatar', human && 'is-human')}
-                          aria-hidden
-                        >
-                          {human ? (
-                            <Headset className='size-3.5' />
-                          ) : (
-                            <Bot className='size-3.5' />
-                          )}
-                        </span>
-                        <div className='min-w-0 flex-1'>
-                          <AgentAnswerContent
-                            turn={turn}
-                            conversation={conversation}
-                            userId={props.userId}
-                            admin={admin}
-                            hasEmail={!!user?.email}
-                            replied={
-                              !!turn.response.handoff_id &&
-                              repliedHandoffs.has(turn.response.handoff_id)
-                            }
-                            ticket={
-                              turn.response.handoff_id
-                                ? tickets.get(turn.response.handoff_id)
-                                : undefined
-                            }
-                            showTicketActions={
-                              !!turn.response.handoff_id &&
-                              lastTicketTurn.get(turn.response.handoff_id) ===
-                                turn.id
-                            }
-                            saved={thread.feedback[turn.id]}
-                            canRegenerate={
-                              !!turn.question &&
-                              turn.id === lastQuestionTurn?.id
-                            }
-                            busy={thread.isPending}
-                            onRegenerate={() => send(turn.question)}
-                            onRephrase={() => rephrase(turn.question)}
-                          />
-                        </div>
-                      </div>
-                    </article>
-                  )
-                })}
-                {thread.isPending && (
-                  <div className='agent-turn'>
-                    <div className='agent-user-message'>
-                      {run?.question || thread.lastQuestion}
-                    </div>
-                    <div className='agent-bot-row'>
-                      <span className='agent-avatar' aria-hidden>
-                        <Bot className='size-3.5' />
-                      </span>
-                      {run?.partial ? (
-                        <StreamingAnswer runId={run.id} partial={run.partial} />
-                      ) : (
-                        <RunProgress run={run} />
-                      )}
-                    </div>
-                  </div>
-                )}
-                {thread.previousRuns.length > 0 && (
-                  <details className='agent-stopped'>
-                    <summary>
-                      {t('{{count}} earlier requests did not finish', {
-                        count: thread.previousRuns.length,
-                      })}
-                    </summary>
-                    {thread.previousRuns.map((item) => (
-                      <div key={item.id} className='agent-stopped-item'>
-                        <p>{item.question}</p>
-                        <small>
-                          {item.status === 'cancelled'
-                            ? t('Cancelled')
-                            : t('Interrupted')}
-                        </small>
-                        <StoppedSteps calls={item.tool_calls || []} />
-                        <Button
-                          size='sm'
-                          variant='ghost'
-                          disabled={thread.isPending}
-                          onClick={() => send(item.question)}
-                        >
-                          {t('Retry')}
-                        </Button>
-                      </div>
-                    ))}
-                  </details>
-                )}
-                {run?.status === 'cancelled' && !run.result?.stopped && (
-                  <p className='agent-inline-note'>
-                    {t('Stopped. Your previous messages are saved.')}
-                  </p>
-                )}
-                {thread.pollingError && (
-                  <Button size='sm' variant='outline' onClick={thread.refetch}>
-                    {t(
-                      'Connection interrupted. Reconnect to check task status.'
+                </p>
+              )}
+              {showEmpty && (
+                <EmptyState
+                  name={user?.display_name || user?.username || ''}
+                  context={context}
+                  recent={replies.recent
+                    .filter((item) => item.conversation !== conversation)
+                    .slice(0, 3)}
+                  onAsk={send}
+                  onOpen={selectConversation}
+                />
+              )}
+              {history.hasNextPage && (
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  className='mx-auto mb-4 flex'
+                  disabled={history.isFetchingNextPage}
+                  onClick={() => {
+                    void history.fetchNextPage()
+                  }}
+                >
+                  {t('Load earlier messages')}
+                </Button>
+              )}
+              {turns.map((turn) => {
+                const human = !!turn.response.human_reply
+                return (
+                  <article
+                    key={turn.id}
+                    className='agent-turn'
+                    data-human-reply={human || undefined}
+                  >
+                    {turn.question && (
+                      <div className='agent-user-message'>{turn.question}</div>
                     )}
-                  </Button>
-                )}
-                {thread.isError && (
-                  <div role='alert' className='agent-error'>
-                    {t('Unable to answer right now. Please try again.')}
-                    <Button
-                      size='sm'
-                      variant='outline'
-                      onClick={() => send(thread.lastQuestion)}
-                    >
-                      {t('Retry')}
-                    </Button>
+                    <div className='agent-bot-row'>
+                      <span
+                        className={cn('agent-avatar', human && 'is-human')}
+                        aria-hidden
+                      >
+                        {human ? (
+                          <Headset className='size-3.5' />
+                        ) : (
+                          <Bot className='size-3.5' />
+                        )}
+                      </span>
+                      <div className='min-w-0 flex-1'>
+                        <AgentAnswerContent
+                          turn={turn}
+                          conversation={conversation}
+                          userId={props.userId}
+                          admin={admin}
+                          hasEmail={!!user?.email}
+                          replied={
+                            !!turn.response.handoff_id &&
+                            repliedHandoffs.has(turn.response.handoff_id)
+                          }
+                          ticket={
+                            turn.response.handoff_id
+                              ? tickets.get(turn.response.handoff_id)
+                              : undefined
+                          }
+                          showTicketActions={
+                            !!turn.response.handoff_id &&
+                            lastTicketTurn.get(turn.response.handoff_id) ===
+                              turn.id
+                          }
+                          saved={thread.feedback[turn.id]}
+                          canRegenerate={
+                            !!turn.question && turn.id === lastQuestionTurn?.id
+                          }
+                          busy={thread.isPending}
+                          onRegenerate={() => send(turn.question)}
+                          onRephrase={() => rephrase(turn.question)}
+                        />
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+              {thread.isPending && (
+                <div className='agent-turn'>
+                  <div className='agent-user-message'>
+                    {run?.question || thread.lastQuestion}
                   </div>
-                )}
-                <div ref={bottom} />
-              </div>
-              <Composer
-                inputRef={input}
-                value={question}
-                onChange={updateQuestion}
-                onSubmit={() => send(question)}
-                onStop={thread.cancel}
-                pending={thread.isPending}
-                stopping={thread.cancelling}
-                pageLabel={context ? t(context.label) : ''}
-                includePage={includePage}
-                onIncludePageChange={setIncludePage}
-                notice={notice}
-              />
-            </>
-          )}
+                  <div className='agent-bot-row'>
+                    <span className='agent-avatar' aria-hidden>
+                      <Bot className='size-3.5' />
+                    </span>
+                    {run?.partial ? (
+                      <StreamingAnswer runId={run.id} partial={run.partial} />
+                    ) : (
+                      <RunProgress run={run} />
+                    )}
+                  </div>
+                </div>
+              )}
+              {thread.previousRuns.length > 0 && (
+                <details className='agent-stopped'>
+                  <summary>
+                    {t('{{count}} earlier requests did not finish', {
+                      count: thread.previousRuns.length,
+                    })}
+                  </summary>
+                  {thread.previousRuns.map((item) => (
+                    <div key={item.id} className='agent-stopped-item'>
+                      <p>{item.question}</p>
+                      <small>
+                        {item.status === 'cancelled'
+                          ? t('Cancelled')
+                          : t('Interrupted')}
+                      </small>
+                      <StoppedSteps calls={item.tool_calls || []} />
+                      <Button
+                        size='sm'
+                        variant='ghost'
+                        disabled={thread.isPending}
+                        onClick={() => send(item.question)}
+                      >
+                        {t('Retry')}
+                      </Button>
+                    </div>
+                  ))}
+                </details>
+              )}
+              {run?.status === 'cancelled' && !run.result?.stopped && (
+                <p className='agent-inline-note'>
+                  {t('Stopped. Your previous messages are saved.')}
+                </p>
+              )}
+              {thread.pollingError && (
+                <Button size='sm' variant='outline' onClick={thread.refetch}>
+                  {t('Connection interrupted. Reconnect to check task status.')}
+                </Button>
+              )}
+              {thread.isError && (
+                <div role='alert' className='agent-error'>
+                  {t('Unable to answer right now. Please try again.')}
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() => send(thread.lastQuestion)}
+                  >
+                    {t('Retry')}
+                  </Button>
+                </div>
+              )}
+              <div ref={bottom} />
+            </div>
+            <Composer
+              inputRef={input}
+              value={question}
+              onChange={updateQuestion}
+              onSubmit={() => send(question)}
+              onStop={thread.cancel}
+              pending={thread.isPending}
+              stopping={thread.cancelling}
+              pageLabel={context ? t(context.label) : ''}
+              includePage={includePage}
+              onIncludePageChange={setIncludePage}
+              notice={notice}
+            />
+          </>
         </div>
         <div className='sr-only' aria-live='polite'>
           {announcement}

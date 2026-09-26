@@ -17,18 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
-  BookOpen,
   Bot,
   ChevronDown,
-  ChevronLeft,
   Download,
   Ellipsis,
   History,
   Keyboard,
+  LayoutDashboard,
   Maximize2,
   Minimize2,
   SquarePen,
-  Users,
   X,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -42,11 +40,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { shortcutLabel, type AgentTab } from './queue'
+import { shortcutLabel } from './queue'
 
 // One row: the conversation title opens history; actions sit on the right.
 export function PanelHeader(props: {
-  view: AgentTab
   title: string
   admin: boolean
   pendingCount: number
@@ -60,57 +57,38 @@ export function PanelHeader(props: {
   onNew: () => void
   onToggleWide: () => void
   onExport: () => void
-  onView: (view: AgentTab) => void
+  onOpenConsole: () => void
   onClose: () => void
 }) {
   const { t } = useTranslation()
-  const viewTitle =
-    props.view === 'handoffs' ? t('Human queue') : t('Knowledge')
   return (
     <header className='agent-header'>
-      {props.view === 'chat' ? (
-        <button
-          type='button'
-          className='agent-title'
-          aria-expanded={props.historyOpen}
-          aria-controls='support-history'
-          title={t('Conversation history')}
-          onClick={props.onToggleHistory}
-        >
-          <Bot className='text-primary size-4 shrink-0' />
-          <span className='agent-title-text'>{props.title}</span>
-          {props.otherUnread && (
-            <span className='agent-unread-dot' aria-label={t('New reply')} />
-          )}
-          <ChevronDown className='agent-title-chevron size-3.5 shrink-0' />
-        </button>
-      ) : (
-        <div className='agent-title is-static'>
-          <Button
-            size='icon-xs'
-            variant='ghost'
-            aria-label={t('Back to conversation')}
-            title={t('Back to conversation')}
-            onClick={() => props.onView('chat')}
-          >
-            <ChevronLeft className='size-4' />
-          </Button>
-          <span className='agent-title-text'>{viewTitle}</span>
-        </div>
-      )}
-      <div className='agent-header-actions'>
-        {props.view === 'chat' && (
-          <Button
-            size='icon-sm'
-            variant='ghost'
-            aria-label={t('New conversation')}
-            title={t('New conversation')}
-            disabled={props.busy}
-            onClick={props.onNew}
-          >
-            <SquarePen className='size-4' />
-          </Button>
+      <button
+        type='button'
+        className='agent-title'
+        aria-expanded={props.historyOpen}
+        aria-controls='support-history'
+        title={t('Conversation history')}
+        onClick={props.onToggleHistory}
+      >
+        <Bot className='text-primary size-4 shrink-0' />
+        <span className='agent-title-text'>{props.title}</span>
+        {props.otherUnread && (
+          <span className='agent-unread-dot' aria-label={t('New reply')} />
         )}
+        <ChevronDown className='agent-title-chevron size-3.5 shrink-0' />
+      </button>
+      <div className='agent-header-actions'>
+        <Button
+          size='icon-sm'
+          variant='ghost'
+          aria-label={t('New conversation')}
+          title={t('New conversation')}
+          disabled={props.busy}
+          onClick={props.onNew}
+        >
+          <SquarePen className='size-4' />
+        </Button>
         <Button
           size='icon-sm'
           variant='ghost'
@@ -159,18 +137,14 @@ export function PanelHeader(props: {
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>{t('Administrator')}</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => props.onView('handoffs')}>
-                    <Users />
-                    {t('Human queue')}
+                  <DropdownMenuItem onClick={props.onOpenConsole}>
+                    <LayoutDashboard />
+                    {t('Support console')}
                     {props.pendingCount > 0 && (
                       <span className='agent-queue-count ml-auto'>
                         {props.pendingCount}
                       </span>
                     )}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => props.onView('knowledge')}>
-                    <BookOpen />
-                    {t('Knowledge')}
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </>

@@ -46,6 +46,10 @@ export function openSupportAgent(
   )
 }
 
+// Queue and knowledge work happens in the support console, not in the panel.
+export const consoleHref = (tab: AgentTab) =>
+  `/support-console?tab=${tab === 'knowledge' ? 'knowledge' : 'tickets'}`
+
 export function readOpenRequest(event: Event): OpenRequest {
   const detail: unknown = event instanceof CustomEvent ? event.detail : null
   if (!detail || typeof detail !== 'object') return { tab: 'chat' }
