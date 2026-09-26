@@ -1,0 +1,651 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+.support-agent-panel {
+  color: var(--foreground);
+  background: var(--background);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Header: one row, the title opens history */
+.agent-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 52px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-title {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 9px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: start;
+}
+.agent-title[aria-expanded='true'] {
+  background: var(--accent);
+}
+@media (hover: hover) {
+  button.agent-title:hover {
+    background: var(--accent);
+  }
+}
+.agent-title:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.agent-title.is-static {
+  gap: 4px;
+  padding-left: 0;
+}
+.agent-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-title-chevron {
+  color: var(--muted-foreground);
+  transition: transform 150ms ease;
+}
+.agent-title[aria-expanded='true'] .agent-title-chevron {
+  transform: rotate(180deg);
+}
+.agent-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted-foreground);
+}
+.agent-menu-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* Body and history layer */
+.agent-body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.agent-conversation {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 20px 20px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.agent-history-scrim {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  cursor: default;
+}
+.agent-history {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  right: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  max-height: min(560px, calc(100% - 24px));
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--foreground) 16%, transparent);
+  animation: agent-drop 140ms ease-out;
+}
+@keyframes agent-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.agent-history-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-history-search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background);
+}
+.agent-history-search:focus-within {
+  border-color: var(--ring);
+}
+.agent-history-search button {
+  display: inline-flex;
+  color: var(--muted-foreground);
+}
+.agent-history-search input,
+.agent-history-edit {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--foreground);
+  background: transparent;
+  font-size: 12px;
+}
+.agent-history-list {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+.agent-history-group h4 {
+  margin: 0 0 4px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.agent-history-group ul {
+  display: grid;
+  gap: 2px;
+}
+.agent-history-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  border-radius: 9px;
+}
+.agent-history-item:hover,
+.agent-history-item:focus-within,
+.agent-history-item.is-active {
+  background: var(--accent);
+}
+.agent-history-open {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 9px;
+  text-align: start;
+}
+.agent-history-open:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.agent-history-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.agent-history-title strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-history-title time {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.agent-history-open small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-row-menu {
+  margin-right: 4px;
+  opacity: 0;
+}
+.agent-history-item:hover .agent-row-menu,
+.agent-history-item:focus-within .agent-row-menu,
+.agent-row-menu[data-popup-open] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .agent-row-menu {
+    opacity: 1;
+  }
+}
+.agent-history-rename {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 4px 4px 8px;
+}
+.agent-history-edit {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--ring);
+  border-radius: 6px;
+  background: var(--background);
+}
+.agent-history-confirm {
+  width: 100%;
+  margin: 2px 6px 6px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 35%, var(--border));
+  border-radius: 8px;
+  font-size: 12px;
+}
+.agent-history-empty {
+  padding: 18px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+.agent-history-note {
+  margin-top: 8px;
+  padding: 0 4px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.agent-unread-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e5484d;
+  box-shadow: 0 0 0 2px var(--background);
+}
+.agent-unread-dot.is-corner {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+
+/* Empty state */
+.agent-empty {
+  padding: 8px 2px;
+}
+.agent-empty h2 {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+.agent-empty > p {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.agent-empty section {
+  margin-top: 22px;
+}
+.agent-empty h3 {
+  margin-bottom: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+.agent-starters {
+  display: grid;
+  gap: 6px;
+}
+.agent-starters button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--foreground);
+  background: var(--background);
+  font-size: 13px;
+  text-align: start;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.agent-starters button:hover,
+.agent-starters button:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 5%, var(--background));
+  outline: none;
+}
+.agent-starters button svg {
+  color: var(--muted-foreground);
+  transition: transform 120ms ease;
+}
+.agent-starters button:hover svg {
+  color: var(--primary);
+  transform: translateX(2px);
+}
+.agent-recent {
+  display: grid;
+  gap: 2px;
+}
+.agent-recent button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 13px;
+  text-align: start;
+}
+.agent-recent button:hover,
+.agent-recent button:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+.agent-recent span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-recent svg,
+.agent-recent time {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+/* Composer */
+.agent-composer {
+  flex: 0 0 auto;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: var(--background);
+}
+.agent-composer-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--input);
+  border-radius: 16px;
+  background: var(--background);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.agent-composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--ring) 70%, var(--input));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent);
+}
+.agent-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.agent-composer textarea {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  max-height: 148px;
+  padding: 2px 0;
+  overflow-y: auto;
+  border: 0;
+  outline: 0;
+  color: var(--foreground);
+  background: transparent;
+  font-size: 14px;
+  line-height: 24px;
+  resize: none;
+}
+.agent-composer textarea::placeholder {
+  color: var(--muted-foreground);
+}
+.agent-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agent-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 3px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  background: var(--muted);
+  font-size: 11.5px;
+}
+.agent-context-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+.agent-context-chip button:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+.agent-context-chip.is-off {
+  padding-right: 8px;
+  border-style: dashed;
+  color: var(--muted-foreground);
+  background: transparent;
+  cursor: pointer;
+}
+.agent-context-chip.is-off:hover {
+  border-color: var(--ring);
+  color: var(--foreground);
+}
+.agent-composer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+.agent-counter {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.agent-send {
+  border-radius: 10px;
+}
+.agent-composer-notice {
+  margin-top: 6px;
+  color: #b45309;
+  font-size: 12px;
+}
+.agent-composer-hint {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  line-height: 1.5;
+  text-align: center;
+}
+/* Soft keyboards have no Shift+Enter; the key hint only helps with a physical keyboard. */
+@media (hover: none) {
+  .agent-hint-keys {
+    display: none;
+  }
+}
+
+/* Sidebar entry and administrator queue */
+.agent-queue-entry {
+  border: 1px solid color-mix(in srgb, #d99518 50%, var(--sidebar-border));
+  background: color-mix(in srgb, #f0a925 15%, var(--sidebar));
+  color: var(--sidebar-foreground);
+}
+.agent-queue-entry > svg {
+  color: #d99411;
+}
+.agent-queue-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: #d95032;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.agent-queue-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--muted);
+  border-radius: 12px;
+  font-size: 13px;
+}
+.agent-queue-summary span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.agent-ticket[data-status='pending'] {
+  border-left: 3px solid #d99518;
+}
+.assistant-action-guide {
+  position: fixed;
+  z-index: 80;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background) 94%, var(--primary));
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--foreground) 18%, transparent);
+  backdrop-filter: blur(14px);
+}
+.assistant-action-guide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.assistant-action-guide strong {
+  display: block;
+  font-size: 13px;
+}
+.assistant-action-guide p {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.assistant-action-guide small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.assistant-action-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.assistant-action-target {
+  outline: 3px solid color-mix(in srgb, var(--primary) 68%, transparent) !important;
+  outline-offset: 3px !important;
+  animation: assistant-target-pulse 1.4s ease-in-out 2;
+}
+@keyframes assistant-target-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 12%, transparent);
+  }
+}
+@media (max-width: 640px) {
+  .assistant-action-guide {
+    right: 12px;
+    bottom: 12px;
+  }
+}
+@media (max-width: 639px) {
+  .agent-conversation {
+    padding-inline: 14px;
+  }
+  .agent-composer {
+    padding-inline: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-action-target,
+  .agent-history {
+    animation: none;
+  }
+}
