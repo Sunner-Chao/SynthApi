@@ -455,7 +455,9 @@ For commercial licensing, please contact support@quantumnous.com
   flex-wrap: wrap;
   gap: 6px;
 }
-.agent-context-chip {
+.agent-context-chip,
+.agent-share-trigger,
+.agent-shared-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -468,7 +470,8 @@ For commercial licensing, please contact support@quantumnous.com
   background: var(--muted);
   font-size: 11.5px;
 }
-.agent-context-chip button {
+.agent-context-chip button,
+.agent-shared-chip button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -477,20 +480,80 @@ For commercial licensing, please contact support@quantumnous.com
   border-radius: 999px;
   color: var(--muted-foreground);
 }
-.agent-context-chip button:hover {
+.agent-context-chip button:hover,
+.agent-shared-chip button:hover {
   color: var(--foreground);
   background: var(--accent);
 }
-.agent-context-chip.is-off {
+.agent-context-chip.is-off,
+.agent-share-trigger {
   padding-right: 8px;
   border-style: dashed;
   color: var(--muted-foreground);
   background: transparent;
   cursor: pointer;
 }
-.agent-context-chip.is-off:hover {
+.agent-context-chip.is-off:hover,
+.agent-share-trigger:hover:enabled {
   border-color: var(--ring);
   color: var(--foreground);
+}
+.agent-share-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.agent-shared-chip {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--background));
+}
+
+/* The consent step: exactly what would be shared, then attach or cancel */
+.agent-share-preview {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: 14px;
+  background: var(--background);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--foreground) 8%, transparent);
+  font-size: 12.5px;
+}
+.agent-share-preview header {
+  display: grid;
+  gap: 2px;
+}
+.agent-share-preview header span,
+.agent-share-preview > p {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+.agent-share-preview pre {
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.agent-share-preview pre:focus-visible {
+  outline: 2px solid var(--ring);
+}
+.agent-share-preview footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.agent-share-menu-note {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.5;
 }
 .agent-composer-actions {
   display: flex;

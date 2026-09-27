@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { Bot, Headset, Loader2 } from 'lucide-react'
+import { Bot, Headset, Loader2, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
@@ -31,6 +31,8 @@ import {
   SheetDescription,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { contextList } from './account-context'
+import { ShareMenu, SharePreview, SharedChips } from './account-share'
 import { AgentAnswerContent } from './answer'
 import { Composer } from './composer'
 import { Conversations } from './conversations'
@@ -56,7 +58,8 @@ import {
 } from './storage'
 import { StreamingAnswer } from './streaming-answer'
 import { RunProgress, StoppedSteps } from './tool-calls'
-import type { Turn } from './types'
+import type { AccountContextKind, Turn } from './types'
+import { useAccountShare } from './use-account-share'
 import { useAgentThread } from './use-agent-thread'
 
 const plainText = (markdown: string) =>
@@ -81,7 +84,7 @@ export default function AgentPanel(props: {
   initialConversation?: string
   focusReply?: boolean
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const user = useAuthStore((s) => s.auth.user)
   const admin = (user?.role ?? 0) >= 10
   const page = useLocation({ select: (l) => l.pathname })
@@ -116,6 +119,7 @@ export default function AgentPanel(props: {
     conversation,
     includePage && context ? page : ''
   )
+  const share = useAccountShare()
   const history = thread.history
   const input = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -234,7 +238,8 @@ export default function AgentPanel(props: {
       input.current?.focus()
       return
     }
-    thread.send(text)
+    // Shared account data goes out with this one question only.
+    if (thread.send(text, share.attached)) share.clear()
     setQuestion('')
     setNotice('')
     writeDraft(props.userId, conversation, '')
@@ -244,6 +249,15 @@ export default function AgentPanel(props: {
     setShowHistory(false)
     setQuestion(readDraft(props.userId, id))
     setNotice('')
+    share.clear()
+  }
+  // An answer that needs the user's own data: the preview opens (and takes the
+  // focus), and the same question is put back unless another one is already
+  // being typed.
+  const shareFor = (asked: string, kind: AccountContextKind) => {
+    if (thread.isPending) return
+    if (!question.trim()) updateQuestion(asked)
+    share.open(kind)
   }
   const fresh = () => selectConversation(crypto.randomUUID())
   const rephrase = (text: string) => {
@@ -428,6 +442,18 @@ export default function AgentPanel(props: {
                     {turn.question && (
                       <div className='agent-user-message'>{turn.question}</div>
                     )}
+                    {!!turn.response.context_kinds?.length && (
+                      <p className='agent-shared-note'>
+                        <ShieldCheck className='size-3 shrink-0' />
+                        {t('Shared for this question: {{kinds}}', {
+                          kinds: contextList(
+                            turn.response.context_kinds,
+                            t,
+                            i18n.language
+                          ),
+                        })}
+                      </p>
+                    )}
                     <div className='agent-bot-row'>
                       <span
                         className={cn('agent-avatar', human && 'is-human')}
@@ -467,6 +493,11 @@ export default function AgentPanel(props: {
                           busy={thread.isPending}
                           onRegenerate={() => send(turn.question)}
                           onRephrase={() => rephrase(turn.question)}
+                          onShareContext={
+                            turn.id === lastQuestionTurn?.id
+                              ? (kind) => shareFor(turn.question, kind)
+                              : undefined
+                          }
                         />
                       </div>
                     </div>
@@ -554,6 +585,18 @@ export default function AgentPanel(props: {
               includePage={includePage}
               onIncludePageChange={setIncludePage}
               notice={notice}
+              extras={
+                <>
+                  <SharedChips share={share} />
+                  <ShareMenu share={share} disabled={thread.isPending} />
+                </>
+              }
+              above={
+                <SharePreview
+                  share={share}
+                  onClose={() => input.current?.focus()}
+                />
+              }
             />
           </>
         </div>

@@ -40,7 +40,19 @@ export type AgentAnswer = {
   // cut off (too long, timed out) after part of it had been shown.
   stopped?: boolean
   truncated?: boolean
+  // A general answer (greeting, AI or programming concepts) not based on site knowledge.
+  general?: boolean
+  // The answer needs this account data from the user to be accurate.
+  request_context?: AccountContextKind
+  // Account data the user shared with this question (the data itself is not kept).
+  context_kinds?: AccountContextKind[]
 }
+// Account data a user can share for one question, formatted in the browser.
+export type AccountContextKind =
+  | 'recent_requests'
+  | 'quota_summary'
+  | 'key_status'
+export type AccountContext = { kind: AccountContextKind; text: string }
 export type AgentAction = {
   id: string
   path: string
@@ -115,6 +127,8 @@ export type ContextTurn = {
   handoff_id: string
   stopped: boolean
   sources: string[]
+  // Kinds of account data the user shared with the question (older services omit it).
+  context_kinds?: AccountContextKind[]
 }
 // A ticket, or an answer someone marked as not helpful.
 export type UnresolvedItem = {

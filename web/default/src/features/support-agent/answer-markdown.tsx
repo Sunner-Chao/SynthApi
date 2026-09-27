@@ -153,6 +153,9 @@ export const AnswerMarkdown = memo(function AnswerMarkdown(props: {
               <table {...tableProps} />
             </div>
           ),
+          // Answers never load images: a remote one would be fetched without a
+          // click, and its address could carry what the user shared.
+          img: ({ alt }) => (alt ? <span>{alt}</span> : null),
         }}
       >
         {props.text}

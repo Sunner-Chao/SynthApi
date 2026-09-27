@@ -30,6 +30,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { contextList } from '../account-context'
 import {
   getHandoffContext,
   getKnowledge,
@@ -116,7 +117,7 @@ function accountDetails(item: Handoff, now: number, t: TFunction) {
 
 // The conversation the ticket came from, so the reply can build on it.
 function TicketContext(props: { id: string }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const context = useQuery({
     queryKey: ['support-ticket-context', props.id],
     queryFn: () => getHandoffContext(props.id),
@@ -137,6 +138,13 @@ function TicketContext(props: { id: string }) {
           <li key={turn.id} data-human={turn.human_reply || undefined}>
             {turn.question && (
               <p className='sc-context-question'>{turn.question}</p>
+            )}
+            {!!turn.context_kinds?.length && (
+              <p className='sc-muted sc-context-shared'>
+                {t('The user shared: {{kinds}} (not kept)', {
+                  kinds: contextList(turn.context_kinds, t, i18n.language),
+                })}
+              </p>
             )}
             <p className='sc-context-answer'>
               {turn.human_reply && <strong>{t('Support team')}: </strong>}

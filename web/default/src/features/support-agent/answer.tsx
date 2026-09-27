@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { CircleStop, Headset } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ShareRequest } from './account-share'
 import { NextSteps, SourcesRow } from './answer-extras'
 import { AnswerMarkdown } from './answer-markdown'
 import { AnswerToolbar } from './answer-toolbar'
@@ -25,7 +26,13 @@ import './answer.css'
 import { HandoffCard, ReplyFollowUp } from './handoff-card'
 import { clockTime } from './time'
 import { StepsSummary } from './tool-calls'
-import type { FeedbackReason, FeedbackVote, Ticket, Turn } from './types'
+import type {
+  AccountContextKind,
+  FeedbackReason,
+  FeedbackVote,
+  Ticket,
+  Turn,
+} from './types'
 
 export function AgentAnswerContent(props: {
   turn: Turn
@@ -41,10 +48,13 @@ export function AgentAnswerContent(props: {
   busy: boolean
   onRegenerate: () => void
   onRephrase: () => void
+  // Only the latest answer offers to ask again with the user's account data.
+  onShareContext?: (kind: AccountContextKind) => void
 }) {
   const { t, i18n } = useTranslation()
   const answer = props.turn.response
   const human = !!answer.human_reply
+  const wanted = answer.request_context
   const sourcePrefix = `support-source-${props.turn.id}-`
   return (
     <div className='agent-answer'>
@@ -64,6 +74,18 @@ export function AgentAnswerContent(props: {
         sources={answer.sources}
         prefix={sourcePrefix}
       />
+      {answer.general && (
+        <p className='agent-general-note'>
+          {t('General answer, not based on SynthAPI documentation.')}
+        </p>
+      )}
+      {wanted && props.onShareContext && (
+        <ShareRequest
+          kind={wanted}
+          disabled={props.busy}
+          onShare={() => props.onShareContext?.(wanted)}
+        />
+      )}
       {(answer.stopped || answer.truncated) && (
         <p className='agent-stopped-note'>
           <CircleStop className='size-3.5 shrink-0' />

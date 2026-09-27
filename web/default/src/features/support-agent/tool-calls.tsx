@@ -33,6 +33,7 @@ const STEP_NAMES: Record<string, string> = {
   knowledge_search: 'Search knowledge',
   answer_generation: 'Compose answer',
   page_guide: 'Page guidance',
+  account_context: 'Read the account info you shared',
 }
 
 function stepName(call: ToolCall, t: TFunction) {

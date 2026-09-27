@@ -24,7 +24,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { cancelAgentRun, getAgentRun, getHistory, startAgentRun } from './api'
-import type { AgentRun } from './types'
+import type { AccountContext, AgentRun } from './types'
 
 const active = (run?: AgentRun) =>
   run?.status === 'queued' || run?.status === 'running'
@@ -122,9 +122,17 @@ export function useAgentThread(
     isPending: submit.isPending || active(run),
     isError: submit.isError || !!failed,
     lastQuestion: run?.question || submit.variables?.question || '',
-    send: (question: string) => {
-      if (submit.isPending || active(run)) return
-      submit.mutate({ id: crypto.randomUUID(), question, conversation, page })
+    // Returns whether the question went out (not while another one is running).
+    send: (question: string, context: AccountContext[] = []) => {
+      if (submit.isPending || active(run)) return false
+      submit.mutate({
+        id: crypto.randomUUID(),
+        question,
+        conversation,
+        page,
+        ...(context.length ? { context } : {}),
+      })
+      return true
     },
     cancel: () => {
       if (runId) cancel.mutate(runId)

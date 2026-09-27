@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useLayoutEffect, type RefObject } from 'react'
+import { useLayoutEffect, type ReactNode, type RefObject } from 'react'
 import { ArrowUp, FileText, Plus, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -37,6 +37,9 @@ export function Composer(props: {
   includePage: boolean
   onIncludePageChange: (include: boolean) => void
   notice: string
+  // More context chips (shared account data) and a panel above the input (its preview).
+  extras?: ReactNode
+  above?: ReactNode
 }) {
   const { t } = useTranslation()
   const { inputRef, value } = props
@@ -54,10 +57,11 @@ export function Composer(props: {
         props.onSubmit()
       }}
     >
+      {props.above}
       <div className='agent-composer-box'>
-        {props.pageLabel && (
+        {(props.pageLabel || props.extras) && (
           <div className='agent-context-row'>
-            {props.includePage ? (
+            {!props.pageLabel ? null : props.includePage ? (
               <span className='agent-context-chip'>
                 <FileText className='size-3 shrink-0' />
                 <span className='truncate'>{props.pageLabel}</span>
@@ -82,6 +86,7 @@ export function Composer(props: {
                 </span>
               </button>
             )}
+            {props.extras}
           </div>
         )}
         <label htmlFor='support-question' className='sr-only'>

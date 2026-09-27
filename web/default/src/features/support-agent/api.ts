@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import type {
+  AccountContext,
   AgentAnswer,
   AgentRun,
   HistoryPage,
@@ -82,6 +83,8 @@ export const startAgentRun = (body: {
   question: string
   conversation: string
   page: string
+  // Account data the user chose to share for this question.
+  context?: AccountContext[]
 }) =>
   unwrap<AgentRun>(
     api.post('/api/support-agent/runs', body, { timeout: 15000 })
