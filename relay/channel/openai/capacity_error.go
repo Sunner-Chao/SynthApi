@@ -76,6 +76,14 @@ func newUpstreamStreamFailure(info *relaycommon.RelayInfo) *types.NewAPIError {
 	}
 }
 
+// isClientGoneStream reports a downstream cancellation separately from an
+// upstream transport failure. A disconnected client must still reach the
+// normal usage/billing path so the estimated input can be charged.
+func isClientGoneStream(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.StreamStatus != nil &&
+		info.StreamStatus.EndReason == relaycommon.StreamEndReasonClientGone
+}
+
 // newModelCapacityError recognizes the provider's capacity message even when
 // the provider omits the usual error code/type fields. Some compatible
 // upstreams emit it inside a 200 SSE event, which otherwise looks like a

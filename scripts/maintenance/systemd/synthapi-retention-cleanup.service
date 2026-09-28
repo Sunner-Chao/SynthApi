@@ -3,12 +3,12 @@ Description=SynthAPI local artifacts and verified R2 copy retention
 After=network-online.target
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /usr/local/sbin/synthapi-retention-cleanup --apply --max-batches 200
+ExecStart=/usr/bin/python3 /usr/local/sbin/synthapi-retention-cleanup --apply --max-batches 2000 --workers 4
 User=root
 UMask=0077
 Nice=19
 IOSchedulingClass=idle
-CPUQuota=15%
+CPUQuota=25%
 MemoryMax=192M
 MemorySwapMax=0
 TimeoutStartSec=20min

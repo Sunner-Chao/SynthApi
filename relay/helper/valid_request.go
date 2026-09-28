@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -154,6 +155,17 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			imageRequest.N = common.GetPointer(uint(common.String2Int(formData.Get("n"))))
 			imageRequest.Quality = formData.Get("quality")
 			imageRequest.Size = formData.Get("size")
+			if value := formData.Get("resolution"); value != "" {
+				imageRequest.Resolution, _ = common.Marshal(value)
+			}
+			if value := formData.Get("output_format"); value != "" {
+				imageRequest.OutputFormat, _ = common.Marshal(value)
+			}
+			imageRequest.ResponseFormat = formData.Get("response_format")
+			if value := formData.Get("version"); value != "" {
+				imageRequest.Extra = make(map[string]json.RawMessage)
+				imageRequest.Extra["version"], _ = common.Marshal(value)
+			}
 			if imageValue := formData.Get("image"); imageValue != "" {
 				imageRequest.Image, _ = common.Marshal(imageValue)
 			}
@@ -230,6 +242,20 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		}
 	}
 
+	if imageRequest.IsAPIMartGPTImage25() {
+		// Multipart edits may omit n, just like JSON generations.
+		if imageRequest.N == nil || *imageRequest.N == 0 {
+			imageRequest.N = common.GetPointer(uint(1))
+		}
+		if imageRequest.N != nil && *imageRequest.N > 4 {
+			return nil, errors.New("n must be between 1 and 4 for GPT Image 2.5")
+		}
+		switch imageRequest.GetResolution() {
+		case "", "1k", "2k", "4k":
+		default:
+			return nil, errors.New("resolution must be one of 1k, 2k, or 4k for GPT Image 2.5")
+		}
+	}
 	return imageRequest, nil
 }
 

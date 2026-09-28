@@ -83,7 +83,7 @@ type responseImageTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
-	Message string `json:"message,omitempty"`
+	Message string  `json:"message,omitempty"`
 	Cost    float64 `json:"cost,omitempty"`
 	Usage   struct {
 		TotalTokens int `json:"total_tokens,omitempty"`
@@ -101,9 +101,9 @@ type apimartImageTaskResponse struct {
 }
 
 type apimartTaskSubmissionResponse struct {
-	Code    int               `json:"code"`
-	Data    []responseTask    `json:"data"`
-	Message string            `json:"message,omitempty"`
+	Code    int            `json:"code"`
+	Data    []responseTask `json:"data"`
+	Message string         `json:"message,omitempty"`
 	Error   *struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
@@ -112,17 +112,28 @@ type apimartTaskSubmissionResponse struct {
 
 func (r *apimartTaskSubmissionResponse) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Code int `json:"code"`
-		Data json.RawMessage `json:"data"`
-		Message string `json:"message,omitempty"`
-		Error *struct { Message string `json:"message"`; Code string `json:"code"` } `json:"error,omitempty"`
+		Code    int             `json:"code"`
+		Data    json.RawMessage `json:"data"`
+		Message string          `json:"message,omitempty"`
+		Error   *struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"error,omitempty"`
 	}
-	if err := json.Unmarshal(data, &raw); err != nil { return err }
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
 	r.Code, r.Message, r.Error = raw.Code, raw.Message, raw.Error
-	if len(raw.Data) == 0 || string(raw.Data) == "null" { return nil }
-	if err := json.Unmarshal(raw.Data, &r.Data); err == nil { return nil }
+	if len(raw.Data) == 0 || string(raw.Data) == "null" {
+		return nil
+	}
+	if err := json.Unmarshal(raw.Data, &r.Data); err == nil {
+		return nil
+	}
 	var single responseTask
-	if err := json.Unmarshal(raw.Data, &single); err != nil { return err }
+	if err := json.Unmarshal(raw.Data, &single); err != nil {
+		return err
+	}
 	r.Data = []responseTask{single}
 	return nil
 }
@@ -563,6 +574,13 @@ func isOpenAIImageTaskModel(modelName string) bool {
 }
 
 var apimartImageTaskModels = map[string]struct{}{
+	"gpt-image-2":                    {},
+	"gpt-image-2-ext":                {},
+	"gpt-image-2.5":                  {},
+	"gpt-image-2.5-ext":              {},
+	"gpt-image-2.5-flare":            {},
+	"gpt-image-2.5-sunburst":         {},
+	"gpt-image-2-official":           {},
 	"flux-2-flex":                    {},
 	"flux-2-max":                     {},
 	"flux-2-pro":                     {},
@@ -596,9 +614,9 @@ func parseAPIMartTaskResult(respBody []byte) (*relaycommon.TaskInfo, bool) {
 	// gateways return data as a one-item array. Decode the envelope separately
 	// so an array cannot make the whole response look invalid.
 	var envelope struct {
-		Code    int             `json:"code"`
-		Data    json.RawMessage `json:"data"`
-		Error   *struct {
+		Code  int             `json:"code"`
+		Data  json.RawMessage `json:"data"`
+		Error *struct {
 			Message string `json:"message"`
 			Code    string `json:"code"`
 		} `json:"error,omitempty"`
@@ -785,7 +803,7 @@ func isAPIMartVideoTask(task *model.Task) bool {
 		return true
 	}
 	var envelope struct {
-		Code int `json:"code"`
+		Code int             `json:"code"`
 		Data json.RawMessage `json:"data"`
 	}
 	return common.Unmarshal(task.Data, &envelope) == nil && envelope.Code == 200 && len(envelope.Data) > 0 && strings.Contains(strings.ToLower(string(envelope.Data)), "video")

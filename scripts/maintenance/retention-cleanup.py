@@ -2,6 +2,7 @@
 """Bounded local retention; remote R2 objects and upload queues are never deleted."""
 import argparse
 import collections
+import concurrent.futures
 import datetime as dt
 import fcntl
 import hashlib
@@ -19,7 +20,13 @@ RELEASES = Path('/var/www/synthapi-web/releases')
 RECORDER = Path('/var/lib/session-recorder')
 FEISHU = Path('/root/feishu-session-recorder-json')
 STATE = Path('/var/lib/synthapi-maintenance')
+UPLOAD_CONFIG = Path('/etc/session-recorder/upload.json')
 DAY = 86400
+GIB = 1024 ** 3
+NORMAL_RETENTION_HOURS = 6
+PRESSURE_RETENTION_HOURS = 1
+PRESSURE_FREE_BYTES = 5 * GIB
+TARGET_FREE_BYTES = 8 * GIB
 
 
 def completed_manifest(record):
@@ -52,6 +59,58 @@ def release_candidates(root, current, now):
     dirs = sorted((p for p in root.iterdir() if p.is_dir() and not p.is_symlink()), key=lambda p: p.stat().st_mtime, reverse=True)
     keep = set(dirs[:3]) | {current}
     return [p for p in dirs if p not in keep and now - p.stat().st_mtime > 2*DAY]
+
+
+def retention_seconds(free_bytes):
+    hours = PRESSURE_RETENTION_HOURS if free_bytes < PRESSURE_FREE_BYTES else NORMAL_RETENTION_HOURS
+    return hours * 3600
+
+
+def legacy_binary_candidates(root, now):
+    if root.is_symlink() or not root.is_dir():
+        return []
+    backup_sets = []
+    for folder in root.iterdir():
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        binaries = []
+        for path in folder.rglob('synthapi-server*'):
+            if (not path.is_file() or path.is_symlink()
+                    or any(parent.is_symlink() for parent in path.parents)):
+                continue
+            with path.open('rb') as stream:
+                magic = stream.read(4)
+            if magic == b'\x7fELF' or magic[:2] == b'\x1f\x8b':
+                binaries.append(path)
+        if binaries:
+            backup_sets.append(binaries)
+    # Deleting a file updates its directory mtime. Rank by the remaining
+    # binaries, so emptied old directories never displace rollback backups.
+    backup_sets.sort(key=lambda paths: max(p.stat().st_mtime for p in paths), reverse=True)
+    return [path for paths in backup_sets[3:] for path in paths
+            if now - path.stat().st_mtime > 14 * DAY]
+
+
+
+def delete_verified_sources(sources, report):
+    for path, before in sources:
+        try:
+            after = path.lstat()
+            if path.is_symlink() or (before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_ino, after.st_size, after.st_mtime_ns):
+                report['changed_files_kept'] += 1
+                continue
+            path.unlink()
+            report['feishu_files_deleted'] += 1
+            report['feishu_bytes_deleted'] += before.st_size
+        except FileNotFoundError:
+            continue
+
+
+def verify_safely(record, config):
+    try:
+        return verify_remote(record, config)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return False
 
 
 def verify_remote(record, config):
@@ -104,13 +163,17 @@ def refresh_feishu_metadata():
     temp = path.with_suffix('.tmp');temp.write_text(json.dumps(manifest,indent=2));temp.chmod(0o600);temp.replace(path)
 
 
-def clean(apply=False, max_batches=200):
+def clean(apply=False, max_batches=2000, workers=4):
     now = time.time()
     report = collections.Counter()
     report['mode'] = 'apply' if apply else 'dry-run'
+    report['free_bytes_before'] = shutil.disk_usage('/').free
+    retain_seconds = retention_seconds(report['free_bytes_before'])
+    report['local_retention_hours'] = retain_seconds / 3600
     candidates = []
     current = Path('/var/www/synthapi-web/current').resolve()
     candidates.extend(release_candidates(RELEASES, current, now))
+    candidates.extend(legacy_binary_candidates(Path('/home/ubuntu/deploy-backups'), now))
     backups = APP / 'deploy-backups'
     if backups.is_dir() and not backups.is_symlink():
         # Only old standalone binary backups; SQL snapshots and other data stay.
@@ -137,8 +200,9 @@ def clean(apply=False, max_batches=200):
         raise RuntimeError('Unsafe Feishu root')
     proof_path = STATE / 'r2-cleanup-proofs.json'
     proofs = json.loads(proof_path.read_text()) if proof_path.exists() else {}
-    config = json.loads(Path('/etc/session-recorder/upload.json').read_text())['r2']
-    for manifest in sorted((RECORDER / 'upload-work/manifests').glob('*.json')):
+    config = json.loads(UPLOAD_CONFIG.read_text())['r2']
+    batches = []
+    for manifest in (RECORDER / 'upload-work/manifests').glob('*.json'):
         if time.time() - now > 10*60:
             report['time_budget_reached'] = 1
             break
@@ -152,34 +216,46 @@ def clean(apply=False, max_batches=200):
                 if not name:
                     continue
                 path = FEISHU / name
-                if path.is_file() and not path.is_symlink() and now-path.stat().st_mtime > DAY:
-                    sources.append((path, path.stat()))
-            if not sources:
-                continue
-            report['eligible_feishu_files'] += len(sources)
-            if not apply:
-                report['eligible_feishu_bytes'] += sum(stat.st_size for _,stat in sources)
-                continue
-            key = record['object_key'] + ':' + record['archive_sha256']
-            # Verify R2 immediately before deleting; prior proofs are audit only.
-            if report['r2_checks'] >= max_batches:
-                report['deferred_batches'] += 1
-                continue
-            report['r2_checks'] += 1
-            if not verify_remote(record, config):
-                report['unverified_batches_kept'] += 1
-                if report['unverified_batches_kept'] >= 3: break
-                continue
-            proofs[key] = now
-            for path, before in sources:
-                after = path.lstat()
-                if path.is_symlink() or (before.st_ino,before.st_size,before.st_mtime_ns) != (after.st_ino,after.st_size,after.st_mtime_ns):
-                    continue
-                path.unlink()
-                report['feishu_files_deleted'] += 1
-                report['feishu_bytes_deleted'] += before.st_size
-        except (OSError,ValueError,subprocess.TimeoutExpired):
+                if path.is_file() and not path.is_symlink():
+                    stat = path.stat()
+                    if now - stat.st_mtime > retain_seconds:
+                        sources.append((path, stat))
+            if sources:
+                report['eligible_feishu_files'] += len(sources)
+                report['eligible_feishu_bytes'] += sum(stat.st_size for _, stat in sources)
+                batches.append((record, sources))
+        except (OSError, ValueError):
             report['errors_kept'] += 1
+    # Oldest uploaded copies first. Bound concurrency and start no new work
+    # after the run's time/check budget or repeated R2 verification failures.
+    batches.sort(key=lambda batch: min(stat.st_mtime for _, stat in batch[1]))
+    report['eligible_batches'] = len(batches)
+    if apply:
+        print(json.dumps(dict(report, phase='planned')), flush=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            for start in range(0, min(len(batches), max_batches), workers):
+                if time.time() - now > 10*60:
+                    report['time_budget_reached'] = 1
+                    break
+                if report['unverified_batches_kept'] >= 3:
+                    break
+                chunk = batches[start:min(start + workers, max_batches)]
+                verified = pool.map(lambda batch: verify_safely(batch[0], config), chunk)
+                for (record, sources), ok in zip(chunk, verified):
+                    report['r2_checks'] += 1
+                    if not ok:
+                        report['unverified_batches_kept'] += 1
+                        continue
+                    proofs[record['object_key'] + ':' + record['archive_sha256']] = time.time()
+                    delete_verified_sources(sources, report)
+                if report['r2_checks'] % 100 < workers:
+                    progress = dict(report, phase='deleting', free_bytes=shutil.disk_usage('/').free)
+                    print(json.dumps(progress), flush=True)
+                if (retain_seconds < NORMAL_RETENTION_HOURS * 3600
+                        and shutil.disk_usage('/').free >= TARGET_FREE_BYTES):
+                    report['free_space_target_reached'] = 1
+                    break
+        report['deferred_batches'] = len(batches) - report['r2_checks']
     if apply and report['feishu_files_deleted']:
         refresh_feishu_metadata()
     if apply:
@@ -196,7 +272,8 @@ def clean(apply=False, max_batches=200):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--apply',action='store_true')
-    parser.add_argument('--max-batches',type=int,default=200)
+    parser.add_argument('--max-batches',type=int,default=2000)
+    parser.add_argument('--workers',type=int,choices=range(1,5),default=4)
     args = parser.parse_args()
     STATE.mkdir(mode=0o700,exist_ok=True)
     with (STATE/'retention.lock').open('w') as lock, open('/run/session-recorder-feishu-json.lock','a') as exporter_lock:
@@ -206,4 +283,4 @@ if __name__ == '__main__':
         except BlockingIOError:
             print('{"skipped":"cleanup or exporter active"}')
         else:
-            clean(args.apply,args.max_batches)
+            clean(args.apply,args.max_batches,args.workers)

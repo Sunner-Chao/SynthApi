@@ -22,11 +22,7 @@ import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, Code2, HeartPulse, Info, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLobeIcon } from '@/lib/lobe-icon'
-import {
-  healthPresentation,
-  serviceHealth,
-  summarizeHealth,
-} from '@/lib/service-health'
+import { summarizeHealth } from '@/lib/service-health'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -185,11 +181,9 @@ function OverviewMetric(props: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: React.ReactNode
-  intent?: 'default' | 'warning' | 'success' | 'danger'
   health?: { rate: number; requestCount?: number }
 }) {
   const Icon = props.icon
-  const intent = props.intent ?? 'default'
 
   return (
     <div className='flex min-w-0 items-center gap-2 px-3 py-2'>
@@ -200,10 +194,7 @@ function OverviewMetric(props: {
         </div>
         <div
           className={cn(
-            'text-foreground truncate font-mono text-sm font-semibold tabular-nums',
-            intent === 'danger' && 'text-rose-600 dark:text-rose-400',
-            intent === 'warning' && 'text-amber-600 dark:text-amber-400',
-            intent === 'success' && 'text-emerald-600 dark:text-emerald-400'
+            'truncate font-mono text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400'
           )}
         >
           {props.value}
@@ -233,8 +224,6 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
   )
   const summary = summarizeHealth(groups)
   const successRate = summary.success_rate
-  const successIntent =
-    healthPresentation[serviceHealth(successRate, summary.request_count)].intent
   const tpsValues = groups
     .map((group) => group.avg_tps)
     .filter((value) => value > 0)
@@ -269,7 +258,6 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
         icon={HeartPulse}
         label={t('Success rate')}
         value={formatUptimePct(successRate)}
-        intent={successIntent}
         health={{ rate: successRate, requestCount: summary.request_count }}
       />
     </div>

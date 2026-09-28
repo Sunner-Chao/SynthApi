@@ -69,7 +69,7 @@ function PaymentMethodCard({
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center gap-2'>
               <CardTitle className='truncate'>{displayName}</CardTitle>
-              {method.recommended && (
+              {method.recommended && method.type !== 'wxpay' && (
                 <Badge variant='secondary'>{t('Recommended')}</Badge>
               )}
             </div>

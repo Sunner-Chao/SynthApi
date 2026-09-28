@@ -170,7 +170,13 @@ type RelayInfo struct {
 	upstreamTraceCollector                  *upstreamTraceCollector
 	StageMetricsProvider                    RelayStageMetricsProvider
 
-	PriceData types.PriceData
+	PriceData               types.PriceData
+	BillingServiceTier      string
+	BillingInputMultiplier  float64
+	BillingOutputMultiplier float64
+	BillingCacheMultiplier  float64
+	BillingLongContext bool
+	BillingContextTokens int
 
 	// TieredBillingSnapshot is a frozen snapshot of tiered billing rules
 	// captured at pre-consume time. Non-nil only when billing mode is "tiered_expr".
@@ -195,6 +201,91 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
+}
+
+// ApplyBillingServiceTier records the effective upstream tier. An explicit
+// response tier overrides the requested tier, including priority -> default.
+func (info *RelayInfo) ApplyBillingServiceTier(tier string) {
+	if info == nil {
+		return
+	}
+	tier = normalizeBillingServiceTier(tier)
+	if tier == "" {
+		return
+	}
+	info.BillingServiceTier = tier
+	info.refreshOpenAIBillingRates()
+}
+
+func normalizeBillingServiceTier(tier string) string {
+	tier = strings.ToLower(strings.TrimSpace(tier))
+	if tier == "fast" {
+		return "priority"
+	}
+	return tier
+}
+
+func isExplicitBillingServiceTier(tier string) bool {
+	tier = normalizeBillingServiceTier(tier)
+	return tier == "priority" || tier == "flex"
+}
+
+func (info *RelayInfo) BillingMultiplier() float64 {
+	if info == nil || info.PriceData.BillingMultiplier <= 0 {
+		return 1
+	}
+	return info.PriceData.BillingMultiplier
+}
+
+func (info *RelayInfo) BillingInputRate() float64 {
+	if info == nil || info.BillingInputMultiplier <= 0 {
+		return 1
+	}
+	return info.BillingInputMultiplier
+}
+
+func (info *RelayInfo) BillingOutputRate() float64 {
+	if info == nil || info.BillingOutputMultiplier <= 0 {
+		return 1
+	}
+	return info.BillingOutputMultiplier
+}
+
+func (info *RelayInfo) BillingCacheRate() float64 {
+	if info == nil || info.BillingCacheMultiplier <= 0 {
+		return 1
+	}
+	return info.BillingCacheMultiplier
+}
+
+// InitializeBillingServiceTier records the request tier before pre-consumption.
+// This runs before InitChannelMeta, so it must not depend on ChannelMeta being
+// populated yet. Explicit priority/fast requests are always auditable and are
+// retained for the upstream; flex remains opt-in because it changes pricing.
+func (info *RelayInfo) InitializeBillingServiceTier() {
+	if info == nil || info.Request == nil || info.RelayFormat == types.RelayFormatOpenAIImage || info.RelayFormat == types.RelayFormatOpenAIAudio {
+		return
+	}
+	tier := ""
+	switch request := info.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		_ = common.Unmarshal(request.ServiceTier, &tier)
+	case *dto.OpenAIResponsesRequest:
+		tier = request.ServiceTier
+	case *dto.ClaudeRequest:
+		tier = request.ServiceTier
+	}
+	tier = normalizeBillingServiceTier(tier)
+	if tier == "" {
+		return
+	}
+	if tier == "flex" && (info.ChannelMeta == nil || (
+		!info.ChannelOtherSettings.AllowServiceTier &&
+		!info.ChannelSetting.PassThroughBodyEnabled &&
+		!model_setting.GetGlobalSettings().PassThroughRequestEnabled)) {
+		return
+	}
+	info.ApplyBillingServiceTier(tier)
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
@@ -800,16 +891,16 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 }
 
 type TaskInfo struct {
-	Code             int    `json:"code"`
-	TaskID           string `json:"task_id"`
-	Status           string `json:"status"`
-	Reason           string `json:"reason,omitempty"`
-	Url              string `json:"url,omitempty"`
-	RemoteUrl        string `json:"remote_url,omitempty"`
-	Progress         string `json:"progress,omitempty"`
-	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
-	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
-	SourceCostUSD    float64 `json:"source_cost_usd,omitempty"`  // 上游异步任务最终成本
+	Code             int     `json:"code"`
+	TaskID           string  `json:"task_id"`
+	Status           string  `json:"status"`
+	Reason           string  `json:"reason,omitempty"`
+	Url              string  `json:"url,omitempty"`
+	RemoteUrl        string  `json:"remote_url,omitempty"`
+	Progress         string  `json:"progress,omitempty"`
+	CompletionTokens int     `json:"completion_tokens,omitempty"` // 用于按倍率计费
+	TotalTokens      int     `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	SourceCostUSD    float64 `json:"source_cost_usd,omitempty"`   // 上游异步任务最终成本
 }
 
 func FailTaskInfo(reason string) *TaskInfo {
@@ -840,9 +931,15 @@ func RemoveDisabledFields(jsonData []byte, channelOtherSettings dto.ChannelOther
 		return jsonData, nil
 	}
 
-	// 默认移除 service_tier，除非明确允许（避免额外计费风险）
-	if !channelOtherSettings.AllowServiceTier {
-		if _, exists := data["service_tier"]; exists {
+	// OpenAI's explicit fast/priority choice is billable at 2x and must reach
+	// the upstream. Normalize the client alias "fast" to "priority". Other
+	// tiers remain opt-in so a channel cannot accidentally enable flex pricing.
+	if raw, exists := data["service_tier"]; exists {
+		tier, ok := raw.(string)
+		tier = normalizeBillingServiceTier(tier)
+		if ok && (tier == "priority" || channelOtherSettings.AllowServiceTier) {
+			data["service_tier"] = tier
+		} else if !channelOtherSettings.AllowServiceTier {
 			delete(data, "service_tier")
 		}
 	}
@@ -910,7 +1007,7 @@ func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.Channel
 		"stream_options.include_obfuscation",
 	)
 
-	return (!channelOtherSettings.AllowServiceTier && values[0].Exists()) ||
+	return values[0].Exists() ||
 		(!channelOtherSettings.AllowInferenceGeo && values[1].Exists()) ||
 		(!channelOtherSettings.AllowSpeed && values[2].Exists()) ||
 		(channelOtherSettings.DisableStore && values[3].Exists()) ||

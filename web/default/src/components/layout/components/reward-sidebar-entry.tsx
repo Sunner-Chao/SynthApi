@@ -40,7 +40,7 @@ export function RewardSidebarEntry() {
         <SidebarMenuItem>
           <SidebarMenuButton
             isActive={pathname.startsWith('/rewards/')}
-            tooltip={t('Reward Center')}
+            tooltip={t('Referral rewards')}
             className='sidebar-reward-link sidebar-reward-link--persistent'
             render={
               <Link to={rewardsUrl} onClick={() => setOpenMobile(false)} />
@@ -60,10 +60,10 @@ export function RewardSidebarEntry() {
               )}
             </span>
             <span className='min-w-0 flex-1 truncate font-semibold'>
-              {t('Reward Center')}
+              {t('Referral rewards')}
             </span>
             <span className='sidebar-reward-badge shrink-0 rounded px-1.5 text-[10px] font-bold'>
-              {actionable ? t('Claim') : pending ? t('Pending') : t('HOT')}
+              {actionable ? t('Claim') : pending ? t('Pending') : t('Invite')}
             </span>
           </SidebarMenuButton>
         </SidebarMenuItem>

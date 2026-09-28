@@ -56,6 +56,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 
 	// compute usage
 	usage := dto.Usage{}
+	usage.ServiceTier = responsesResponse.ServiceTier
 	if responsesResponse.Usage != nil {
 		usage.PromptTokens = responsesResponse.Usage.InputTokens
 		usage.CompletionTokens = responsesResponse.Usage.OutputTokens
@@ -91,7 +92,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var responseTextBuilder strings.Builder
 	streamCompleted := false
 	var streamErr *types.NewAPIError
-
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		// Decode the envelope first.  Responses is an extensible event stream and
 		// providers may add fields (or use a non-string delta) that are not yet in
@@ -122,6 +122,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		if decoded && streamResponse.Response != nil {
+			info.ApplyBillingServiceTier(streamResponse.Response.ServiceTier)
 			if capacityErr := newRecognizedAutoRouteError(streamResponse.Response.Error, http.StatusServiceUnavailable); capacityErr != nil {
 				streamErr = capacityErr
 				sr.Stop(streamErr)
@@ -149,6 +150,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		switch eventType {
 		case "response.completed":
 			streamCompleted = true
+			if decoded && streamResponse.Response != nil {
+				usage.ServiceTier = streamResponse.Response.ServiceTier
+			}
 			if decoded && streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {

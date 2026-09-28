@@ -1,0 +1,514 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/* The two illustrated reward scenes share one canvas with the navigation.
+   Scope the palette to the route, including the mobile sidebar portal. */
+.reward-experience,
+body:has(.reward-experience) .support-agent-panel,
+body:has(.reward-experience) [data-slot='sidebar'][data-mobile='true'] {
+  color-scheme: dark;
+  --background: #080e1c;
+  --foreground: #f0f4fc;
+  --card: #111c2ed9;
+  --card-foreground: #f0f4fc;
+  --popover: #111c2e;
+  --popover-foreground: #f0f4fc;
+  --primary: #f5d28d;
+  --primary-foreground: #20180d;
+  --secondary: #1b2b40;
+  --secondary-foreground: #e3eaf6;
+  --muted: #1b2b40;
+  --muted-foreground: #adbbcf;
+  --accent: #24354d;
+  --accent-foreground: #fff2d4;
+  --border: #b9cdec24;
+  --input: #b9cdec40;
+  --ring: #f5d28d;
+  --sidebar: #091322a8;
+  --sidebar-foreground: #c2cede;
+  --sidebar-primary: #f5d28d;
+  --sidebar-primary-foreground: #20180d;
+  --sidebar-accent: #edd4a019;
+  --sidebar-accent-foreground: #ffe4ad;
+  --sidebar-border: #b9cdec24;
+  --sidebar-ring: #f5d28d;
+  --reward-glow: #c48c3a25;
+  color: var(--foreground);
+}
+.reward-experience[data-reward-scene='recharge'],
+body:has([data-reward-scene='recharge'])
+  [data-slot='sidebar'][data-mobile='true'] {
+  --reward-glow: #2794d930;
+  --sidebar-accent: #6bdcfa1a;
+  --sidebar-accent-foreground: #a6eaff;
+  --sidebar-ring: #8cdeff;
+}
+.reward-experience {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 55% 26%, var(--reward-glow), transparent 48%),
+    radial-gradient(ellipse at 0% 60%, #16365090, transparent 48%),
+    radial-gradient(ellipse at 85% 80%, #17275080, transparent 52%), #080e1c;
+}
+.reward-experience::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.34;
+  background-image:
+    radial-gradient(1px 1px at 27px 34px, #a3c5e3 75%, transparent),
+    radial-gradient(1px 1px at 123px 178px, #f9d795 75%, transparent),
+    radial-gradient(1px 1px at 78px 91px, #7393c8 75%, transparent);
+  background-size:
+    283px 247px,
+    379px 347px,
+    173px 223px;
+}
+.reward-experience [data-slot='sidebar-inner'],
+.reward-experience [data-slot='sidebar'][data-collapsible='none'] {
+  background: var(--sidebar);
+  border-color: var(--sidebar-border);
+  backdrop-filter: blur(16px);
+}
+body:has(.reward-experience) [data-slot='sidebar'][data-mobile='true'] {
+  background:
+    radial-gradient(ellipse at 0% 35%, var(--reward-glow), transparent 70%),
+    #0a1424;
+}
+.reward-experience [data-slot='sidebar-container'] {
+  border-color: var(--sidebar-border);
+}
+:is(.reward-experience, body:has(.reward-experience) [data-mobile='true'])
+  .sidebar-reward-link {
+  color: #ffe0a0;
+  border-color: #f5d28d38;
+  background: linear-gradient(115deg, #f5d28d17, #11273c);
+  box-shadow: inset 0 1px 0 #ffe7b414;
+  animation: none;
+}
+:is(.reward-experience, body:has(.reward-experience) [data-mobile='true'])
+  :is(.admin-reward-sidebar-panel, .admin-reward-sidebar-panel::before) {
+  background: transparent;
+}
+:is(.reward-experience, body:has(.reward-experience) [data-mobile='true'])
+  :is(.admin-reward-sidebar-label, .admin-reward-sidebar-note) {
+  color: #b5c2d5;
+}
+:is(.reward-experience, body:has(.reward-experience) [data-mobile='true'])
+  :is(.admin-reward-live, .sidebar-reward-badge) {
+  color: #ffe0a0;
+  background: #f5d28d18;
+  border-color: #f5d28d30;
+}
+.reward-experience .reward-shell {
+  background: transparent;
+  scrollbar-color: #40536b transparent;
+}
+.reward-experience .reward-shell__header {
+  background: #0c142233;
+  border-color: #b9cdec17;
+}
+.reward-experience .reward-shell__brand-mark {
+  color: #f5d28d;
+  background: linear-gradient(135deg, #f5d28d24, #5978961a);
+  border: 1px solid #f5d28d30;
+}
+.reward-experience .reward-shell__nav-item.is-active {
+  background: #f5d28d15;
+  color: #ffe3ae;
+  box-shadow: inset 0 0 0 1px #f5d28d30;
+}
+.reward-experience :is(.referral-universe, .recharge-station) {
+  max-width: 1680px;
+  padding: clamp(28px, 3.2vw, 56px) clamp(20px, 2.8vw, 48px) 40px;
+}
+.reward-experience .referral-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) minmax(270px, 0.95fr);
+  gap: 12px;
+  padding-bottom: 34px;
+}
+.reward-experience .referral-copy {
+  position: relative;
+  z-index: 1;
+}
+.reward-experience .eyebrow,
+.reward-experience .recharge-heading > span {
+  color: #c6b38e;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+.reward-experience .referral-copy h1 {
+  font-size: clamp(30px, 2.8vw, 49px);
+  line-height: 1.28;
+  text-wrap: balance;
+}
+.reward-experience .referral-copy h1 span {
+  color: #f5d28d;
+  text-shadow: 0 0 32px #f5bb5826;
+}
+.reward-experience .referral-copy p {
+  font-size: 13px;
+  max-width: 340px;
+}
+.reward-experience .referral-actions {
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.reward-experience :is(.invite-button, .claim-button:not(:disabled)) {
+  background: linear-gradient(115deg, #f6dea5, #e9b967);
+  color: #281d0c;
+  border: 1px solid #ffe6af;
+  box-shadow:
+    0 5px 28px #dfac3820,
+    inset 0 1px 0 #fff2c9;
+}
+.reward-experience .invite-button:hover {
+  background: #ffe5ad;
+  box-shadow: 0 5px 32px #dfac3836;
+}
+.reward-experience .max-rate strong {
+  color: #f5d28d;
+}
+.reward-experience :is(.referral-reference-art, .recharge-reference-art) {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 0.86;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse at center, #000 38%, transparent 73%);
+}
+.reward-experience .referral-reference-art {
+  background-image: url('../../../public/reward-assets/referral-staircase-clean-v2.webp');
+  background-size: 150% auto;
+  filter: drop-shadow(0 8px 25px #dea44420);
+}
+.reward-experience :is(.milestone-panel, .benefit-vault) {
+  background: linear-gradient(145deg, #26314a70, #111c30c9 65%);
+  border: 1px solid #c7d5ed2b;
+  box-shadow:
+    inset 0 1px 0 #d3e8ff0c,
+    0 18px 45px #00000030;
+  padding: clamp(20px, 2vw, 28px);
+  border-radius: 18px;
+}
+.reward-experience .milestone-number strong {
+  color: #f8e0ae;
+  text-shadow: 0 0 36px #ffc96b22;
+}
+.reward-experience .milestone-progress > span {
+  background: linear-gradient(90deg, #ce984f, #ffe0a0);
+  box-shadow: 0 0 12px #ffca67;
+}
+.reward-experience .milestone-reward {
+  color: #f5d28d;
+}
+.reward-experience .stage-voyage {
+  gap: 14px;
+  margin-bottom: 32px;
+}
+.reward-experience .stage-card {
+  --stage-color: #b0d2ee;
+  align-items: center;
+  text-align: center;
+  min-height: 230px;
+  padding: 24px 10px 18px;
+  border-radius: 14px;
+  background:
+    radial-gradient(
+      ellipse at 50% 20%,
+      color-mix(in srgb, var(--stage-color) 12%, transparent),
+      transparent 62%
+    ),
+    linear-gradient(145deg, #192339b3, #0d1828e0);
+  box-shadow: inset 0 1px 0 #ffffff08;
+}
+.reward-experience .stage-segment:nth-child(2) .stage-card {
+  --stage-color: #a5d2fc;
+}
+.reward-experience .stage-segment:nth-child(3) .stage-card {
+  --stage-color: #d0b5fa;
+}
+.reward-experience .stage-segment:nth-child(4) .stage-card {
+  --stage-color: #f1cf8e;
+}
+.reward-experience .stage-segment:nth-child(5) .stage-card {
+  --stage-color: #dfb1f5;
+}
+.reward-experience .stage-segment:nth-child(6) .stage-card {
+  --stage-color: #f5d28d;
+}
+.reward-experience .stage-card.is-active {
+  border-color: #f5d28d99;
+  box-shadow:
+    0 0 28px #dba64d14,
+    inset 0 1px 0 #ffe5b24a;
+}
+.reward-experience .stage-emblem {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--stage-color) 14%, transparent),
+    transparent 70%
+  );
+  border: 1px solid color-mix(in srgb, var(--stage-color) 20%, transparent);
+  color: var(--stage-color);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--stage-color) 8%, transparent);
+}
+.reward-experience .stage-emblem svg {
+  width: 34px;
+  height: 34px;
+  stroke-width: 1.4;
+  filter: drop-shadow(
+    0 0 7px color-mix(in srgb, var(--stage-color) 50%, transparent)
+  );
+}
+.reward-experience .stage-card > strong {
+  color: var(--stage-color);
+  font-size: 29px;
+}
+.reward-experience .stage-range {
+  font-size: 11px;
+}
+.reward-experience .referral-how-it-works {
+  padding: 24px 0;
+  margin-bottom: 24px;
+}
+.reward-experience .referral-how-it-works article > span {
+  color: #dfc590;
+}
+.reward-experience .recharge-heading h1 {
+  font-size: clamp(30px, 3vw, 44px);
+  color: #f1e1bf;
+}
+.reward-experience .recharge-heading h1 svg {
+  color: #f5d28d;
+}
+.reward-experience .recharge-core {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(270px, 0.9fr);
+  align-items: center;
+  gap: 26px;
+  padding: 14px 0 36px;
+}
+.reward-experience .recharge-reference-art {
+  background-image: url('../../../public/reward-assets/recharge-reactor-clean.webp');
+  background-size: 142% auto;
+  filter: drop-shadow(0 10px 28px #269ff52e);
+}
+.reward-experience .recharge-gauge {
+  background: transparent;
+  border: 0;
+  padding: 16px 0;
+  min-height: 300px;
+}
+.reward-experience .gauge-ring {
+  position: relative;
+  width: min(100%, 300px);
+  height: auto;
+  aspect-ratio: 1;
+  padding: 7px;
+  background: conic-gradient(
+    from -90deg,
+    #e3b864 0deg,
+    #f9e4b4 var(--progress-warm),
+    #85e6f5 var(--progress-cyan),
+    #70c6f5 var(--progress),
+    #24374c var(--progress),
+    #24374c 360deg
+  );
+  box-shadow:
+    0 0 36px #44bce522,
+    0 0 0 9px #88cfe50a,
+    0 0 0 10px #88cfe515;
+}
+.reward-experience .gauge-ring::before {
+  content: '';
+  position: absolute;
+  inset: -20px;
+  border: 1px dashed #75c8e733;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.reward-experience .gauge-ring__inner {
+  background: radial-gradient(circle at 50% 30%, #1a354a, #0a1425 78%);
+  border: 1px solid #8bddf733;
+  box-shadow: inset 0 0 35px #54c6f015;
+}
+.reward-experience .gauge-ring__inner strong {
+  color: #fff0cc;
+}
+.reward-experience .gauge-percent {
+  color: #9ce3fa;
+}
+.reward-experience .gauge-ring.is-charged {
+  box-shadow:
+    0 0 42px #6bcfe744,
+    0 0 0 9px #88cfe512,
+    0 0 0 10px #88cfe52b;
+}
+.reward-experience .benefit-vault {
+  gap: 24px;
+}
+.reward-experience .benefit-ticket {
+  position: relative;
+  padding: 20px;
+  color: #f9df9e;
+  border: 1px solid #e9bd6570;
+  border-radius: 12px;
+  background: linear-gradient(125deg, #8d672a40, #ddbe6520 48%, #86642430);
+  box-shadow:
+    inset 0 1px 0 #ffe6a530,
+    0 8px 28px #00000020;
+}
+.reward-experience .benefit-ticket p {
+  color: #d9c5a3;
+}
+.reward-experience .benefit-ticket > svg {
+  color: #e3c98e;
+}
+.reward-experience .claim-button:disabled {
+  opacity: 1;
+  color: #c8c0ae;
+  background: #3b382f;
+  border: 1px solid #f5d28d24;
+}
+.reward-experience
+  :is(.affiliate-transfer-history, .claim-history, .admin-claim-console) {
+  background: #111c2e99;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.reward-experience .admin-claim-console {
+  margin-top: 22px;
+}
+.reward-experience .claim-status--granted {
+  color: #a9e6c5;
+  background: #38876820;
+}
+.reward-experience .claim-status--pending {
+  color: #f5d28d;
+}
+@media (max-width: 1250px) {
+  .reward-experience .referral-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+    gap: 24px;
+  }
+  .reward-experience .referral-copy {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .reward-experience .referral-reference-art {
+    grid-column: 2;
+    grid-row: 1;
+    max-height: 350px;
+  }
+  .reward-experience .milestone-panel {
+    grid-column: 1 / -1;
+  }
+  .reward-experience .affiliate-claim-card {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .reward-experience .recharge-core {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .reward-experience .benefit-vault {
+    grid-column: 1 / -1;
+  }
+  .reward-experience .recharge-reference-art {
+    max-height: 330px;
+  }
+}
+@media (max-width: 760px) {
+  .reward-experience .reward-shell__header {
+    gap: 20px;
+  }
+  .reward-experience .referral-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .reward-experience .referral-copy {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .reward-experience .referral-reference-art {
+    grid-column: auto;
+    grid-row: auto;
+    max-height: 300px;
+    aspect-ratio: 1.4;
+    background-size: contain;
+  }
+  .reward-experience .referral-copy h1 {
+    font-size: 37px;
+  }
+  .reward-experience .referral-copy p {
+    max-width: none;
+  }
+  .reward-experience .referral-actions {
+    justify-content: space-between;
+  }
+  .reward-experience .affiliate-claim-card {
+    grid-template-columns: 1fr;
+  }
+  .reward-experience .recharge-core {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 30px;
+  }
+  .reward-experience .recharge-reference-art {
+    aspect-ratio: 1.5;
+    max-height: 290px;
+    background-size: contain;
+  }
+  .reward-experience .recharge-gauge {
+    min-height: 340px;
+  }
+  .reward-experience .gauge-ring {
+    width: 280px;
+  }
+  .reward-experience .stage-voyage {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .reward-experience .claim-history__title {
+    align-items: flex-start;
+  }
+  .reward-experience .history-total {
+    flex-shrink: 0;
+  }
+}
+@media (max-width: 360px) {
+  .reward-experience .referral-copy h1 {
+    font-size: 32px;
+  }
+  .reward-experience .gauge-ring {
+    width: 238px;
+  }
+}
+
+:is(.reward-experience, body:has(.reward-experience) [data-mobile='true'])
+  .sidebar-reward-link--persistent::after {
+  animation: none;
+  opacity: 0.15;
+}

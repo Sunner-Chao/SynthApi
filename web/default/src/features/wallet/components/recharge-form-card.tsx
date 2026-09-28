@@ -446,14 +446,15 @@ export function RechargeFormCard({
                           <span className='flex min-w-0 flex-1 flex-col items-start gap-0.5'>
                             <span className='flex w-full min-w-0 items-center gap-1.5'>
                               <span className='truncate'>{methodName}</span>
-                              {isRecommended && (
-                                <Badge
-                                  variant='secondary'
-                                  className='shrink-0 border border-[#07c160]/20 bg-[#07c160]/12 text-[#078a45] dark:bg-[#07c160]/15 dark:text-[#4ade80]'
-                                >
-                                  {t('Recommended')}
-                                </Badge>
-                              )}
+                              {isRecommended &&
+                                method.type !== PAYMENT_TYPES.WECHAT && (
+                                  <Badge
+                                    variant='secondary'
+                                    className='shrink-0 border border-[#07c160]/20 bg-[#07c160]/12 text-[#078a45] dark:bg-[#07c160]/15 dark:text-[#4ade80]'
+                                  >
+                                    {t('Recommended')}
+                                  </Badge>
+                                )}
                             </span>
                             {(isDirect || isBackup) && (
                               <span

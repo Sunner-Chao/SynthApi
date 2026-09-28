@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path('/var/lib/session-recorder')
 OUT = Path('/var/lib/synthapi-monitor')
+MAX_SNAPSHOT_BATCHES = 500
+MAX_SNAPSHOT_RECORDS = 1000
 
 def read(path):
     with open(path) as stream:
@@ -22,15 +24,20 @@ def r2_objects(config):
     # curl handles SigV4; credentials travel over stdin, never argv or logs.
     curl_config = 'user = ' + json.dumps(key + ':' + secret) + '\n'
     start_after, objects = '', []
+    # Limit the listing to the current UTC day. This avoids scanning the
+    # entire historical bucket on every two-minute monitor refresh.
+    today_prefix = '/synthapi/' + config.get('host_id', 'aliyun-prod') + '/' + dt.datetime.now(dt.timezone.utc).strftime('%Y/%m/%d/')
     for _ in range(100):
-        params = {'list-type': '2', 'max-keys': '1000', 'prefix': config.get('object_prefix', '')}
+        params = {'list-type': '2', 'max-keys': '1000', 'prefix': config.get('object_prefix', '') + today_prefix}
         if start_after:
             params['start-after'] = start_after
         query = urllib.parse.urlencode(params)
         url = config['endpoint'].rstrip('/') + '/' + config['bucket'] + '?' + query
-        result = subprocess.run(['curl', '--silent', '--fail', '--max-time', '60', '--aws-sigv4', 'aws:amz:auto:s3', '-H', 'x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '--config', '-', url], input=curl_config, text=True, capture_output=True, timeout=70)
+        result = subprocess.run(['curl', '--silent', '--fail', '--connect-timeout', '5', '--max-time', '20', '--aws-sigv4', 'aws:amz:auto:s3', '-H', 'x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '--config', '-', url], input=curl_config, text=True, capture_output=True, timeout=25)
         if result.returncode:
-            raise RuntimeError('R2 ListObjects failed (curl code %d)' % result.returncode)
+            detail = result.stderr.strip()
+            suffix = ': ' + detail[:160] if detail else ''
+            raise RuntimeError('R2 ListObjects failed (curl code %d)%s' % (result.returncode, suffix))
         root = ET.fromstring(result.stdout)
         ns = {'s': 'http://s3.amazonaws.com/doc/2006-03-01/'}
         for obj in root.findall('s:Contents', ns):
@@ -58,30 +65,35 @@ def main():
             batches.append(row)
         except (OSError, ValueError):
             errors.append('Unreadable upload manifest: ' + path.name)
-    cache_path = OUT / 'records-cache.json'
-    cache = read(cache_path) if cache_path.exists() else {}
-    paths = list((ROOT / 'exports').glob('*/*.json')) + list(Path('/root/feishu-session-recorder-json').glob('*.json'))
-    for path in paths:
-        if path.name == 'manifest.json':
-            continue
+    # Do not walk or read the raw recorder/Feishu response files here. There
+    # are several gigabytes of them and the exporter already maintains a
+    # compact metadata index. A full scan used to block on disk for minutes,
+    # starving the uploader and leaving the dashboard without a fresh snapshot.
+    previous_snapshot = read(OUT / 'snapshot.json') if (OUT / 'snapshot.json').exists() else {}
+    previous_records = previous_snapshot.get('records', [])
+    record_count = max(int(previous_snapshot.get('record_count') or 0), len(previous_records))
+    all_records = list(previous_records)
+    meta_path = ROOT / 'state/feishu-json-exporter.meta.jsonl'
+    if meta_path.exists():
         try:
-            stat = path.stat()
-            cache_key = str(path)
-            if cache.get(cache_key, {}).get('mtime') == stat.st_mtime_ns:
-                continue
-            record = read(path)
-            row = {key: record.get(key) for key in ('session_id', 'request_id', 'model', 'provider', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'status', 'termination_reason', 'start_time', 'end_time')}
-            row.update(size=stat.st_size, mtime=stat.st_mtime_ns, source='feishu-local' if path.parent.name == 'feishu-session-recorder-json' else 'recorder')
-            row['acceptance'] = 'not_validated'
-            cache[cache_key] = row
-        except (OSError, ValueError):
-            errors.append('Unreadable trajectory metadata: ' + path.name)
-    unique = {}
-    for row in cache.values():
-        key = row.get('request_id')
-        if key and (key not in unique or row['source'] == 'recorder'):
-            unique[key] = row
-    records = list(unique.values())
+            lines = meta_path.read_text().splitlines()[-MAX_SNAPSHOT_RECORDS:]
+            known_sessions = {row.get('session_id') for row in all_records}
+            for line in reversed(lines):
+                row = json.loads(line)
+                if not row.get('session_id') or row['session_id'] in known_sessions:
+                    continue
+                row.update(request_id=None, prompt_tokens=None, completion_tokens=None,
+                           total_tokens=None, status='success',
+                           termination_reason='response.completed', size=None,
+                           source='feishu-index', acceptance='not_validated')
+                all_records.append(row)
+                known_sessions.add(row['session_id'])
+        except (OSError, ValueError, json.JSONDecodeError):
+            errors.append('Unreadable Feishu metadata index')
+    all_records.sort(key=lambda x: x.get('end_time') or '', reverse=True)
+    all_records = all_records[:MAX_SNAPSHOT_RECORDS]
+    records = all_records
+    totals = previous_snapshot.get('tokens') or {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
     for row in records:
         row['quality_summary'] = {
             'model_allowed': row.get('model') in ('claude-opus-5', 'claude-fable-5', 'gpt-5.6'),
@@ -90,8 +102,6 @@ def main():
             'session_id_present': bool(row.get('session_id')),
             'official_acceptance': 'not_validated',
         }
-    totals = {key: sum(row.get(key) or 0 for row in records) for key in ('prompt_tokens', 'completion_tokens', 'total_tokens')}
-    previous_snapshot = read(OUT / 'snapshot.json') if (OUT / 'snapshot.json').exists() else {}
     objects, r2_error, r2_truncated = [], None, False
     try:
         objects, r2_truncated = r2_objects(config['r2'])
@@ -103,8 +113,29 @@ def main():
         r2_truncated = previous_snapshot.get('r2_truncated', True)
     units = ['session-recorder-proxy', 'session-recorder-upload', 'session-recorder-feishu-json']
     services = {unit: subprocess.run(['systemctl', 'is-active', unit], capture_output=True, text=True).stdout.strip() for unit in units}
-    snapshot = dict(checked_at=dt.datetime.now(dt.timezone.utc).isoformat(), node=config.get('host_id'), bucket=config['r2']['bucket'], stats=stats, services=services, errors=errors[:20], batches=sorted(batches, key=lambda x: x.get('updated_at') or '', reverse=True), objects=sorted(objects, key=lambda x: x['modified'], reverse=True), r2_error=r2_error, r2_truncated=r2_truncated, r2_bytes=sum(x['size'] for x in objects) if not r2_error else None, records=sorted(records, key=lambda x: x.get('end_time') or '', reverse=True), tokens=totals, token_records=sum(row.get('total_tokens') is not None for row in records), token_scope='本地已观测记录，按 request_id 去重；不是 R2 历史累计 Token。', acceptance='尚未接入官方验收脚本；上传成功不代表采购验收通过。')
-    for name, value in [('records-cache.json', cache), ('snapshot.json', snapshot)]:
+    batches.sort(key=lambda x: x.get('updated_at') or '', reverse=True)
+    objects.sort(key=lambda x: x['modified'], reverse=True)
+    snapshot = dict(
+        checked_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+        node=config.get('host_id'),
+        bucket=config['r2']['bucket'],
+        stats=stats,
+        services=services,
+        errors=errors[:20],
+        batches=batches[:MAX_SNAPSHOT_BATCHES],
+        objects=objects,
+        r2_error=r2_error,
+        r2_truncated=r2_truncated,
+        r2_bytes=sum(x['size'] for x in objects) if not r2_error else None,
+        records=records,
+        record_count=record_count,
+        records_limited=record_count > len(records),
+        tokens=totals,
+        token_records=previous_snapshot.get('token_records', sum(row.get('total_tokens') is not None for row in all_records)),
+        token_scope='本地已观测记录，按 request_id 去重；不是 R2 历史累计 Token。',
+        acceptance='尚未接入官方验收脚本；上传成功不代表采购验收通过。',
+    )
+    for name, value in [('snapshot.json', snapshot)]:
         temp = OUT / (name + '.tmp')
         temp.write_text(json.dumps(value, ensure_ascii=True))
         os.chmod(temp, 0o640)

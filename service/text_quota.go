@@ -57,6 +57,49 @@ type textQuotaSummary struct {
 	ToolCallSurchargeQuota   decimal.Decimal
 }
 
+// normalizeClientGoneUsage supplies the input token estimate when a streaming
+// request was interrupted by the client before the upstream emitted usage.
+// A client disconnect is billable once the relay has entered the stream; a
+// zero-valued usage object must therefore not turn the whole request into a
+// zero-cost settlement. Real upstream usage always takes precedence.
+func normalizeClientGoneUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) (*dto.Usage, bool) {
+	if relayInfo == nil || usage == nil || relayInfo.StreamStatus == nil ||
+		relayInfo.StreamStatus.EndReason != relaycommon.StreamEndReasonClientGone ||
+		usageHasTokens(usage) {
+		return usage, false
+	}
+	estimatedPromptTokens := relayInfo.GetEstimatePromptTokens()
+	if estimatedPromptTokens <= 0 {
+		return usage, false
+	}
+	normalized := *usage
+	normalized.PromptTokens = estimatedPromptTokens
+	normalized.CompletionTokens = 0
+	normalized.TotalTokens = estimatedPromptTokens
+	normalized.PromptTokensDetails.TextTokens = estimatedPromptTokens
+	normalized.UsageSource = "client_gone_estimate"
+	return &normalized, true
+}
+
+func usageHasTokens(usage *dto.Usage) bool {
+	if usage == nil {
+		return false
+	}
+	return usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.TotalTokens > 0 ||
+		usage.PromptTokensDetails.CachedTokens > 0 ||
+		usage.PromptTokensDetails.CachedCreationTokens > 0 ||
+		usage.PromptTokensDetails.CacheCreationTokens > 0 ||
+		usage.PromptTokensDetails.TextTokens > 0 ||
+		usage.PromptTokensDetails.AudioTokens > 0 ||
+		usage.PromptTokensDetails.ImageTokens > 0 ||
+		usage.CompletionTokenDetails.TextTokens > 0 ||
+		usage.CompletionTokenDetails.AudioTokens > 0 ||
+		usage.CompletionTokenDetails.ImageTokens > 0 ||
+		usage.CompletionTokenDetails.ReasoningTokens > 0 ||
+		usage.InputTokens > 0 || usage.OutputTokens > 0 ||
+		usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0
+}
+
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
 	if summary.CacheCreationTokens5m > 0 || summary.CacheCreationTokens1h > 0 {
 		splitCacheWriteTokens := summary.CacheCreationTokens5m + summary.CacheCreationTokens1h
@@ -207,6 +250,13 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		}
 		summary.PromptTokens -= summary.CacheCreationTokens
 	}
+	// OpenAI prompt_tokens already includes cached input. Anthropic-style
+	// usage reports it separately; count it exactly once for tier selection.
+	contextTokens := summary.PromptTokens
+	if summary.IsClaudeUsageSemantic || legacyClaudeDerived {
+		contextTokens += summary.CacheTokens + cacheWriteTokensTotal(summary)
+	}
+	relayInfo.SetOpenAIBillingContext(contextTokens)
 
 	dPromptTokens := decimal.NewFromInt(int64(summary.PromptTokens))
 	dCacheTokens := decimal.NewFromInt(int64(summary.CacheTokens))
@@ -272,8 +322,12 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			}
 		}
 
-		promptQuota := baseTokens.Add(cachedTokensWithRatio).Add(imageTokensWithRatio).Add(cachedCreationTokensWithRatio)
-		completionQuota := dCompletionTokens.Mul(dCompletionRatio)
+		inputRate := decimal.NewFromFloat(relayInfo.BillingInputRate())
+		outputRate := decimal.NewFromFloat(relayInfo.BillingOutputRate())
+		cacheRate := decimal.NewFromFloat(relayInfo.BillingCacheRate())
+		promptQuota := baseTokens.Add(imageTokensWithRatio).Mul(inputRate).
+			Add(cachedTokensWithRatio.Add(cachedCreationTokensWithRatio).Mul(cacheRate))
+		completionQuota := dCompletionTokens.Mul(dCompletionRatio).Mul(outputRate)
 		quotaCalculateDecimal := promptQuota.Add(completionQuota).Mul(ratio)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(summary.ToolCallSurchargeQuota)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(audioInputQuota)
@@ -320,7 +374,14 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 }
 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
+	if normalizedUsage, estimated := normalizeClientGoneUsage(relayInfo, usage); estimated {
+		usage = normalizedUsage
+		extraContent = append(extraContent, "客户端断开，按估算输入计费")
+	}
 	originUsage := usage
+	if usage != nil && usage.ServiceTier != "" {
+		relayInfo.ApplyBillingServiceTier(usage.ServiceTier)
+	}
 	if usage == nil {
 		extraContent = append(extraContent, "上游无计费信息")
 	}

@@ -3,6 +3,7 @@ package openai
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http/httptest"
 	"strings"
@@ -140,6 +141,75 @@ func TestConvertAPIMartGPTImage2JSONEditKeepsImageURLs(t *testing.T) {
 	}
 	if info.RequestURLPath != "/v1/images/generations" {
 		t.Fatalf("request path = %q", info.RequestURLPath)
+	}
+}
+
+func TestNormalizeAPIMartGPTImage2Formats(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name         string
+		model        string
+		resolution   string
+		outputFormat string
+		wantFormat   string
+	}{
+		{name: "gpt-image-2-1k-url", model: "gpt-image-2", resolution: "1k", outputFormat: "url", wantFormat: "png"},
+		{name: "gpt-image-2-2k-url", model: "gpt-image-2", resolution: "2k", outputFormat: "url", wantFormat: "png"},
+		{name: "gpt-image-2-4k-url", model: "gpt-image-2", resolution: "4k", outputFormat: "url", wantFormat: "png"},
+		{name: "gpt-image-2-5-2k-url", model: "gpt-image-2.5", resolution: "2k", outputFormat: "url", wantFormat: "png"},
+		{name: "gpt-image-2-4k-jpeg", model: "gpt-image-2", resolution: "4k", outputFormat: "jpeg", wantFormat: "jpeg"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/images/generations", strings.NewReader(`{}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			info := &relaycommon.RelayInfo{
+				RelayMode:      relayconstant.RelayModeImagesGenerations,
+				RequestURLPath: "/v1/images/generations",
+				ChannelMeta: &relaycommon.ChannelMeta{
+					ChannelBaseUrl: "https://api.apimart.ai",
+				},
+			}
+			converted, err := (&Adaptor{}).ConvertImageRequest(c, info, dto.ImageRequest{
+				Model:          test.model,
+				Prompt:         "test",
+				Resolution:     json.RawMessage(fmt.Sprintf("%q", test.resolution)),
+				ResponseFormat: "url",
+				OutputFormat:   json.RawMessage(fmt.Sprintf("%q", test.outputFormat)),
+			})
+			if err != nil {
+				t.Fatalf("ConvertImageRequest returned error: %v", err)
+			}
+			request, ok := converted.(dto.ImageRequest)
+			if !ok {
+				t.Fatalf("converted request type = %T, want dto.ImageRequest", converted)
+			}
+			if request.ResponseFormat != "" {
+				t.Fatalf("response_format = %q, want omitted", request.ResponseFormat)
+			}
+			var format string
+			if err := json.Unmarshal(request.OutputFormat, &format); err != nil {
+				t.Fatalf("decode output_format: %v", err)
+			}
+			if format != test.wantFormat {
+				t.Fatalf("output_format = %q, want %q", format, test.wantFormat)
+			}
+			body, err := json.Marshal(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists := payload["response_format"]; exists {
+				t.Fatalf("upstream payload still contains response_format: %s", body)
+			}
+			if payload["output_format"] != test.wantFormat {
+				t.Fatalf("upstream output_format = %#v, want %q", payload["output_format"], test.wantFormat)
+			}
+		})
 	}
 }
 

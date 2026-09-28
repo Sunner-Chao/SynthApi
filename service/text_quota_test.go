@@ -68,6 +68,70 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, 1488, chatSummary.Quota)
 }
 
+func TestNormalizeClientGoneUsageUsesEstimatedPromptTokens(t *testing.T) {
+	info := &relaycommon.RelayInfo{StreamStatus: relaycommon.NewStreamStatus()}
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	info.SetEstimatePromptTokens(1234)
+
+	normalized, estimated := normalizeClientGoneUsage(info, &dto.Usage{})
+
+	require.True(t, estimated)
+	require.Equal(t, 1234, normalized.PromptTokens)
+	require.Equal(t, 0, normalized.CompletionTokens)
+	require.Equal(t, 1234, normalized.TotalTokens)
+	require.Equal(t, "client_gone_estimate", normalized.UsageSource)
+}
+
+func TestNormalizeClientGoneUsagePreservesRealUsage(t *testing.T) {
+	info := &relaycommon.RelayInfo{StreamStatus: relaycommon.NewStreamStatus()}
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	info.SetEstimatePromptTokens(1234)
+	usage := &dto.Usage{PromptTokens: 20, CompletionTokens: 5, TotalTokens: 25}
+
+	normalized, estimated := normalizeClientGoneUsage(info, usage)
+
+	require.False(t, estimated)
+	require.Same(t, usage, normalized)
+}
+
+func TestNormalizeClientGoneUsageDoesNotBillOtherEndReasons(t *testing.T) {
+	info := &relaycommon.RelayInfo{StreamStatus: relaycommon.NewStreamStatus()}
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
+	info.SetEstimatePromptTokens(1234)
+
+	normalized, estimated := normalizeClientGoneUsage(info, &dto.Usage{})
+
+	require.False(t, estimated)
+	require.Empty(t, normalized.PromptTokens)
+}
+
+func TestCalculateTextQuotaSummaryBillsClientGoneEstimate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-6-astra",
+		PriceData: types.PriceData{
+			ModelRatio:        1,
+			CompletionRatio:   1,
+			GroupRatioInfo:    types.GroupRatioInfo{GroupRatio: 1},
+			BillingInputMultiplier: 1,
+			BillingOutputMultiplier: 1,
+			BillingCacheMultiplier: 1,
+		},
+		StreamStatus: relaycommon.NewStreamStatus(),
+		StartTime:    time.Now(),
+	}
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	info.SetEstimatePromptTokens(900)
+
+	usage, estimated := normalizeClientGoneUsage(info, &dto.Usage{})
+	require.True(t, estimated)
+	summary := calculateTextQuotaSummary(ctx, info, usage)
+
+	require.Equal(t, 900, summary.TotalTokens)
+	require.Positive(t, summary.Quota)
+}
+
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

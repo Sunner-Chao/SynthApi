@@ -20,11 +20,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, HeartPulse, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import {
-  healthPresentation,
-  serviceHealth,
-  summarizeHealth,
-} from '@/lib/service-health'
+import { summarizeHealth } from '@/lib/service-health'
 import { cn } from '@/lib/utils'
 import {
   Table,
@@ -36,7 +32,6 @@ import {
 } from '@/components/ui/table'
 import { GroupBadge } from '@/components/group-badge'
 import { ServiceHealthBars } from '@/components/service-health-bars'
-import { ServiceHealthLegend } from '@/components/service-health-legend'
 import { getPerfMetrics } from '@/features/performance-metrics/api'
 import {
   formatLatency,
@@ -56,11 +51,9 @@ function StatCard(props: {
   label: string
   value: React.ReactNode
   hint?: string
-  intent?: 'default' | 'warning' | 'success' | 'danger'
   health?: { rate: number; requestCount?: number }
 }) {
   const Icon = props.icon
-  const intent = props.intent ?? 'default'
   return (
     <div className='bg-background flex flex-col gap-1 rounded-lg border p-3'>
       <span className='text-muted-foreground inline-flex items-center gap-1.5 text-[10px] font-medium tracking-wider uppercase'>
@@ -69,10 +62,7 @@ function StatCard(props: {
       </span>
       <span
         className={cn(
-          'text-foreground font-mono text-lg font-semibold tabular-nums',
-          intent === 'danger' && 'text-rose-600 dark:text-rose-400',
-          intent === 'warning' && 'text-amber-600 dark:text-amber-400',
-          intent === 'success' && 'text-emerald-600 dark:text-emerald-400'
+          'font-mono text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400'
         )}
       >
         {props.value}
@@ -195,8 +185,6 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
   const avgLatency = average(performances, 'avg_latency_ms')
   const summary = summarizeHealth(groups)
   const successRate = summary.success_rate
-  const intent =
-    healthPresentation[serviceHealth(successRate, summary.request_count)].intent
   const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
 
   const headerCellClass =
@@ -204,7 +192,6 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
 
   return (
     <div className='flex flex-col gap-4'>
-      <ServiceHealthLegend />
       <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
         <StatCard
           icon={Timer}
@@ -224,7 +211,6 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
           hint={t('{{count}} requests in the last 24 hours', {
             count: summary.request_count ?? 0,
           })}
-          intent={intent}
           health={{ rate: successRate, requestCount: summary.request_count }}
         />
       </div>

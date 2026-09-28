@@ -19,7 +19,11 @@ It serves metadata from `/var/lib/synthapi-monitor/snapshot.json`, with
 
 `r2-monitor.timer` runs `scripts/r2-monitor.py` every two minutes after the
 previous collection ends. The collector reads upload manifests, recorder
-statistics, local trajectory metadata, and a paginated R2 ListObjectsV2 listing.
+statistics, the exporter's compact trajectory metadata index, and a paginated
+R2 ListObjectsV2 listing. It does not walk or read the raw response spool on
+every refresh. The snapshot exposes a bounded recent record/batch view while
+preserving previously calculated token totals, keeping the administrator
+response small and avoiding disk contention with the uploader.
 It signs R2 requests with curl SigV4 and keeps credentials out of argv and the
 snapshot. The collector runs with CPUQuota=30% and MemoryMax=256M. The Go process
 only needs group read access to the snapshot; it does not read R2 credentials

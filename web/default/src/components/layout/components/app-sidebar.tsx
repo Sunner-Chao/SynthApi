@@ -21,8 +21,9 @@ import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 import { useLayout } from '@/context/layout-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
-import { NavGroup } from './nav-group'
+import { SupportAgentEntry } from '@/features/support-agent'
 import { AdminRewardSidebarPanel } from './admin-reward-sidebar-panel'
+import { NavGroup } from './nav-group'
 import { RewardSidebarEntry } from './reward-sidebar-entry'
 import { SidebarViewHeader } from './sidebar-view-header'
 
@@ -57,6 +58,7 @@ export function AppSidebar() {
       {isAdminPortal && <AdminRewardSidebarPanel />}
 
       <SidebarContent className='py-2'>
+        <SupportAgentEntry />
         <AnimatePresence mode='wait' initial={false}>
           <motion.div
             key={key}

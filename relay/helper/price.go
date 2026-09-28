@@ -67,7 +67,9 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 }
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
+	info.InitializeBillingServiceTier()
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	info.PriceData.UsePrice = usePrice
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
@@ -75,6 +77,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
 		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
 	}
+	info.SetOpenAIBillingContext(promptTokens)
 
 	var preConsumedQuota int
 	var modelRatio float64
@@ -89,8 +92,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	var freeModel bool
 	if !usePrice {
 		preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
-		if meta.MaxTokens != 0 {
-			preConsumedTokens += meta.MaxTokens
+		maxCompletionTokens := 0
+		if meta != nil && meta.MaxTokens != 0 {
+			maxCompletionTokens = meta.MaxTokens
 		}
 		var success bool
 		var matchName string
@@ -113,13 +117,15 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
 		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
-		ratio := modelRatio * groupRatioInfo.GroupRatio
-		preConsumedQuota = int(float64(preConsumedTokens) * ratio)
+		// Keep long-context and service-tier component rates separate.
+		inputQuota := float64(preConsumedTokens) * modelRatio * info.BillingInputRate()
+		outputQuota := float64(maxCompletionTokens) * modelRatio * completionRatio * info.BillingOutputRate()
+		preConsumedQuota = billingexpr.QuotaRound((inputQuota + outputQuota) * groupRatioInfo.GroupRatio)
 	} else {
 		if imagePriceRatio := effectiveImagePriceRatio(c, info, meta); imagePriceRatio != 0 {
 			modelPrice = modelPrice * imagePriceRatio
 		}
-		preConsumedQuota = int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+		preConsumedQuota = billingexpr.QuotaRound(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 		if count := apimartImagePreConsumeCount(c, info); count > 1 {
 			preConsumedQuota *= count
 		}
@@ -145,20 +151,25 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	}
 
 	priceData := types.PriceData{
-		FreeModel:            freeModel,
-		ModelPrice:           modelPrice,
-		ModelRatio:           modelRatio,
-		CompletionRatio:      completionRatio,
-		GroupRatioInfo:       groupRatioInfo,
-		UsePrice:             usePrice,
-		CacheRatio:           cacheRatio,
-		ImageRatio:           imageRatio,
-		AudioRatio:           audioRatio,
-		AudioCompletionRatio: audioCompletionRatio,
-		CacheCreationRatio:   cacheCreationRatio,
-		CacheCreation5mRatio: cacheCreationRatio5m,
-		CacheCreation1hRatio: cacheCreationRatio1h,
-		QuotaToPreConsume:    preConsumedQuota,
+		FreeModel:               freeModel,
+		ModelPrice:              modelPrice,
+		ModelRatio:              modelRatio,
+		CompletionRatio:         completionRatio,
+		GroupRatioInfo:          groupRatioInfo,
+		UsePrice:                usePrice,
+		CacheRatio:              cacheRatio,
+		ImageRatio:              imageRatio,
+		AudioRatio:              audioRatio,
+		AudioCompletionRatio:    audioCompletionRatio,
+		CacheCreationRatio:      cacheCreationRatio,
+		CacheCreation5mRatio:    cacheCreationRatio5m,
+		CacheCreation1hRatio:    cacheCreationRatio1h,
+		QuotaToPreConsume:       preConsumedQuota,
+		BillingMultiplier:       info.BillingMultiplier(),
+		BillingMultiplierReason: info.PriceData.BillingMultiplierReason,
+		BillingInputMultiplier:  info.BillingInputRate(),
+		BillingOutputMultiplier: info.BillingOutputRate(),
+		BillingCacheMultiplier:  info.BillingCacheRate(),
 	}
 
 	if common.DebugEnabled {
@@ -327,9 +338,14 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	info.BillingRequestInput = &requestInput
 
 	priceData := types.PriceData{
-		FreeModel:         freeModel,
-		GroupRatioInfo:    groupRatioInfo,
-		QuotaToPreConsume: preConsumedQuota,
+		FreeModel:               freeModel,
+		GroupRatioInfo:          groupRatioInfo,
+		QuotaToPreConsume:       preConsumedQuota,
+		BillingMultiplier:       info.BillingMultiplier(),
+		BillingMultiplierReason: info.PriceData.BillingMultiplierReason,
+		BillingInputMultiplier:  info.BillingInputRate(),
+		BillingOutputMultiplier: info.BillingOutputRate(),
+		BillingCacheMultiplier:  info.BillingCacheRate(),
 	}
 
 	logger.LogDebug(c, "model_price_helper_tiered result: model=%s preConsume=%d quotaBeforeGroup=%.2f groupRatio=%.2f tier=%s", info.OriginModelName, preConsumedQuota, quotaBeforeGroup, groupRatioInfo.GroupRatio, trace.MatchedTier)

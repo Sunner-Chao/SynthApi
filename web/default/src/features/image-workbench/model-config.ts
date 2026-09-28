@@ -12,6 +12,8 @@ export interface ImageModelConfig {
   maxReferences: number
   qualities?: ImageSelectOption[]
   defaultQuality?: string
+  sizes?: ImageSelectOption[]
+  versions?: ImageSelectOption[]
   supportsOutputFormat?: boolean
   supportsSeed?: boolean
   supportsWatermark?: boolean
@@ -33,6 +35,40 @@ const quality = (...values: string[]): ImageSelectOption[] =>
 const flat = (sourceUSD: number): Record<string, number> => ({
   default: sourceUSD,
 })
+
+// APIMart pricing snapshot, 2026-09-22: output-only estimate for 1:1.
+// Final settlement uses the upstream task cost, including input, plus 15%.
+const gptImage25TokenConfig: ImageModelConfig = {
+  summary:
+    'GPT Image 2.5: estimated output price for 1:1. Final price includes actual input and output usage plus 15%.',
+  defaultResolution: '1k',
+  resolutions: resolution('1K', '2K', '4K'),
+  qualities: quality('Auto', 'Low', 'Medium', 'High', 'Xhigh', 'Max'),
+  defaultQuality: 'medium',
+  maxImages: 4,
+  maxReferences: 16,
+  supportsOutputFormat: true,
+  sourcePrices: {
+    '1k@low': 0.004704,
+    '1k@medium': 0.010536,
+    '1k@high': 0.042144,
+    '1k@xhigh': 0.074928,
+    '1k@max': 0.168576,
+    '1k@auto': 0.168576,
+    '2k@low': 0.009528,
+    '2k@medium': 0.021408,
+    '2k@high': 0.085632,
+    '2k@xhigh': 0.152232,
+    '2k@max': 0.342528,
+    '2k@auto': 0.342528,
+    '4k@low': 0.015816,
+    '4k@medium': 0.035592,
+    '4k@high': 0.14232,
+    '4k@xhigh': 0.253008,
+    '4k@max': 0.569256,
+    '4k@auto': 0.569256,
+  },
+}
 
 export const APIMART_MODEL_CONFIGS: Record<string, ImageModelConfig> = {
   'flux-2-flex': {
@@ -142,6 +178,31 @@ export const APIMART_MODEL_CONFIGS: Record<string, ImageModelConfig> = {
     maxReferences: 16,
     sourcePrices: { '1k': 0.0085, '2k': 0.014, '4k': 0.021 },
   },
+  'gpt-image-2.5-ext': {
+    summary:
+      'GPT Image 2.5 Ext: Flare or Sunburst, up to 4 images. Price includes a 15% markup.',
+    defaultResolution: '1k',
+    resolutions: resolution('1K', '2K', '4K'),
+    versions: quality('Flare', 'Sunburst'),
+    sizes: resolution(
+      'auto',
+      '1:1',
+      '16:9',
+      '9:16',
+      '4:3',
+      '3:4',
+      '3:2',
+      '2:3',
+      '5:4',
+      '4:5',
+      '21:9'
+    ),
+    maxImages: 4,
+    maxReferences: 16,
+    sourcePrices: { '1k': 0.0085, '2k': 0.014, '4k': 0.021 },
+  },
+  'gpt-image-2.5-flare': gptImage25TokenConfig,
+  'gpt-image-2.5-sunburst': gptImage25TokenConfig,
   'gpt-image-2-official': {
     summary: 'OpenAI 官方通道，按实际输入与图像输出 Token 结算。',
     defaultResolution: '1k',

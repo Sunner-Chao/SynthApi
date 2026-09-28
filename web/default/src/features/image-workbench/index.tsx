@@ -22,6 +22,7 @@ import {
   type ChangeEvent,
   type DragEvent,
 } from 'react'
+import { isAxiosError } from 'axios'
 import { useQuery } from '@tanstack/react-query'
 import {
   CalendarDays,
@@ -54,6 +55,9 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/context/theme-provider'
+import { useNotifications } from '@/hooks/use-notifications'
+import { useSystemConfig } from '@/hooks/use-system-config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -65,16 +69,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { LogoFull } from '@/components/layout/components/logo-mark'
 import { ModelSelector, GroupSelector } from '@/components/model-group-selector'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
-import { SidebarTrigger } from '@/components/ui/sidebar'
-import { LogoFull } from '@/components/layout/components/logo-mark'
-import { useNotifications } from '@/hooks/use-notifications'
-import { useSystemConfig } from '@/hooks/use-system-config'
-import { useTheme } from '@/context/theme-provider'
 import {
   getImageGenerationTask,
   getImageGenerationHistory,
@@ -83,12 +84,10 @@ import {
   sendImageGeneration,
 } from '@/features/playground/api'
 import type {
-  GroupOption,
   ImageGenerationData,
   ImageGenerationRequest,
   ImageGenerationResponse,
   ImageGenerationHistoryItem,
-  ModelOption,
 } from '@/features/playground/types'
 import {
   APIMART_IMAGE_MODELS,
@@ -176,14 +175,14 @@ export function ImageWorkbench() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const resultStageRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const [models, setModels] = useState<ModelOption[]>([])
-  const [groups, setGroups] = useState<GroupOption[]>([])
-  const [model, setModel] = useState('gpt-image-2')
-  const [group, setGroup] = useState('default')
+  const [preferredModel, setModel] = useState('gpt-image-2.5-flare')
+  const [configuredModel, setConfiguredModel] = useState('gpt-image-2.5-flare')
+  const [version, setVersion] = useState('flare')
+  const [preferredGroup, setGroup] = useState('')
   const [prompt, setPrompt] = useState('')
   const [size, setSize] = useState('1:1')
   const [customSize, setCustomSize] = useState('')
-  const [quality, setQuality] = useState('auto')
+  const [quality, setQuality] = useState('medium')
   const [resolution, setResolution] = useState('1k')
   const [referenceURL, setReferenceURL] = useState('')
   const [count, setCount] = useState(1)
@@ -209,7 +208,7 @@ export function ImageWorkbench() {
   const [favoriteTaskIds, setFavoriteTaskIds] = useState<Set<string>>(
     () => new Set()
   )
-  const [selectedTaskId, setSelectedTaskId] = useState('')
+  const [preferredTaskId, setSelectedTaskId] = useState('')
   const [isReferenceDragActive, setIsReferenceDragActive] = useState(false)
 
   const { data: modelsData } = useQuery({
@@ -225,70 +224,62 @@ export function ImageWorkbench() {
     queryFn: getImageGenerationHistory,
     refetchInterval: 15_000,
   })
+  const groups = groupsData || []
+  const group =
+    groups.find((item) => item.value === preferredGroup)?.value ||
+    groups.find((item) => item.supportsCustomImageParameters)?.value ||
+    groups.find((item) => item.value === 'default')?.value ||
+    groups[0]?.value ||
+    ''
   const selectedGroup = groups.find((item) => item.value === group)
-  const modelConfig = getImageModelConfig(model)
-  const maxReferences = modelConfig?.maxReferences ?? 16
-  const maxImages = modelConfig?.maxImages ?? 10
-
-  useEffect(() => {
-    if (!modelsData) return
+  const models = useMemo(() => {
     const allowedModels = new Set(selectedGroup?.models || [])
-    const imageModels = modelsData.filter((item) => {
+    return (modelsData || []).filter((item) => {
       const value = item.value.toLowerCase().trim()
       const isImageModel =
         APIMART_IMAGE_MODELS.has(value) ||
-        /image|dall-e|imagen|flux|seedream|stable|midjourney|sd[-_]|kling/i.test(
-          `${item.value} ${item.label}`
-        )
+        (!/video|sora|veo|seedance|kling|hailuo|pixverse|skyreels|vidu/i.test(
+          value
+        ) &&
+          /image|dall-e|imagen|flux|seedream|stable|midjourney|sd[-_]/i.test(
+            `${item.value} ${item.label}`
+          ))
       return (
         (allowedModels.size === 0 || allowedModels.has(value)) && isImageModel
       )
     })
-    // Keep the workbench scoped to models that expose an image-generation
-    // capability; text-only models would otherwise produce a confusing
-    // upstream validation error from the image endpoint.
-    const nextModels = imageModels
-    setModels(nextModels)
-    if (!nextModels.some((item) => item.value === model)) {
-      setModel(
-        nextModels.find((item) =>
-          /gpt-image|dall-e|imagen|image/i.test(item.value)
-        )?.value ||
-          nextModels[0]?.value ||
-          ''
-      )
-    }
-  }, [model, modelsData, selectedGroup?.models])
+  }, [modelsData, selectedGroup?.models])
+  const model =
+    models.find((item) => item.value === preferredModel)?.value ||
+    models.find((item) => item.value === 'gpt-image-2.5-flare')?.value ||
+    models.find((item) => item.value === 'gpt-image-2.5-ext')?.value ||
+    models.find((item) => /gpt-image|dall-e|imagen|image/i.test(item.value))
+      ?.value ||
+    models[0]?.value ||
+    ''
+  const modelConfig = getImageModelConfig(model)
+  const maxReferences = modelConfig?.maxReferences ?? 16
+  const maxImages = modelConfig?.maxImages ?? 10
 
+  // Reset model-specific controls after the selected model/configuration
+  // changes. Keeping these updates out of render avoids cascading renders
+  // while model and group queries are settling.
   useEffect(() => {
-    if (!groupsData) return
-    setGroups(groupsData)
-    if (!groupsData.some((item) => item.value === group)) {
-      setGroup(
-        groupsData.find((item) => item.supportsCustomImageParameters)?.value ||
-          groupsData.find((item) => item.value === 'default')?.value ||
-          groupsData[0]?.value ||
-          ''
-      )
-    }
-  }, [group, groupsData])
-
-  useEffect(() => {
-    const config = getImageModelConfig(model)
-    if (!config) return
-    setResolution(config.defaultResolution || '')
-    setQuality(config.defaultQuality || 'auto')
-    setCount((current) => Math.min(current, config.maxImages))
-    setReferences((current) => current.slice(0, config.maxReferences))
-  }, [model])
-
-  useEffect(() => {
-    if (selectedTaskId || historyData.length === 0) return
-    const firstSuccessful = historyData.find((item) =>
+    if (!model || configuredModel === model) return
+    setConfiguredModel(model)
+    setResolution(modelConfig?.defaultResolution || '')
+    setQuality(modelConfig?.defaultQuality || 'auto')
+    setVersion(modelConfig?.versions?.[0]?.value || 'flare')
+    setSize(modelConfig?.sizes ? 'auto' : '1:1')
+    setCount((current) => Math.min(current, maxImages))
+    setReferences((current) => current.slice(0, maxReferences))
+  }, [configuredModel, maxImages, maxReferences, model, modelConfig])
+  const selectedTaskId =
+    preferredTaskId ||
+    historyData.find((item) =>
       ['SUCCESS', 'success', 'completed', 'COMPLETED'].includes(item.status)
-    )
-    if (firstSuccessful) setSelectedTaskId(firstSuccessful.task_id)
-  }, [historyData, selectedTaskId])
+    )?.task_id ||
+    ''
 
   const waitForTask = async (
     taskId: string,
@@ -340,7 +331,7 @@ export function ImageWorkbench() {
       }
       try {
         next.push({
-          id: `${file.name}-${file.lastModified}-${Math.random()}`,
+          id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
           name: file.name,
           data: await fileToDataURL(file),
         })
@@ -387,7 +378,7 @@ export function ImageWorkbench() {
     setReferences((current) => [
       ...current,
       {
-        id: `${value}-${Math.random()}`,
+        id: `${value}-${crypto.randomUUID()}`,
         name: value.startsWith('data:') ? t('Base64 reference') : value,
         data: value,
       },
@@ -430,7 +421,13 @@ export function ImageWorkbench() {
   const reuseHistorySettings = (item: ImageGenerationHistoryItem) => {
     const properties = item.properties
     if (!properties) return
-    if (properties.origin_model_name) setModel(properties.origin_model_name)
+    if (properties.origin_model_name) {
+      setModel(properties.origin_model_name)
+      setConfiguredModel(properties.origin_model_name)
+      const config = getImageModelConfig(properties.origin_model_name)
+      setVersion(config?.versions?.[0]?.value || 'flare')
+      setReferences((current) => current.slice(0, config?.maxReferences ?? 16))
+    }
     if (properties.input) setPrompt(properties.input)
     if (properties.image_size) {
       if (
@@ -517,6 +514,7 @@ export function ImageWorkbench() {
     if (allowsCustomParameters && resolvedSize) {
       structuredParameters[sizeField] = resolvedSize
     }
+    if (modelConfig?.versions) structuredParameters.version = version
     if (modelConfig?.supportsOutputFormat)
       structuredParameters.output_format = outputFormat
     if (modelConfig?.supportsSeed && seed.trim()) {
@@ -554,7 +552,8 @@ export function ImageWorkbench() {
       ...(isAPIMartModel
         ? {
             ...(supportsModelResolution ? { resolution } : {}),
-            ...(modelConfig?.qualities && imageURLs.length === 0
+            ...(modelConfig?.qualities &&
+            (imageURLs.length === 0 || model.startsWith('gpt-image-2.5-'))
               ? { quality }
               : {}),
             ...(imageURLs.length > 0 ? { image_urls: imageURLs } : {}),
@@ -606,8 +605,14 @@ export function ImageWorkbench() {
       await refetchHistory()
     } catch (error) {
       if ((error as Error)?.name === 'AbortError') return
+      const serverMessage = isAxiosError(error)
+        ? error.response?.data?.error?.message || error.response?.data?.message
+        : undefined
       toast.error(
-        error instanceof Error ? error.message : t('Image generation failed')
+        serverMessage ||
+          (error instanceof Error
+            ? error.message
+            : t('Image generation failed'))
       )
     } finally {
       if (abortRef.current === controller) abortRef.current = null
@@ -628,7 +633,11 @@ export function ImageWorkbench() {
           title={t('Show or hide sidebar')}
           aria-label={t('Show or hide sidebar')}
         />
-        <a href='/dashboard/overview' className='iw-brand' aria-label='SynthAPI'>
+        <a
+          href='/dashboard/overview'
+          className='iw-brand'
+          aria-label='SynthAPI'
+        >
           <span className='iw-brand-mark iw-brand-wordmark'>
             <LogoFull src={logo} alt='SynthAPI' className='size-full' />
           </span>
@@ -727,7 +736,9 @@ export function ImageWorkbench() {
                 className='iw-selector-trigger'
               />
               {modelsData && models.length === 0 && (
-                <p className='iw-field-note'>{t('No image models available')}</p>
+                <p className='iw-field-note'>
+                  {t('No image models available')}
+                </p>
               )}
             </div>
 
@@ -747,7 +758,9 @@ export function ImageWorkbench() {
               <div className='iw-estimate-card iw-order-estimate'>
                 <div>
                   <p>{t(modelConfig.summary)}</p>
-                  <span>{t('Actual price is settled after the task is completed.')}</span>
+                  <span>
+                    {t('Actual price is settled after the task is completed.')}
+                  </span>
                 </div>
                 {estimatedPrice !== null && (
                   <div className='iw-estimate-price'>
@@ -776,11 +789,16 @@ export function ImageWorkbench() {
                   type='button'
                   onClick={() =>
                     setPrompt(
-                      t('A cinematic landscape with clear details and natural light')
+                      t(
+                        'A cinematic landscape with clear details and natural light'
+                      )
                     )
                   }
                 >
-                  <span><Sparkles />{t('Inspire me')}</span>
+                  <span>
+                    <Sparkles />
+                    {t('Inspire me')}
+                  </span>
                   <WandSparkles />
                 </button>
               </div>
@@ -790,8 +808,12 @@ export function ImageWorkbench() {
             {maxReferences > 0 && (
               <div className='iw-field iw-order-reference'>
                 <div className='iw-field-label-row'>
-                  <Label>{t('Reference images')} <span>({t('Optional')})</span></Label>
-                  <span>{references.length}/{maxReferences}</span>
+                  <Label>
+                    {t('Reference images')} <span>({t('Optional')})</span>
+                  </Label>
+                  <span>
+                    {references.length}/{maxReferences}
+                  </span>
                 </div>
                 <input
                   ref={fileInputRef}
@@ -802,7 +824,10 @@ export function ImageWorkbench() {
                   onChange={handleFiles}
                 />
                 <div
-                  className={cn('iw-reference-drop', isReferenceDragActive && 'is-dragging')}
+                  className={cn(
+                    'iw-reference-drop',
+                    isReferenceDragActive && 'is-dragging'
+                  )}
                   onDragEnter={(event) => {
                     event.preventDefault()
                     setIsReferenceDragActive(true)
@@ -819,18 +844,27 @@ export function ImageWorkbench() {
                     }
                   }}
                 >
-                  <span className='iw-upload-icon'><UploadCloud /></span>
+                  <span className='iw-upload-icon'>
+                    <UploadCloud />
+                  </span>
                   <strong>{t('Click or drag to upload images')}</strong>
-                  <small>{t('Supports JPG / PNG, up to {{count}} images', { count: maxReferences })}</small>
+                  <small>
+                    {t('Supports JPG / PNG, up to {{count}} images', {
+                      count: maxReferences,
+                    })}
+                  </small>
                   <button
                     type='button'
                     className='iw-history-reference-button iw-dark-only'
                     onClick={(event) => {
                       event.stopPropagation()
-                      document.querySelector('.iw-archive-panel')?.scrollIntoView({ behavior: 'smooth' })
+                      document
+                        .querySelector('.iw-archive-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' })
                     }}
                   >
-                    <Images />{t('Choose from history')}
+                    <Images />
+                    {t('Choose from history')}
                   </button>
                 </div>
                 {references.length > 0 && (
@@ -879,15 +913,29 @@ export function ImageWorkbench() {
                 <div className='iw-count-stepper'>
                   <button
                     type='button'
-                    onClick={() => setCount((current) => Math.max(1, current - 1))}
-                    disabled={isGenerating || !allowsCustomParameters || count <= 1}
-                  ><Minus /></button>
+                    onClick={() =>
+                      setCount((current) => Math.max(1, current - 1))
+                    }
+                    disabled={
+                      isGenerating || !allowsCustomParameters || count <= 1
+                    }
+                  >
+                    <Minus />
+                  </button>
                   <span>{count}</span>
                   <button
                     type='button'
-                    onClick={() => setCount((current) => Math.min(maxImages, current + 1))}
-                    disabled={isGenerating || !allowsCustomParameters || count >= maxImages}
-                  ><Plus /></button>
+                    onClick={() =>
+                      setCount((current) => Math.min(maxImages, current + 1))
+                    }
+                    disabled={
+                      isGenerating ||
+                      !allowsCustomParameters ||
+                      count >= maxImages
+                    }
+                  >
+                    <Plus />
+                  </button>
                 </div>
               </div>
             </div>
@@ -901,7 +949,11 @@ export function ImageWorkbench() {
                     key={option}
                     className={cn(count === option && 'is-active')}
                     onClick={() => setCount(Math.min(maxImages, option))}
-                    disabled={isGenerating || !allowsCustomParameters || option > maxImages}
+                    disabled={
+                      isGenerating ||
+                      !allowsCustomParameters ||
+                      option > maxImages
+                    }
                   >
                     {option}
                   </button>
@@ -916,7 +968,10 @@ export function ImageWorkbench() {
                 onClick={() => setAdvancedOpen((open) => !open)}
                 aria-expanded={advancedOpen}
               >
-                <span><SlidersHorizontal />{t('Advanced parameters')} <small>({t('Optional')})</small></span>
+                <span>
+                  <SlidersHorizontal />
+                  {t('Advanced parameters')} <small>({t('Optional')})</small>
+                </span>
                 <ChevronDown className={cn(advancedOpen && 'is-open')} />
               </button>
               {advancedOpen && (
@@ -926,9 +981,13 @@ export function ImageWorkbench() {
                     <div className='iw-reference-url'>
                       <Input
                         value={referenceURL}
-                        onChange={(event) => setReferenceURL(event.target.value)}
+                        onChange={(event) =>
+                          setReferenceURL(event.target.value)
+                        }
                         placeholder={t('Paste a public image URL')}
-                        disabled={isGenerating || references.length >= maxReferences}
+                        disabled={
+                          isGenerating || references.length >= maxReferences
+                        }
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') handleReferenceURL()
                         }}
@@ -938,7 +997,9 @@ export function ImageWorkbench() {
                         variant='outline'
                         size='icon'
                         onClick={handleReferenceURL}
-                        disabled={isGenerating || references.length >= maxReferences}
+                        disabled={
+                          isGenerating || references.length >= maxReferences
+                        }
                         title={t('Add URL')}
                       >
                         <Plus />
@@ -948,17 +1009,20 @@ export function ImageWorkbench() {
                   <ParameterSelect
                     label={t('Size')}
                     value={size}
-                    options={SIZE_OPTIONS.map((option) =>
-                      option.value === 'custom'
-                        ? { ...option, label: t('Custom pixels') }
-                        : option
+                    options={(modelConfig?.sizes || SIZE_OPTIONS).map(
+                      (option) =>
+                        option.value === 'custom'
+                          ? { ...option, label: t('Custom pixels') }
+                          : option
                     )}
                     onChange={setSize}
                     disabled={isGenerating || !allowsCustomParameters}
                   />
                   {size === 'custom' && (
                     <div className='iw-field'>
-                      <Label htmlFor='custom-size'>{t('Custom pixel size')}</Label>
+                      <Label htmlFor='custom-size'>
+                        {t('Custom pixel size')}
+                      </Label>
                       <Input
                         id='custom-size'
                         value={customSize}
@@ -981,11 +1045,22 @@ export function ImageWorkbench() {
                     <ParameterSelect
                       label={t('Quality')}
                       value={quality}
-                      options={(modelConfig?.qualities || QUALITY_OPTIONS).map((option) => ({
-                        ...option,
-                        label: t(option.label),
-                      }))}
+                      options={(modelConfig?.qualities || QUALITY_OPTIONS).map(
+                        (option) => ({
+                          ...option,
+                          label: t(option.label),
+                        })
+                      )}
                       onChange={setQuality}
+                      disabled={isGenerating || !allowsCustomParameters}
+                    />
+                  )}
+                  {modelConfig?.versions && (
+                    <ParameterSelect
+                      label={t('Version')}
+                      value={version}
+                      options={modelConfig.versions}
+                      onChange={setVersion}
                       disabled={isGenerating || !allowsCustomParameters}
                     />
                   )}
@@ -1018,11 +1093,15 @@ export function ImageWorkbench() {
                   )}
                   {modelConfig?.supportsNegativePrompt && (
                     <div className='iw-field iw-advanced-span'>
-                      <Label htmlFor='negative-prompt'>{t('Negative prompt')}</Label>
+                      <Label htmlFor='negative-prompt'>
+                        {t('Negative prompt')}
+                      </Label>
                       <Textarea
                         id='negative-prompt'
                         value={negativePrompt}
-                        onChange={(event) => setNegativePrompt(event.target.value)}
+                        onChange={(event) =>
+                          setNegativePrompt(event.target.value)
+                        }
                         disabled={isGenerating || !allowsCustomParameters}
                       />
                     </div>
@@ -1037,23 +1116,50 @@ export function ImageWorkbench() {
                       />
                     )}
                     {modelConfig?.supportsPromptExtend && (
-                      <ParameterSwitch label={t('Prompt enhancement')} checked={promptExtend} onChange={setPromptExtend} disabled={isGenerating || !allowsCustomParameters} />
+                      <ParameterSwitch
+                        label={t('Prompt enhancement')}
+                        checked={promptExtend}
+                        onChange={setPromptExtend}
+                        disabled={isGenerating || !allowsCustomParameters}
+                      />
                     )}
                     {modelConfig?.supportsPromptUpsampling && (
-                      <ParameterSwitch label={t('Prompt upsampling')} checked={promptUpsampling} onChange={setPromptUpsampling} disabled={isGenerating || !allowsCustomParameters} />
+                      <ParameterSwitch
+                        label={t('Prompt upsampling')}
+                        checked={promptUpsampling}
+                        onChange={setPromptUpsampling}
+                        disabled={isGenerating || !allowsCustomParameters}
+                      />
                     )}
                     {modelConfig?.supportsGoogleSearch && (
-                      <ParameterSwitch label={t('Google Search enhancement')} checked={googleSearch} onChange={setGoogleSearch} disabled={isGenerating || !allowsCustomParameters} />
+                      <ParameterSwitch
+                        label={t('Google Search enhancement')}
+                        checked={googleSearch}
+                        onChange={setGoogleSearch}
+                        disabled={isGenerating || !allowsCustomParameters}
+                      />
                     )}
                     {modelConfig?.supportsThinkingMode && (
-                      <ParameterSwitch label={t('Thinking mode')} checked={thinkingMode} onChange={setThinkingMode} disabled={isGenerating || !allowsCustomParameters} />
+                      <ParameterSwitch
+                        label={t('Thinking mode')}
+                        checked={thinkingMode}
+                        onChange={setThinkingMode}
+                        disabled={isGenerating || !allowsCustomParameters}
+                      />
                     )}
                     {modelConfig?.supportsSequential && (
-                      <ParameterSwitch label={t('Sequential generation')} checked={sequential} onChange={setSequential} disabled={isGenerating || !allowsCustomParameters} />
+                      <ParameterSwitch
+                        label={t('Sequential generation')}
+                        checked={sequential}
+                        onChange={setSequential}
+                        disabled={isGenerating || !allowsCustomParameters}
+                      />
                     )}
                   </div>
                   <div className='iw-field iw-advanced-span'>
-                    <Label htmlFor='image-extra'>{t('Advanced JSON parameters')}</Label>
+                    <Label htmlFor='image-extra'>
+                      {t('Advanced JSON parameters')}
+                    </Label>
                     <Textarea
                       id='image-extra'
                       value={extraJSON}
@@ -1071,11 +1177,18 @@ export function ImageWorkbench() {
           <div className='iw-generate-bar'>
             {isGenerating ? (
               <Button type='button' variant='outline' onClick={stopGeneration}>
-                <Square />{t('Stop generation')}
+                <Square />
+                {t('Stop generation')}
               </Button>
             ) : (
-              <Button type='button' onClick={handleGenerate} disabled={!model || !prompt.trim()}>
-                <Sparkles />{t('Generate images')}<kbd>⌘ ↵</kbd>
+              <Button
+                type='button'
+                onClick={handleGenerate}
+                disabled={!model || !prompt.trim()}
+              >
+                <Sparkles />
+                {t('Generate images')}
+                <kbd>⌘ ↵</kbd>
               </Button>
             )}
           </div>
@@ -1086,14 +1199,20 @@ export function ImageWorkbench() {
             <h2>{t('Generated images')}</h2>
             <div className='iw-panel-tools'>
               {isGenerating && <LoaderCircle className='iw-spinner' />}
-              <button type='button' className='iw-icon-button' title={t('Grid view')}>
+              <button
+                type='button'
+                className='iw-icon-button'
+                title={t('Grid view')}
+              >
                 <Grid2X2 />
               </button>
               <button
                 type='button'
                 className='iw-icon-button'
                 title={t('Fullscreen')}
-                onClick={() => void resultStageRef.current?.requestFullscreen?.()}
+                onClick={() =>
+                  void resultStageRef.current?.requestFullscreen?.()
+                }
               >
                 <Maximize2 />
               </button>
@@ -1106,23 +1225,44 @@ export function ImageWorkbench() {
                   <ImageIcon />
                   <Sparkles />
                 </div>
-                <strong>{isGenerating ? t('Generating your image') : t('No images yet')}</strong>
-                <p>{t('Set parameters on the left and click Generate images')}<br />{t('Your creations will appear here')}</p>
+                <strong>
+                  {isGenerating
+                    ? t('Generating your image')
+                    : t('No images yet')}
+                </strong>
+                <p>
+                  {t('Set parameters on the left and click Generate images')}
+                  <br />
+                  {t('Your creations will appear here')}
+                </p>
               </div>
             ) : (
-              <div className={cn('iw-results-grid', results.length === 1 && 'is-single')}>
+              <div
+                className={cn(
+                  'iw-results-grid',
+                  results.length === 1 && 'is-single'
+                )}
+              >
                 {results.map((result) => (
                   <figure key={result.id} className='iw-result-card'>
                     <img
                       src={result.url}
                       alt={t('Generated image')}
-                      className={cn(result.url.startsWith('data:') && 'select-none')}
+                      className={cn(
+                        result.url.startsWith('data:') && 'select-none'
+                      )}
                     />
                     <a
-                      href={result.url.includes('?') ? `${result.url}&download=1` : `${result.url}?download=1`}
+                      href={
+                        result.url.includes('?')
+                          ? `${result.url}&download=1`
+                          : `${result.url}?download=1`
+                      }
                       download
                       title={t('Download')}
-                    ><Download /></a>
+                    >
+                      <Download />
+                    </a>
                   </figure>
                 ))}
               </div>
@@ -1209,45 +1349,98 @@ function ImageHistoryArchive({
 }) {
   const { t } = useTranslation()
   const [openTaskMenu, setOpenTaskMenu] = useState('')
+  const [now, setNow] = useState(() => Date.now() / 1000)
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now() / 1000), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const history = useMemo(() => {
-    const now = Date.now() / 1000
     const normalized = historyData.filter((item) =>
       ['SUCCESS', 'success', 'completed', 'COMPLETED'].includes(item.status)
     )
     return normalized.filter((item) => {
       const prompt = item.properties?.input || ''
       const model = item.properties?.origin_model_name || ''
-      const matchesQuery = !query.trim() ||
-        `${prompt} ${model} ${item.task_id}`.toLowerCase().includes(query.trim().toLowerCase())
+      const matchesQuery =
+        !query.trim() ||
+        `${prompt} ${model} ${item.task_id}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase())
       const matchesTab =
         tab === 'all' ||
         (tab === 'favorite' && favorites.has(item.task_id)) ||
-        (tab === 'week' && now - (item.finish_time || item.submit_time || now) <= 7 * 86400)
+        (tab === 'week' &&
+          now - (item.finish_time || item.submit_time || now) <= 7 * 86400)
       return matchesQuery && matchesTab
     })
-  }, [favorites, historyData, query, tab])
+  }, [favorites, historyData, now, query, tab])
 
   return (
     <aside className='iw-panel iw-archive-panel'>
       <div className='iw-archive-heading'>
         <div>
           <h2>{t('Image archive')}</h2>
-          <p>{t('Recent generations')} · {historyData.length} {t('images')}</p>
+          <p>
+            {t('Recent generations')} · {historyData.length} {t('images')}
+          </p>
         </div>
         <div className='iw-view-toggle'>
-          <button type='button' className={cn(view === 'grid' && 'is-active')} onClick={() => onViewChange('grid')} title={t('Grid view')}><Grid2X2 /></button>
-          <button type='button' className={cn(view === 'list' && 'is-active')} onClick={() => onViewChange('list')} title={t('List view')}><List /></button>
+          <button
+            type='button'
+            className={cn(view === 'grid' && 'is-active')}
+            onClick={() => onViewChange('grid')}
+            title={t('Grid view')}
+          >
+            <Grid2X2 />
+          </button>
+          <button
+            type='button'
+            className={cn(view === 'list' && 'is-active')}
+            onClick={() => onViewChange('list')}
+            title={t('List view')}
+          >
+            <List />
+          </button>
         </div>
       </div>
       <div className='iw-archive-toolbar'>
         <div className='iw-archive-tabs'>
-          <button type='button' className={cn(tab === 'all' && 'is-active')} onClick={() => onTabChange('all')}>{t('All')}</button>
-          <button type='button' className={cn(tab === 'favorite' && 'is-active')} onClick={() => onTabChange('favorite')}><Star />{t('Favorites')}</button>
-          <button type='button' className={cn(tab === 'week' && 'is-active')} onClick={() => onTabChange('week')}><CalendarDays />{t('This week')}</button>
+          <button
+            type='button'
+            className={cn(tab === 'all' && 'is-active')}
+            onClick={() => onTabChange('all')}
+          >
+            {t('All')}
+          </button>
+          <button
+            type='button'
+            className={cn(tab === 'favorite' && 'is-active')}
+            onClick={() => onTabChange('favorite')}
+          >
+            <Star />
+            {t('Favorites')}
+          </button>
+          <button
+            type='button'
+            className={cn(tab === 'week' && 'is-active')}
+            onClick={() => onTabChange('week')}
+          >
+            <CalendarDays />
+            {t('This week')}
+          </button>
         </div>
         <div className='iw-archive-actions'>
-          <label className='iw-archive-search'><Search /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t('Search image archive')} /></label>
-          <button type='button' className='iw-icon-button' title={t('Filter')}><Filter /></button>
+          <label className='iw-archive-search'>
+            <Search />
+            <input
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder={t('Search image archive')}
+            />
+          </label>
+          <button type='button' className='iw-icon-button' title={t('Filter')}>
+            <Filter />
+          </button>
         </div>
       </div>
 
@@ -1259,7 +1452,14 @@ function ImageHistoryArchive({
           </div>
         ) : (
           history.map((item) => (
-            <article key={item.task_id} className={cn('iw-archive-card', selectedTaskId === item.task_id && 'is-selected')} onClick={() => onSelect(item.task_id)}>
+            <article
+              key={item.task_id}
+              className={cn(
+                'iw-archive-card',
+                selectedTaskId === item.task_id && 'is-selected'
+              )}
+              onClick={() => onSelect(item.task_id)}
+            >
               <a
                 href={`/v1/images/generations/${encodeURIComponent(item.task_id)}/content`}
                 target='_blank'
@@ -1274,29 +1474,84 @@ function ImageHistoryArchive({
                   }
                   loading='lazy'
                 />
-                {selectedTaskId === item.task_id && <span className='iw-selected-badge'><Check />{t('Selected')}</span>}
+                {selectedTaskId === item.task_id && (
+                  <span className='iw-selected-badge'>
+                    <Check />
+                    {t('Selected')}
+                  </span>
+                )}
                 <div className='iw-archive-meta'>
                   <div className='iw-archive-summary'>
-                    <strong>{item.properties?.input || item.properties?.origin_model_name || t('Generated image')}</strong>
-                    <span>· {formatRelativeTime(item.finish_time || item.submit_time, t)}</span>
+                    <strong>
+                      {item.properties?.input ||
+                        item.properties?.origin_model_name ||
+                        t('Generated image')}
+                    </strong>
+                    <span>
+                      ·{' '}
+                      {formatRelativeTime(
+                        item.finish_time || item.submit_time,
+                        t
+                      )}
+                    </span>
                   </div>
-                  <span className='iw-archive-ratio'>{formatArchiveRatio(item.properties?.image_size)}</span>
+                  <span className='iw-archive-ratio'>
+                    {formatArchiveRatio(item.properties?.image_size)}
+                  </span>
                 </div>
               </a>
               <div className='iw-archive-card-actions'>
-                <button type='button' title={t('Favorite')} className={cn(favorites.has(item.task_id) && 'is-favorite')} onClick={(event) => { event.stopPropagation(); onToggleFavorite(item.task_id) }}><Star /></button>
+                <button
+                  type='button'
+                  title={t('Favorite')}
+                  className={cn(favorites.has(item.task_id) && 'is-favorite')}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onToggleFavorite(item.task_id)
+                  }}
+                >
+                  <Star />
+                </button>
                 <button
                   type='button'
                   title={t('More')}
                   onClick={(event) => {
                     event.stopPropagation()
-                    setOpenTaskMenu((current) => current === item.task_id ? '' : item.task_id)
+                    setOpenTaskMenu((current) =>
+                      current === item.task_id ? '' : item.task_id
+                    )
                   }}
-                ><MoreHorizontal /></button>
+                >
+                  <MoreHorizontal />
+                </button>
                 {openTaskMenu === item.task_id && (
-                  <div className='iw-archive-menu' onClick={(event) => event.stopPropagation()}>
-                    <button type='button' onClick={() => { onReuse(item); setOpenTaskMenu('') }}><RotateCcw />{t('Reuse')}</button>
-                    <button type='button' disabled={maxReferences < 1 || referenceCount >= maxReferences} onClick={() => { onReference(item); setOpenTaskMenu('') }}><ImagePlus />{t('Reference')}</button>
+                  <div
+                    className='iw-archive-menu'
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type='button'
+                      onClick={() => {
+                        onReuse(item)
+                        setOpenTaskMenu('')
+                      }}
+                    >
+                      <RotateCcw />
+                      {t('Reuse')}
+                    </button>
+                    <button
+                      type='button'
+                      disabled={
+                        maxReferences < 1 || referenceCount >= maxReferences
+                      }
+                      onClick={() => {
+                        onReference(item)
+                        setOpenTaskMenu('')
+                      }}
+                    >
+                      <ImagePlus />
+                      {t('Reference')}
+                    </button>
                   </div>
                 )}
               </div>
@@ -1304,12 +1559,17 @@ function ImageHistoryArchive({
           ))
         )}
       </div>
-      <div className='iw-archive-footer'>{t('Last 7 days')} <span>·</span> {t('Clear selected')}</div>
+      <div className='iw-archive-footer'>
+        {t('Last 7 days')} <span>·</span> {t('Clear selected')}
+      </div>
     </aside>
   )
 }
 
-function formatRelativeTime(timestamp: number | undefined, t: (key: string, options?: Record<string, unknown>) => string): string {
+function formatRelativeTime(
+  timestamp: number | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
   if (!timestamp) return '----'
   const minutes = Math.max(0, Math.floor((Date.now() / 1000 - timestamp) / 60))
   if (minutes < 1) return t('Just now')

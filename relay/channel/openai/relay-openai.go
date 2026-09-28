@@ -127,26 +127,13 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var usage = &dto.Usage{}
 	var lastStreamData string
 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
+	var lastStreamDataPending bool
 	var streamErr *types.NewAPIError
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-		var streamResponse dto.OpenAITextResponse
-		if err := common.UnmarshalJsonStr(data, &streamResponse); err == nil {
-			if capacityErr := newRecognizedAutoRouteError(streamResponse.GetOpenAIError(), http.StatusServiceUnavailable); capacityErr != nil {
-				streamErr = capacityErr
-				sr.Stop(streamErr)
-				return
-			}
-		}
-		if lastStreamData != "" {
-			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
-				common.SysLog("error handling stream format: " + err.Error())
-				sr.Error(err)
-			}
-		}
 		if len(data) > 0 {
 			// 对音频模型，保存倒数第二个stream data
 			if isAudioModel && lastStreamData != "" {
@@ -154,16 +141,60 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 
 			lastStreamData = data
-			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
+			// Forward content events immediately. Keep usage-only and finish frames
+			// for the final response handler, which owns protocol-specific closure.
+			var currentResponse dto.ChatCompletionsStreamResponse
+			decodeErr := common.UnmarshalJsonStr(data, &currentResponse)
+			if decodeErr == nil {
+				info.ApplyBillingServiceTier(currentResponse.ServiceTier)
+			}
+			if decodeErr == nil && info.RelayMode == relayconstant.RelayModeChatCompletions {
+				if err := ProcessStreamResponse(currentResponse, &responseTextBuilder, &toolCount); err != nil {
+					logger.LogError(c, "error processing stream token data: "+err.Error())
+					sr.Error(err)
+				}
+			} else if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
 				logger.LogError(c, "error processing stream token data: "+err.Error())
 				sr.Error(err)
+			}
+			// Error payloads do not use the chat-completions stream shape. Parse
+			// those only when present so normal chunks avoid a second JSON decode.
+			if strings.Contains(data, `"error"`) {
+				var streamResponse dto.OpenAITextResponse
+				if err := common.UnmarshalJsonStr(data, &streamResponse); err == nil {
+					if capacityErr := newRecognizedAutoRouteError(streamResponse.GetOpenAIError(), http.StatusServiceUnavailable); capacityErr != nil {
+						streamErr = capacityErr
+						sr.Stop(streamErr)
+						return
+					}
+				}
+			}
+			usageOnly := decodeErr == nil && service.ValidUsage(currentResponse.Usage) && len(currentResponse.Choices) == 0
+			finishFrame := decodeErr == nil && currentResponse.IsFinished()
+			lastStreamDataPending = usageOnly
+			if info.RelayFormat == types.RelayFormatOpenAI && !usageOnly {
+				if err := HandleStreamFormat(c, info, data, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
+					common.SysLog("error handling stream format: " + err.Error())
+					sr.Error(err)
+				}
+			} else if info.RelayFormat != types.RelayFormatOpenAI && !usageOnly && !finishFrame {
+				if err := HandleStreamFormat(c, info, data, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
+					common.SysLog("error handling stream format: " + err.Error())
+					sr.Error(err)
+				}
 			}
 		}
 	})
 	if streamErr != nil {
+		if isClientGoneStream(info) {
+			return &dto.Usage{}, nil
+		}
 		return nil, streamErr
 	}
 	if streamFailure := newUpstreamStreamFailure(info); streamFailure != nil {
+		if isClientGoneStream(info) {
+			return &dto.Usage{}, nil
+		}
 		return nil, streamFailure
 	}
 
@@ -192,10 +223,8 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
 	}
 
-	if info.RelayFormat == types.RelayFormatOpenAI {
-		if shouldSendLastResp {
-			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
-		}
+	if info.RelayFormat == types.RelayFormatOpenAI && shouldSendLastResp && lastStreamDataPending {
+		_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
 	}
 
 	if !containStreamUsage {
@@ -279,6 +308,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 
 	applyUsagePostProcessing(info, &simpleResponse.Usage, responseBody)
+	simpleResponse.Usage.ServiceTier = simpleResponse.ServiceTier
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
@@ -906,12 +936,44 @@ func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, res
 			}
 		}
 	case constant.ChannelTypeOpenAI:
+		if usage.PromptTokensDetails.CachedCreationTokens == 0 {
+			if usage.InputTokensDetails != nil && usage.InputTokensDetails.CacheCreationTokens > 0 {
+				usage.PromptTokensDetails.CachedCreationTokens = usage.InputTokensDetails.CacheCreationTokens
+			} else if created, ok := extractCacheCreationTokensFromBody(responseBody); ok {
+				usage.PromptTokensDetails.CachedCreationTokens = created
+			}
+		}
 		if usage.PromptTokensDetails.CachedTokens == 0 {
 			if cachedTokens, ok := extractLlamaCachedTokensFromBody(responseBody); ok {
 				usage.PromptTokensDetails.CachedTokens = cachedTokens
 			}
 		}
 	}
+}
+
+func extractCacheCreationTokensFromBody(body []byte) (int, bool) {
+	var payload struct {
+		Usage struct {
+			CacheCreationTokens int `json:"cache_creation_tokens"`
+			PromptTokensDetails struct {
+				CacheCreationTokens int `json:"cache_creation_tokens"`
+				CachedCreationTokens int `json:"cached_creation_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+	}
+	if len(body) == 0 || common.Unmarshal(body, &payload) != nil {
+		return 0, false
+	}
+	if payload.Usage.PromptTokensDetails.CacheCreationTokens > 0 {
+		return payload.Usage.PromptTokensDetails.CacheCreationTokens, true
+	}
+	if payload.Usage.PromptTokensDetails.CachedCreationTokens > 0 {
+		return payload.Usage.PromptTokensDetails.CachedCreationTokens, true
+	}
+	if payload.Usage.CacheCreationTokens > 0 {
+		return payload.Usage.CacheCreationTokens, true
+	}
+	return 0, false
 }
 
 func extractCachedTokensFromBody(body []byte) (int, bool) {

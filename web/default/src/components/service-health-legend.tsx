@@ -29,7 +29,7 @@ export function ServiceHealthLegend(props: { recent?: boolean }) {
         'Green: success rate ≥90%. Yellow: below 90%. Red: below 50% with at least 10 requests. Gray: no data.'
       )}
       {props.recent &&
-        ` ${t('Recent requests: success is green, isolated failures yellow, 3 consecutive failures turn red. Latency does not change availability colors.')}`}
+        ' ' + t('Recent requests: success is green, isolated failures yellow, 3 consecutive failures turn red. Latency does not change availability colors.')}
     </p>
   )
 }

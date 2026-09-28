@@ -55,7 +55,7 @@ const (
 
 func (i *ImageRequest) IsAPIMartGPTImage2() bool {
 	modelName := strings.ToLower(strings.TrimSpace(i.Model))
-	return modelName == "gpt-image-2" || modelName == "gpt-image-2-ext" || modelName == "gpt-image-2.5"
+	return modelName == "gpt-image-2" || modelName == "gpt-image-2-ext" || modelName == "gpt-image-2.5" || i.IsAPIMartGPTImage25()
 }
 
 func (i *ImageRequest) IsAPIMartImageModel() bool {
@@ -76,6 +76,9 @@ var apimartImageModels = map[string]struct{}{
 	"gpt-image-2":                    {},
 	"gpt-image-2-ext":                {},
 	"gpt-image-2.5":                  {},
+	"gpt-image-2.5-ext":              {},
+	"gpt-image-2.5-flare":            {},
+	"gpt-image-2.5-sunburst":         {},
 	"gpt-image-2-official":           {},
 	"grok-imagine-1.5-apimart":       {},
 	"grok-imagine-2.0-ext":           {},
@@ -154,8 +157,10 @@ func (i *ImageRequest) APIMartImagePriceRatio() float64 {
 	}
 
 	switch modelName {
-	case "gpt-image-2", "gpt-image-2-ext", "gpt-image-2.5":
+	case "gpt-image-2", "gpt-image-2-ext", "gpt-image-2.5", "gpt-image-2.5-ext":
 		return APIMartGPTImage2ResolutionPriceRatio(resolution)
+	case "gpt-image-2.5-flare", "gpt-image-2.5-sunburst":
+		return i.apimartGPTImage25PriceRatio()
 	case "gemini-3.1-flash-image-preview":
 		return switchRatio(map[string]float64{"0.5k": 1, "1k": 1, "2k": 4.0 / 3.0, "4k": 5.0 / 3.0})
 	case "flux-2-flex":

@@ -452,6 +452,57 @@ func TestStreamScannerHandler_SlowUpstreamFastHandler(t *testing.T) {
 	t.Logf("slow upstream (%d chunks, 2ms/read): %v", numChunks, elapsed)
 }
 
+func TestStreamScannerHandlerWithOptions_ForwardsRawBytesBeforeSSELineCompletes(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+
+	pr, pw := io.Pipe()
+	raw := make(chan string, 1)
+	parsed := make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() {
+		StreamScannerHandlerWithOptions(c, &http.Response{Body: pr}, info, func(_ string, _ *StreamResult) {
+			parsed <- struct{}{}
+		}, StreamScannerOptions{RawDataHandler: func(data []byte) error {
+			raw <- string(data)
+			_, _ = recorder.Write(data)
+			return nil
+		}})
+		close(done)
+	}()
+
+	first := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"首"
+	_, err := pw.Write([]byte(first))
+	require.NoError(t, err)
+	select {
+	case got := <-raw:
+		assert.Contains(t, got, first)
+	case <-time.After(time.Second):
+		t.Fatal("raw observer did not receive the first bytes before the SSE line completed")
+	}
+	select {
+	case <-parsed:
+		t.Fatal("line handler ran before the SSE line completed")
+	default:
+	}
+
+	_, err = pw.Write([]byte("\"}\ndata: [DONE]\n"))
+	require.NoError(t, err)
+	_ = pw.Close()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream scanner did not finish")
+	}
+	assert.Contains(t, recorder.Body.String(), first)
+}
+
 // ---------- Ping tests ----------
 
 func TestStreamScannerHandler_PingSentDuringSlowUpstream(t *testing.T) {

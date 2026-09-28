@@ -160,6 +160,29 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo == nil || other == nil {
 		return
 	}
+	if multiplier := relayInfo.BillingMultiplier(); multiplier != 1 || relayInfo.BillingServiceTier != "" {
+		other["billing_multiplier"] = multiplier
+		if relayInfo.PriceData.BillingMultiplierReason != "" {
+			other["billing_multiplier_reason"] = relayInfo.PriceData.BillingMultiplierReason
+		}
+		if relayInfo.BillingServiceTier != "" {
+			other["billing_service_tier"] = relayInfo.BillingServiceTier
+		}
+		if relayInfo.BillingInputRate() != 1 {
+			other["billing_input_multiplier"] = relayInfo.BillingInputRate()
+		}
+		if relayInfo.BillingOutputRate() != 1 {
+			other["billing_output_multiplier"] = relayInfo.BillingOutputRate()
+		}
+		if relayInfo.BillingCacheRate() != 1 {
+			other["billing_cache_multiplier"] = relayInfo.BillingCacheRate()
+		}
+	}
+	if relayInfo.BillingLongContext {
+		other["billing_long_context"] = true
+		other["billing_context_tokens"] = relayInfo.BillingContextTokens
+		other["billing_context_threshold"] = relaycommon.OpenAILongContextThreshold
+	}
 	// billing_source: "wallet" or "subscription"
 	if relayInfo.BillingSource != "" {
 		other["billing_source"] = relayInfo.BillingSource

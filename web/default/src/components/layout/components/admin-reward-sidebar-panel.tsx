@@ -26,7 +26,7 @@ export function AdminRewardSidebarPanel() {
       <div className='admin-reward-sidebar-label flex items-center justify-between gap-2 px-2 pb-1.5'>
         <span className='flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold'>
           <Sparkles className='size-3 shrink-0' aria-hidden='true' />
-          福利运营舱
+          邀请与奖励管理
         </span>
         <span className='admin-reward-live'>LIVE</span>
       </div>
@@ -34,18 +34,15 @@ export function AdminRewardSidebarPanel() {
         <SidebarMenuItem>
           <SidebarMenuButton
             isActive={pathname === '/rewards/admin'}
-            tooltip='福利中心管理'
+            tooltip='邀请返利管理'
             className='sidebar-reward-link sidebar-reward-link--persistent'
             render={
-              <Link
-                to='/rewards/admin'
-                onClick={() => setOpenMobile(false)}
-              />
+              <Link to='/rewards/admin' onClick={() => setOpenMobile(false)} />
             }
           >
             <Gift className='size-4 shrink-0' aria-hidden='true' />
             <span className='min-w-0 flex-1'>
-              <strong className='block truncate text-xs'>福利中心管理</strong>
+              <strong className='block truncate text-xs'>邀请返利管理</strong>
               <small className='admin-reward-sidebar-note block truncate'>
                 申请审核与用户福利
               </small>

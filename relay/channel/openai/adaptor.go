@@ -431,6 +431,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	// before the upstream request is built. Other providers (including Grok)
 	// retain their native edits behavior.
 	if isAPIMartGPTImage2(info, request) {
+		normalizeAPIMartGPTImage2Formats(&request)
 		if info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c) {
 			if err := addMultipartReferenceImages(c, &request); err != nil {
 				return nil, err
@@ -438,6 +439,11 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 		if len(request.ImageURLs) == 0 {
 			request.ImageURLs = imageURLsFromImagesField(request.Images)
+		}
+		if request.IsAPIMartGPTImage25() {
+			if err := prepareAPIMartGPTImage25(c, info, &request); err != nil {
+				return nil, err
+			}
 		}
 		info.RelayMode = relayconstant.RelayModeImagesGenerations
 		info.RequestURLPath = "/v1/images/generations"
@@ -575,6 +581,32 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
+// normalizeAPIMartGPTImage2Formats keeps the OpenAI-compatible response
+// contract separate from APIMart's image encoding options. APIMart accepts an
+// image encoding (png/jpeg/webp) in output_format; "url" is a response mode
+// used by OpenAI-compatible clients and must never be forwarded as an image
+// encoding. The task response is normalized to an image URL later in the
+// relay, so response_format can be omitted from the upstream request.
+func normalizeAPIMartGPTImage2Formats(request *dto.ImageRequest) {
+	if request == nil {
+		return
+	}
+
+	outputFormat := ""
+	if len(request.OutputFormat) > 0 {
+		var value string
+		if err := common.Unmarshal(request.OutputFormat, &value); err == nil {
+			outputFormat = strings.ToLower(strings.TrimSpace(value))
+		}
+	}
+	switch outputFormat {
+	case "png", "jpeg", "webp":
+	default:
+		request.OutputFormat = json.RawMessage(`"png"`)
+	}
+	request.ResponseFormat = ""
+}
+
 func isAPIMartGPTImage2(info *relaycommon.RelayInfo, request dto.ImageRequest) bool {
 	if info == nil || info.ChannelMeta == nil || !request.IsAPIMartGPTImage2() {
 		return false
@@ -614,7 +646,7 @@ func addMultipartReferenceImages(c *gin.Context, request *dto.ImageRequest) erro
 	switch request.GetResolution() {
 	case "", "1k", "2k", "4k":
 	default:
-	return errors.New("resolution must be one of 1k, 2k, or 4k for gpt-image-2.5")
+		return errors.New("resolution must be one of 1k, 2k, or 4k for gpt-image-2.5")
 	}
 
 	var headers []*multipart.FileHeader

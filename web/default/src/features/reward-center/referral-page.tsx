@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useCallback, useEffect, useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -16,6 +34,7 @@ import {
   Users,
   WalletCards,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { refreshSelf } from '@/lib/api'
@@ -37,6 +56,7 @@ function rateLabel(stage: AffiliateRewardStage) {
 }
 
 export function ReferralPage() {
+  const { t } = useTranslation()
   const { status } = useStatus()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -93,6 +113,20 @@ export function ReferralPage() {
 
   if (!affiliateEnabled) return null
 
+  if (overviewQuery.isError)
+    return (
+      <div className='reward-loading' role='alert'>
+        {t('Unable to load rewards. Please retry.')}
+        <Button
+          onClick={() => {
+            void overviewQuery.refetch()
+          }}
+        >
+          {t('Retry')}
+        </Button>
+      </div>
+    )
+
   if (overviewQuery.isLoading) {
     return (
       <div className='reward-loading'>
@@ -105,19 +139,17 @@ export function ReferralPage() {
   return (
     <RewardCenterShell active='referral'>
       <main className='referral-universe'>
-        <div className='cosmos-stars' aria-hidden='true' />
-        <div className='cosmos-nebula cosmos-nebula--one' aria-hidden='true' />
-        <div className='cosmos-nebula cosmos-nebula--two' aria-hidden='true' />
-
         <section className='referral-hero'>
           <div className='referral-copy'>
-            <span className='eyebrow'>AFFILIATE VOYAGE · 2026</span>
+            <span className='eyebrow'>SYNTHAPI · {t('Referral program')}</span>
             <h1>
-              邀友启航，
-              <span>返利直达 20%</span>
+              {t('Share something useful.')}
+              <span>{t('Earn rewards together.')}</span>
             </h1>
             <p>
-              邀请好友完成真实充值，解锁银河里程碑。原固定邀请奖励保持不变。
+              {t(
+                'Invite friends to SynthAPI. When they complete an eligible payment, your referral reward is credited automatically.'
+              )}
             </p>
             <div className='referral-actions'>
               <Button className='invite-button' onClick={copyInviteLink}>
@@ -125,24 +157,19 @@ export function ReferralPage() {
                 复制邀请链接
               </Button>
               <div className='max-rate'>
-                <strong>20%</strong>
+                <strong>
+                  {Math.max(
+                    0,
+                    ...(affiliate?.stages ?? []).map((stage) => stage.rate_bps)
+                  ) / 100}
+                  %
+                </strong>
                 <span>最高返利</span>
               </div>
             </div>
           </div>
 
-          <div
-            className='galaxy-staircase referral-reference-art'
-            style={
-              {
-                '--reward-reference-art':
-                  "url('/reward-assets/referral-staircase-clean-v2.webp')",
-              } as React.CSSProperties
-            }
-            aria-hidden='true'
-          >
-            <span className='reference-art-glow' />
-          </div>
+          <div className='referral-reference-art' aria-hidden='true' />
 
           <aside className='milestone-panel'>
             <div className='milestone-panel__title'>
@@ -174,7 +201,9 @@ export function ReferralPage() {
             </div>
             <div className='milestone-stage'>
               <span>当前阶段</span>
-              <strong>{affiliate?.current_stage.name ?? '待启航'}</strong>
+              <strong>
+                {affiliate?.current_stage.name ?? '尚未达成首个有效邀请'}
+              </strong>
             </div>
             <div className='milestone-reward'>
               <Sparkles aria-hidden='true' />
@@ -207,6 +236,10 @@ export function ReferralPage() {
           </aside>
         </section>
 
+        <div className='reward-section-heading'>
+          <h2>{t('Your referral milestones')}</h2>
+          <p>{t('More eligible referrals unlock a higher reward rate.')}</p>
+        </div>
         <section className='stage-voyage' aria-label='邀请返利阶段'>
           {(affiliate?.stages ?? []).map((stage, index) => {
             const Icon = stageIcons[index] ?? Star
@@ -233,7 +266,7 @@ export function ReferralPage() {
                   </span>
                   {active ? (
                     <span className='stage-current'>
-                      <Sparkles aria-hidden='true' /> 当前段位
+                      <Sparkles aria-hidden='true' /> 当前等级
                     </span>
                   ) : reached ? (
                     <span className='stage-reached'>
@@ -247,6 +280,39 @@ export function ReferralPage() {
               </div>
             )
           })}
+        </section>
+
+        <section
+          className='referral-how-it-works'
+          aria-label={t('How it works')}
+        >
+          {[
+            [
+              '01',
+              t('Share your link'),
+              t(
+                'Send your personal invitation link to a friend who needs an API.'
+              ),
+            ],
+            [
+              '02',
+              t('Your friend gets started'),
+              t('They register through your link and complete a real payment.'),
+            ],
+            [
+              '03',
+              t('Your reward arrives'),
+              t(
+                'Track credited rewards here and transfer them to your API balance.'
+              ),
+            ],
+          ].map(([step, title, description]) => (
+            <article key={step}>
+              <span>{step}</span>
+              <h2>{title}</h2>
+              <p>{description}</p>
+            </article>
+          ))}
         </section>
 
         <section className='affiliate-transfer-history'>
@@ -266,10 +332,13 @@ export function ReferralPage() {
             ) : (
               affiliate?.recent_transfers.map((record) => (
                 <article className='claim-row' key={record.id}>
-                  <span className='claim-check'><Check aria-hidden='true' /></span>
+                  <span className='claim-check'>
+                    <Check aria-hidden='true' />
+                  </span>
                   <div>
                     <strong>
-                      已转入 {formatQuotaWithCurrency(record.quota, {
+                      已转入{' '}
+                      {formatQuotaWithCurrency(record.quota, {
                         digitsLarge: 2,
                         digitsSmall: 2,
                         abbreviate: false,
@@ -277,19 +346,29 @@ export function ReferralPage() {
                       })}
                     </strong>
                     <small>
-                      返利余额 {formatQuotaWithCurrency(record.aff_quota_before, {
+                      返利余额{' '}
+                      {formatQuotaWithCurrency(record.aff_quota_before, {
                         digitsLarge: 2,
                         digitsSmall: 2,
                         abbreviate: false,
-                      })} → {formatQuotaWithCurrency(record.aff_quota_after, {
+                      })}{' '}
+                      →{' '}
+                      {formatQuotaWithCurrency(record.aff_quota_after, {
                         digitsLarge: 2,
                         digitsSmall: 2,
                         abbreviate: false,
                       })}
                     </small>
                   </div>
-                  <time>{new Date(record.created_at * 1000).toLocaleString('zh-CN', { hour12: false })}</time>
-                  <span className='claim-status claim-status--granted'>已到账</span>
+                  <time>
+                    {new Date(record.created_at * 1000).toLocaleString(
+                      'zh-CN',
+                      { hour12: false }
+                    )}
+                  </time>
+                  <span className='claim-status claim-status--granted'>
+                    已到账
+                  </span>
                 </article>
               ))
             )}

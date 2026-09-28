@@ -317,6 +317,16 @@ export interface LogOtherData {
   subscription_remain?: number
   subscription_total?: number
   subscription_discount?: number
+  billing_multiplier?: number
+  billing_multiplier_reason?: string
+  billing_service_tier?: string
+  billing_input_multiplier?: number
+  billing_output_multiplier?: number
+  billing_cache_multiplier?: number
+  billing_long_context?: boolean
+  billing_context_tokens?: number
+  billing_context_threshold?: number
+  usage_semantic?: string
   ingress_host?: string
   ingress_line?: ApiIngressLine
   /** Go worker that handled the request (e.g. aliyun-prod or shanghai). */

@@ -65,6 +65,10 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	chatId := helper.GetResponseID(c)
+	if responsesResp.ServiceTier != "" {
+		// Responses-to-Chat keeps the effective upstream tier for settlement.
+		info.ApplyBillingServiceTier(responsesResp.ServiceTier)
+	}
 	chatResp, usage, err := service.ResponsesResponseToChatCompletionsResponse(&responsesResp, chatId)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -75,6 +79,7 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 		chatResp.Usage = *usage
 	}
+	usage.ServiceTier = responsesResp.ServiceTier
 
 	var responseBody []byte
 	switch info.RelayFormat {
@@ -535,10 +540,16 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	})
 
 	if streamErr != nil {
+		if isClientGoneStream(info) {
+			return &dto.Usage{}, nil
+		}
 		return nil, streamErr
 	}
 	if !streamCompleted {
 		if streamFailure := newUpstreamStreamFailure(info); streamFailure != nil {
+			if isClientGoneStream(info) {
+				return &dto.Usage{}, nil
+			}
 			return nil, streamFailure
 		}
 	}
@@ -616,6 +627,9 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 		if responsesResp.Model != "" {
 			model = responsesResp.Model
+		}
+		if responsesResp.ServiceTier != "" {
+			usage.ServiceTier = responsesResp.ServiceTier
 		}
 		if responsesResp.CreatedAt != 0 {
 			createAt = int64(responsesResp.CreatedAt)
@@ -756,12 +770,21 @@ func OaiResponsesStreamToChatHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	if streamErr != nil {
+		if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+			return &dto.Usage{}, nil
+		}
 		return nil, streamErr
 	}
 	if err := scanner.Err(); err != nil {
+		if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+			return &dto.Usage{}, nil
+		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	if !streamCompleted {
+		if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+			return &dto.Usage{}, nil
+		}
 		return nil, newAutoRouteFailureFromText(
 			"stream disconnected before completion: upstream stream ended unexpectedly",
 			http.StatusBadGateway,

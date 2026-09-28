@@ -23,6 +23,7 @@ import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
+import { SupportAgentHeaderButton } from '@/features/support-agent'
 import { defaultTopNavLinks } from '../config/top-nav.config'
 import { type TopNavLink } from '../types'
 import { Header } from './header'
@@ -125,7 +126,12 @@ export function AppHeader({
                 <TopNav links={links} />
               </div>
             )}
-            {showSearch && <Search />}
+            {showSearch && (
+              <div className='hidden sm:block'>
+                <Search />
+              </div>
+            )}
+            <SupportAgentHeaderButton />
             {showNotifications && (
               <NotificationPopover
                 open={notifications.popoverOpen}

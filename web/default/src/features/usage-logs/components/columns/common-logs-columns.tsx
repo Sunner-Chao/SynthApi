@@ -181,6 +181,43 @@ function splitQuotaDisplay(value: string): { prefix: string; amount: string } {
   return { prefix: match[1], amount: match[2] }
 }
 
+function BillingContextDot({
+  logType,
+  other,
+  label,
+}: {
+  logType: number
+  other: LogOtherData | null
+  label: (key: string) => string
+}) {
+  if (
+    logType !== 2 ||
+    !other ||
+    isViolationFeeLog(other) ||
+    (other.model_price != null && Number(other.model_price) > 0)
+  )
+    return null
+
+  const matchedTier = String(other.matched_tier || '').toLowerCase()
+  const isLongContext =
+    other.billing_long_context === true || matchedTier.includes('long_context')
+  const contextLabel = isLongContext
+    ? label('Long context')
+    : label('Standard context')
+
+  return (
+    <span
+      className={cn(
+        'ml-1 inline-block size-2 shrink-0 rounded-full ring-1 ring-black/10 ring-inset dark:ring-white/20',
+        isLongContext ? 'bg-orange-500' : 'bg-emerald-500'
+      )}
+      role='img'
+      aria-label={contextLabel}
+      title={contextLabel}
+    />
+  )
+}
+
 function buildDetailSegments(
   log: UsageLog,
   other: LogOtherData | null,
@@ -421,78 +458,78 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           return (
             <div className='command-log-channel flex min-w-0 flex-col gap-1'>
               <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <div className='command-log-channel flex min-w-0 flex-col gap-0.5' />
-                  }
-                >
-                  <div className='relative inline-flex w-fit'>
-                    <StatusBadge
-                      label={channelIdDisplay}
-                      autoColor={String(log.channel)}
-                      copyText={String(log.channel)}
-                      size='sm'
-                      showDot={false}
-                      className='font-mono'
-                    />
-                    {affinity && (
-                      <button
-                        type='button'
-                        className='absolute -top-1 -right-1 leading-none text-amber-500'
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setAffinityTarget({
-                            rule_name: affinity.rule_name || '',
-                            using_group:
-                              affinity.using_group ||
-                              affinity.selected_group ||
-                              '',
-                            key_hint: affinity.key_hint || '',
-                            key_fp: affinity.key_fp || '',
-                          })
-                          setAffinityDialogOpen(true)
-                        }}
-                      >
-                        <Sparkles className='size-3 fill-current' />
-                      </button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <div className='command-log-channel flex min-w-0 flex-col gap-0.5' />
+                    }
+                  >
+                    <div className='relative inline-flex w-fit'>
+                      <StatusBadge
+                        label={channelIdDisplay}
+                        autoColor={String(log.channel)}
+                        copyText={String(log.channel)}
+                        size='sm'
+                        showDot={false}
+                        className='font-mono'
+                      />
+                      {affinity && (
+                        <button
+                          type='button'
+                          className='absolute -top-1 -right-1 leading-none text-amber-500'
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setAffinityTarget({
+                              rule_name: affinity.rule_name || '',
+                              using_group:
+                                affinity.using_group ||
+                                affinity.selected_group ||
+                                '',
+                              key_hint: affinity.key_hint || '',
+                              key_fp: affinity.key_fp || '',
+                            })
+                            setAffinityDialogOpen(true)
+                          }}
+                        >
+                          <Sparkles className='size-3 fill-current' />
+                        </button>
+                      )}
+                    </div>
+                    {log.channel_name && (
+                      <span className='command-log-secondary text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'>
+                        {channelName}
+                      </span>
                     )}
-                  </div>
-                  {log.channel_name && (
-                    <span className='command-log-secondary text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'>
-                      {channelName}
-                    </span>
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className='space-y-1'>
-                    <p>
-                      {sensitiveVisible ? channelDisplay : channelIdDisplay}
-                    </p>
-                    {channelChain && (
-                      <p className='text-muted-foreground text-xs'>
-                        {t('Chain')}: {channelChain}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className='space-y-1'>
+                      <p>
+                        {sensitiveVisible ? channelDisplay : channelIdDisplay}
                       </p>
-                    )}
-                    {affinity && (
-                      <div className='border-t pt-1 text-xs'>
-                        <p className='font-medium'>{t('Channel Affinity')}</p>
-                        <p>
-                          {t('Rule')}: {affinity.rule_name || '-'}
+                      {channelChain && (
+                        <p className='text-muted-foreground text-xs'>
+                          {t('Chain')}: {channelChain}
                         </p>
-                        <p>
-                          {t('Group')}:{' '}
-                          {sensitiveVisible
-                            ? affinity.using_group ||
-                              affinity.selected_group ||
-                              '-'
-                            : '••••'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </TooltipContent>
-              </Tooltip>
+                      )}
+                      {affinity && (
+                        <div className='border-t pt-1 text-xs'>
+                          <p className='font-medium'>{t('Channel Affinity')}</p>
+                          <p>
+                            {t('Rule')}: {affinity.rule_name || '-'}
+                          </p>
+                          <p>
+                            {t('Group')}:{' '}
+                            {sensitiveVisible
+                              ? affinity.using_group ||
+                                affinity.selected_group ||
+                                '-'
+                              : '••••'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </TooltipProvider>
             </div>
           )
@@ -1027,6 +1064,11 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                         )}
                       >
                         {rate} · {formatLogQuota(consumed)}
+                        <BillingContextDot
+                          logType={log.type}
+                          other={other}
+                          label={t}
+                        />
                       </span>
                     </div>
                   }
@@ -1055,6 +1097,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <span className='mr-1'>{quotaDisplay.prefix}</span>
               )}
               <span>{quotaDisplay.amount}</span>
+              <BillingContextDot logType={log.type} other={other} label={t} />
             </span>
           </div>
         )

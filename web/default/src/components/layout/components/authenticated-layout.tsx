@@ -29,6 +29,8 @@ import {
 import { AnimatedOutlet } from '@/components/page-transition'
 import { RewardBenefitNotice } from '@/components/reward-benefit-notice'
 import { SkipToMain } from '@/components/skip-to-main'
+import '@/features/reward-center/experience.css'
+import { SupportAgentRoot } from '@/features/support-agent'
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
 
@@ -51,13 +53,24 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
     normalizedPathname === '/intelligence-radar' ||
     normalizedPathname === '/rewards/referral' ||
     normalizedPathname === '/rewards/recharge'
+  let rewardScene: 'referral' | 'recharge' | undefined
+  if (normalizedPathname === '/rewards/referral') {
+    rewardScene = 'referral'
+  } else if (normalizedPathname === '/rewards/recharge') {
+    rewardScene = 'recharge'
+  }
   const isImageWorkbench = normalizedPathname === '/image-workbench'
 
   return (
     <LayoutProvider>
       <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
+        <SidebarProvider
+          defaultOpen={defaultOpen}
+          className={cn('flex-col', rewardScene && 'reward-experience')}
+          data-reward-scene={rewardScene}
+        >
           <SkipToMain />
+          <SupportAgentRoot />
           <RewardBenefitNotice />
           {isImageWorkbench ? (
             <div className='flex h-svh min-h-0 w-full flex-1 overflow-hidden'>
@@ -67,16 +80,15 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               </main>
             </div>
           ) : isImmersive ? (
-            <div className='flex h-svh min-h-0 w-full flex-1 overflow-hidden'>
-              <AppSidebar />
-              <main className='@container/content relative flex h-svh min-h-0 min-w-0 flex-1 flex-col overflow-hidden'>
-                <SidebarTrigger
-                  variant='ghost'
-                  className='bg-background/80 hover:bg-accent absolute top-3 left-3 z-50 size-8 border shadow-sm backdrop-blur-sm'
-                />
-                {props.children ?? <AnimatedOutlet />}
-              </main>
-            </div>
+            <>
+              <AppHeader />
+              <div className='flex min-h-0 w-full flex-1'>
+                <AppSidebar />
+                <SidebarInset className='@container/content min-h-0 overflow-hidden'>
+                  {props.children ?? <AnimatedOutlet />}
+                </SidebarInset>
+              </div>
+            </>
           ) : (
             <>
               <AppHeader />

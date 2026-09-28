@@ -174,6 +174,19 @@ func enrichModels(models []*model.Model) {
 		if m == nil {
 			continue
 		}
+		// Keep the model marketplace useful when a model was added manually or
+		// synced from a provider that does not supply marketing metadata.
+		if strings.TrimSpace(m.Description) == "" {
+			lowerName := strings.ToLower(m.ModelName)
+			switch {
+			case strings.HasPrefix(lowerName, "gpt-6"):
+				m.Description = "GPT-6 系列，SOL模型，多模态，支持文本与图像输入，1M 上下文与 128K 最大输出"
+			case strings.HasPrefix(lowerName, "gpt-5.6"):
+				m.Description = "GPT-5.6 系列，多模态模型，支持文本与图像输入"
+			default:
+				m.Description = "AI 模型，支持标准对话与 API 调用"
+			}
+		}
 		if m.NameRule == model.NameRuleExact {
 			exactNames = append(exactNames, m.ModelName)
 			exactIdx[m.ModelName] = append(exactIdx[m.ModelName], i)

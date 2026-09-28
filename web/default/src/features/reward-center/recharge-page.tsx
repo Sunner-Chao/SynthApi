@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -65,19 +83,7 @@ export function RechargePage() {
       (recharge?.threshold_unit_cny || 1000)) *
       100
   )
-  const energy = progress / 100
   const progressAngle = progress * 3.6
-  const energyParticles = useMemo(() => {
-    const count = progress <= 0 ? 0 : Math.min(24, 4 + Math.floor(progress / 5))
-
-    return Array.from({ length: count }, (_, index) => ({
-      angle: (index * 137.5 + progress * 1.8) % 360,
-      inset: 9 + ((index * 7) % 18),
-      delay: -((index * 0.31) % 3.6),
-      duration: 1.7 + ((index * 13) % 19) / 10,
-      size: 2 + ((index * 5) % 4),
-    }))
-  }, [progress])
 
   const claimMutation = useMutation({
     mutationFn: requestRechargeBenefit,
@@ -148,32 +154,20 @@ export function RechargePage() {
   return (
     <RewardCenterShell active='recharge'>
       <main className='recharge-station'>
-        <div className='station-grid' aria-hidden='true' />
         <section className='recharge-heading'>
           <span>ENERGY BENEFIT PROGRAM</span>
           <h1>
             千元充能计划 <Zap aria-hidden='true' />
           </h1>
           <p>
-            每累计净充值 <strong>¥1,000</strong>，解锁 <strong>¥50</strong> API
-            限制额度
+            每累计净充值{' '}
+            <strong>¥{recharge?.threshold_unit_cny ?? 1000}</strong>，解锁{' '}
+            <strong>¥{recharge?.reward_unit_cny ?? 50}</strong> API 限制额度
           </p>
         </section>
 
         <section className='recharge-core'>
-          <div
-            className='crystal-reactor recharge-reference-art'
-            style={
-              {
-                '--reward-reference-art':
-                  "url('/reward-assets/recharge-reactor-clean.webp')",
-              } as React.CSSProperties
-            }
-            aria-hidden='true'
-          >
-            <span className='reference-art-glow' />
-          </div>
-
+          <div className='recharge-reference-art' aria-hidden='true' />
           <div className='recharge-gauge'>
             <div
               className={`gauge-ring ${progress >= 100 ? 'is-charged' : ''}`}
@@ -187,33 +181,9 @@ export function RechargePage() {
                   '--progress': `${progressAngle}deg`,
                   '--progress-warm': `${progressAngle * 0.38}deg`,
                   '--progress-cyan': `${progressAngle * 0.76}deg`,
-                  '--energy': energy,
-                  '--energy-glow': 0.2 + energy * 0.42,
-                  '--energy-core': 0.08 + energy * 0.22,
-                  '--particle-opacity': progress <= 0 ? 0 : 0.3 + energy * 0.7,
-                  '--particle-speed': `${Math.max(4.8, 8 - energy * 3.2)}s`,
-                  '--stream-blur': `${4 + energy * 9}px`,
                 } as React.CSSProperties
               }
             >
-              <span className='gauge-energy-stream' aria-hidden='true' />
-              <span className='gauge-charge-front' aria-hidden='true' />
-              <span className='gauge-energy-particles' aria-hidden='true'>
-                {energyParticles.map((particle, index) => (
-                  <i
-                    key={index}
-                    style={
-                      {
-                        '--particle-angle': `${particle.angle}deg`,
-                        '--particle-inset': `${particle.inset}%`,
-                        '--particle-delay': `${particle.delay}s`,
-                        '--particle-duration': `${particle.duration}s`,
-                        '--particle-size': `${particle.size}px`,
-                      } as React.CSSProperties
-                    }
-                  />
-                ))}
-              </span>
               <div className='gauge-ring__inner'>
                 <span>累计净充值</span>
                 <strong>

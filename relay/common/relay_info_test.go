@@ -38,3 +38,23 @@ func TestRelayInfoGetFinalRequestRelayFormatNilReceiver(t *testing.T) {
 	var info *RelayInfo
 	require.Equal(t, types.RelayFormat(""), info.GetFinalRequestRelayFormat())
 }
+
+func TestRelayInfoApplyBillingServiceTier(t *testing.T) {
+	info := &RelayInfo{OriginModelName: "gpt-6-astra"}
+	info.ApplyBillingServiceTier("fast")
+	require.Equal(t, "priority", info.BillingServiceTier)
+	require.Equal(t, float64(2), info.BillingMultiplier())
+	require.Equal(t, float64(2), info.BillingInputRate())
+	require.Equal(t, float64(2), info.BillingOutputRate())
+	require.Equal(t, "openai_fast_mode", info.PriceData.BillingMultiplierReason)
+
+	info.ApplyBillingServiceTier("default")
+	// The effective upstream tier controls settlement, including downgrade.
+	require.Equal(t, float64(1), info.BillingMultiplier())
+	require.Equal(t, float64(1), info.BillingOutputRate())
+
+	flex := &RelayInfo{OriginModelName: "gpt-6-astra"}
+	flex.ApplyBillingServiceTier("flex")
+	require.Equal(t, float64(0.5), flex.BillingInputRate())
+	require.Equal(t, float64(0.5), flex.BillingOutputRate())
+}

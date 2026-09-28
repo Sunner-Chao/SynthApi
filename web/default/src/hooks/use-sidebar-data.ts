@@ -55,7 +55,7 @@ export function useSidebarData(): SidebarData {
         title: t('Chat'),
         items: [
           {
-            title: t('Online Chat'),
+            title: t('Model playground'),
             url: '/playground',
             icon: FlaskConical,
           },

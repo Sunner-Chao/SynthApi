@@ -673,18 +673,66 @@ function BillingBreakdown(props: {
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
   const fmtFormulaPrice = (usd: number) =>
     formatBillingCurrencyFromUSD(usd, formulaPriceOpts)
+  const inputMultiplier = Number(other.billing_input_multiplier || 1)
+  const outputMultiplier = Number(other.billing_output_multiplier || 1)
+  const cacheMultiplier = Number(other.billing_cache_multiplier || 1)
+  const isLongContext = other.billing_long_context === true
+  const isAnthropicUsage =
+    other.usage_semantic === 'anthropic' || other.claude === true
+  const cacheReadTokens = Number(other.cache_tokens || 0)
+  const cacheWriteTokens = Number(other.cache_creation_tokens || 0)
+  const cacheWrite5m = isAnthropicUsage
+    ? Number(other.cache_creation_tokens_5m || 0)
+    : 0
+  const cacheWrite1h = isAnthropicUsage
+    ? Number(other.cache_creation_tokens_1h || 0)
+    : 0
+  const cacheWriteUnsplit = Math.max(
+    0,
+    cacheWriteTokens - cacheWrite5m - cacheWrite1h
+  )
+  const imageTokens = other.image ? Number(other.image_output || 0) : 0
+  const audioInputTokens = other.audio_input_seperate_price
+    ? Number(other.audio_input_token_count || 0)
+    : Number(other.audio_input || 0)
+  // OpenAI prompt_tokens includes cached/image/audio input. The backend
+  // removes those components before applying the input rate; Anthropic
+  // usage reports the components separately.
+  const billableInputTokens = isAnthropicUsage
+    ? Math.max(
+        0,
+        Number(log.prompt_tokens || 0) - imageTokens - audioInputTokens
+      )
+    : Math.max(
+        0,
+        Number(log.prompt_tokens || 0) -
+          cacheReadTokens -
+          cacheWriteTokens -
+          imageTokens -
+          audioInputTokens
+      )
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
   const formulaParts: string[] = []
   const addTokenFormulaPart = (
     label: string,
     tokens: number | null | undefined,
-    priceUSDPerM: number | null | undefined
+    priceUSDPerM: number | null | undefined,
+    multiplier = 1
   ) => {
     const tokenCount = Number(tokens) || 0
     const price = Number(priceUSDPerM)
-    if (tokenCount <= 0 || !Number.isFinite(price) || price <= 0) return
+    const rate = Number(multiplier)
+    if (
+      tokenCount <= 0 ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isFinite(rate) ||
+      rate <= 0
+    )
+      return
+    const multiplierText = rate === 1 ? '' : ` × ${formatFullNumber(rate)}`
     formulaParts.push(
-      `${t(label)} ${formatFormulaCount(tokenCount)} × ${fmtFormulaPrice(price)} / 1M`
+      `${t(label)} ${formatFormulaCount(tokenCount)} × ${fmtFormulaPrice(price)} / 1M${multiplierText}`
     )
   }
   const addFlatFormulaPart = (
@@ -748,22 +796,40 @@ function BillingBreakdown(props: {
     }
   } else {
     rows.push({ label: t('Billing Mode'), value: t('Per-token') })
+    rows.push({
+      label: t('Billing Context'),
+      value: isLongContext
+        ? `${t('Long context')} · ${t('Input')} ×${inputMultiplier} / ${t('Output')} ×${outputMultiplier} / ${t('Cache')} ×${cacheMultiplier}`
+        : t('Standard context'),
+    })
+    if (isLongContext && other.billing_context_threshold != null) {
+      rows.push({
+        label: t('Long context trigger'),
+        value: `${formatFormulaCount(other.billing_context_tokens)} > ${formatFormulaCount(other.billing_context_threshold)} tokens`,
+      })
+    }
     if (other.model_ratio != null) {
       rows.push({
         label: t('Input'),
-        value: `${fmtPrice(baseInputUSD)}/M`,
+        value: `${fmtPrice(baseInputUSD * inputMultiplier)}/M`,
       })
-      addTokenFormulaPart('Input', log.prompt_tokens, baseInputUSD)
+      addTokenFormulaPart(
+        'Input',
+        billableInputTokens,
+        baseInputUSD,
+        inputMultiplier
+      )
     }
     if (other.completion_ratio != null && other.model_ratio != null) {
       rows.push({
         label: t('Output'),
-        value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
+        value: `${fmtPrice(baseInputUSD * other.completion_ratio * outputMultiplier)}/M`,
       })
       addTokenFormulaPart(
         'Output',
         log.completion_tokens,
-        baseInputUSD * other.completion_ratio
+        baseInputUSD * other.completion_ratio,
+        outputMultiplier
       )
     }
   }
@@ -778,58 +844,53 @@ function BillingBreakdown(props: {
     })
   }
 
-  if (!isTieredExpr && hasAnyCacheTokens(other) && other.cache_ratio != null) {
-    if (other.cache_ratio != null) {
+  if (!isTieredExpr && !isPerCall && hasAnyCacheTokens(other)) {
+    if (cacheReadTokens > 0 && other.cache_ratio != null) {
       rows.push({
         label: t('Cache Read'),
-        value: `${fmtPrice(baseInputUSD * other.cache_ratio)}/M`,
+        value: `${fmtPrice(baseInputUSD * other.cache_ratio * cacheMultiplier)}/M`,
       })
       addTokenFormulaPart(
         'Cache Read',
         other.cache_tokens,
-        baseInputUSD * other.cache_ratio
+        baseInputUSD * other.cache_ratio,
+        cacheMultiplier
       )
     }
-    if (
-      other.cache_creation_ratio != null &&
-      other.cache_creation_ratio !== 1
-    ) {
+    if (other.cache_creation_ratio != null && cacheWriteUnsplit > 0) {
       rows.push({
         label: t('Cache Creation'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio)}/M`,
+        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio * cacheMultiplier)}/M`,
       })
       addTokenFormulaPart(
         'Cache Creation',
-        other.cache_creation_tokens,
-        baseInputUSD * other.cache_creation_ratio
+        cacheWriteUnsplit,
+        baseInputUSD * other.cache_creation_ratio,
+        cacheMultiplier
       )
     }
-    if (
-      other.cache_creation_ratio_5m != null &&
-      other.cache_creation_ratio_5m !== 0
-    ) {
+    if (other.cache_creation_ratio_5m != null && cacheWrite5m > 0) {
       rows.push({
         label: t('Cache Creation (5m)'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_5m)}/M`,
+        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_5m * cacheMultiplier)}/M`,
       })
       addTokenFormulaPart(
         'Cache Creation (5m)',
         other.cache_creation_tokens_5m,
-        baseInputUSD * other.cache_creation_ratio_5m
+        baseInputUSD * other.cache_creation_ratio_5m,
+        cacheMultiplier
       )
     }
-    if (
-      other.cache_creation_ratio_1h != null &&
-      other.cache_creation_ratio_1h !== 0
-    ) {
+    if (other.cache_creation_ratio_1h != null && cacheWrite1h > 0) {
       rows.push({
         label: t('Cache Creation (1h)'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_1h)}/M`,
+        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_1h * cacheMultiplier)}/M`,
       })
       addTokenFormulaPart(
         'Cache Creation (1h)',
         other.cache_creation_tokens_1h,
-        baseInputUSD * other.cache_creation_ratio_1h
+        baseInputUSD * other.cache_creation_ratio_1h,
+        cacheMultiplier
       )
     }
   }
@@ -862,15 +923,16 @@ function BillingBreakdown(props: {
       )
     }
 
-    if (other.image_ratio != null && other.image_ratio !== 1) {
+    if (other.image_ratio != null && imageTokens > 0) {
       rows.push({
         label: t('Image input'),
-        value: `${fmtPrice(baseInputUSD * other.image_ratio)}/M`,
+        value: `${fmtPrice(baseInputUSD * other.image_ratio * inputMultiplier)}/M`,
       })
       addTokenFormulaPart(
         'Image input',
         other.image_output,
-        baseInputUSD * other.image_ratio
+        baseInputUSD * other.image_ratio,
+        inputMultiplier
       )
     }
   }
@@ -935,7 +997,7 @@ function BillingBreakdown(props: {
       effectiveGR != null && Number.isFinite(effectiveGR) ? effectiveGR : 1
     rows.push({
       label: t('Total Cost Formula'),
-      value: `(${formulaParts.join(' + ')}) × ${formatFullNumber(ratio)} = ${formatFormulaQuota(log.quota)} (${t('For reference only, actual deduction prevails')})`,
+      value: `(${formulaParts.join(' + ')}) × ${isUserGR ? t('User Exclusive Ratio') : t('Group Ratio')} ${formatFullNumber(ratio)} = ${formatFormulaQuota(log.quota)} (${t('For reference only, actual deduction prevails')})`,
     })
   }
 

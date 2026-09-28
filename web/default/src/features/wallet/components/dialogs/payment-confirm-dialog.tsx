@@ -81,7 +81,9 @@ export function PaymentConfirmDialog({
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
   const isDirect = isAlipayDirectPayment(paymentMethod)
-  const isRecommended = paymentMethod?.recommended === true
+  const isRecommended =
+    paymentMethod?.recommended === true &&
+    paymentMethod.type !== PAYMENT_TYPES.WECHAT
   const isBackup = paymentMethod?.provider === PAYMENT_PROVIDERS.XPAY
   const paymentMethodName = paymentMethod
     ? getPaymentMethodDisplayName(paymentMethod, t)

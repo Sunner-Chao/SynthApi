@@ -2054,6 +2054,12 @@ func TestRemoveDisabledFieldsDefaultFiltering(t *testing.T) {
 	assertJSONEqual(t, `{"cache_control":{"type":"ephemeral"},"store":true}`, string(out))
 }
 
+func TestRemoveDisabledFieldsPreservesAndNormalizesPriority(t *testing.T) {
+	out, err := RemoveDisabledFields([]byte(`{"service_tier":"fast"}`), dto.ChannelOtherSettings{}, false)
+	require.NoError(t, err)
+	assertJSONEqual(t, `{"service_tier":"priority"}`, string(out))
+}
+
 func TestRemoveDisabledFieldsNoControlledFieldsKeepsBody(t *testing.T) {
 	input := `{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`
 	settings := dto.ChannelOtherSettings{}

@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/status-badge'
+import { useIsAdmin } from '@/hooks/use-admin'
 import '@/features/channel-monitor/components/success-rate-strip'
 import {
   getAvailabilityRate,
@@ -92,6 +93,7 @@ function statusMeta(status: number, t: (key: string) => string) {
 }
 
 export function ChannelMonitorPanel() {
+  const isAdmin = useIsAdmin()
   const { t } = useTranslation()
   const monitorQuery = useQuery({
     queryKey: ['dashboard', 'channel-monitor'],
@@ -165,7 +167,7 @@ export function ChannelMonitorPanel() {
                 : 'text-success'
             }
           />
-          <MonitorMetric
+          {isAdmin && <MonitorMetric
             icon={Users}
             label={t('Active users')}
             value={loading ? '' : String(summary?.active_users ?? 0)}
@@ -175,7 +177,7 @@ export function ChannelMonitorPanel() {
                 ? 'text-primary'
                 : 'text-muted-foreground'
             }
-          />
+          />}
         </div>
 
         {loading ? (
@@ -266,9 +268,9 @@ function ChannelMonitorRow(props: { item: ChannelMonitorItem }) {
         <div className='text-muted-foreground mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]'>
           <span>{t('{{count}} models', { count: item.model_count })}</span>
           <span>{t('{{count}} channel(s)', { count: channelCount })}</span>
-          <span>
+          {isAdmin && <span>
             {t('{{count}} active user(s)', { count: item.active_users ?? 0 })}
-          </span>
+          </span>}
         </div>
       </div>
 

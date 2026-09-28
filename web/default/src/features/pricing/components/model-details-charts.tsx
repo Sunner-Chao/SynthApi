@@ -383,7 +383,7 @@ export function ThroughputBarChart(props: {
       animation: false,
       bar: {
         style: {
-          fill: '#6366f1',
+          fill: '#10b981',
           ...(barRadius == null ? {} : { cornerRadius: barRadius }),
         },
       },

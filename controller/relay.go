@@ -203,6 +203,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		// Only return quota if downstream failed and quota was actually pre-consumed
 		if newAPIError != nil {
+			if billClientGoneStream(c, relayInfo) {
+				// A stream that already delivered upstream data is billable even when
+				// the adapter reports the cancellation as EOF/scanner failure. Settle
+				// from the estimated input before suppressing the error response.
+				service.PostTextConsumeQuota(c, relayInfo, &dto.Usage{}, nil)
+				newAPIError = nil
+				return
+			}
 			newAPIError = service.NormalizeViolationFeeError(newAPIError)
 			if relayInfo.Billing != nil {
 				relayInfo.Billing.Refund(c)
@@ -374,6 +382,32 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
+}
+
+// billClientGoneStream identifies a downstream cancellation after the relay
+// has actually received upstream stream data. Such requests must settle the
+// estimated input instead of entering the ordinary failed-request refund path.
+func billClientGoneStream(c *gin.Context, info *relaycommon.RelayInfo) bool {
+	if c == nil || info == nil || !info.IsStream || info.Billing == nil {
+		return false
+	}
+	if info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonClientGone {
+		return true
+	}
+	if c.Request == nil || c.Request.Context().Err() == nil {
+		return false
+	}
+	// A stream scanner is created only after the upstream request succeeds. Do
+	// not reinterpret a cancellation during local validation/channel selection
+	// as a billable upstream stream.
+	if info.StreamStatus == nil && info.ReceivedResponseCount <= 0 {
+		return false
+	}
+	if info.StreamStatus == nil {
+		info.StreamStatus = relaycommon.NewStreamStatus()
+	}
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+	return true
 }
 
 var upgrader = websocket.Upgrader{
