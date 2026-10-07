@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -57,7 +58,7 @@ func MPayCallback(c *gin.Context) {
 		}
 	}
 
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("MPay 回调收到 client_ip=%s params=%q", c.ClientIP(), common.GetJsonString(params)))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("MPay 回调收到 client_ip=%s out_trade_no=%s status=%s", c.ClientIP(), service.ExtractMPayTradeNo(params), params["trade_status"]))
 
 	if !service.IsMPayTopUpEnabled() {
 		logger.LogWarn(c.Request.Context(), "MPay 回调被拒绝 reason=disabled")
@@ -65,14 +66,14 @@ func MPayCallback(c *gin.Context) {
 		return
 	}
 	if !service.VerifyMPayCallback(params) {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("MPay 回调验签失败 client_ip=%s params=%q", c.ClientIP(), common.GetJsonString(params)))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("MPay 回调验签失败 client_ip=%s", c.ClientIP()))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
 
 	tradeNo := service.ExtractMPayTradeNo(params)
 	if tradeNo == "" {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("MPay 回调缺少订单号 client_ip=%s params=%q", c.ClientIP(), common.GetJsonString(params)))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("MPay 回调缺少订单号 client_ip=%s", c.ClientIP()))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -86,6 +87,15 @@ func MPayCallback(c *gin.Context) {
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
+	if strings.HasPrefix(tradeNo, "MPSUBUSR") {
+		if err := service.ConfirmMPaySubscriptionOrder(params, c.ClientIP()); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("微信订阅回调处理失败 trade_no=%s error=%q", tradeNo, err.Error()))
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+		_, _ = c.Writer.Write([]byte(setting.MPayNotifySuccess))
+		return
+	}
 	if err := service.ConfirmMPayOrder(tradeNo, service.ExtractMPayMoney(params), c.ClientIP()); err != nil {
 		if err == model.ErrTopUpStatusInvalid {
 			_, _ = c.Writer.Write([]byte(setting.MPayNotifySuccess))

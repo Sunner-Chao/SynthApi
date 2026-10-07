@@ -559,7 +559,13 @@ func TestSaveAlipayDirectConfigIsAtomicAndKeepsBlankKeys(t *testing.T) {
 
 	var count int64
 	require.NoError(t, db.Model(&model.Option{}).Where("key LIKE ?", "Alipay%").Count(&count).Error)
-	require.Equal(t, int64(9), count)
+	require.Equal(t, int64(11), count)
+	var profileOption model.Option
+	require.NoError(t, db.Where("key = ?", setting.AlipayProfilesOptionKey).First(&profileOption).Error)
+	require.NotEmpty(t, profileOption.Value)
+	var activeOption model.Option
+	require.NoError(t, db.Where("key = ?", setting.AlipayActiveProfileOptionKey).First(&activeOption).Error)
+	require.NotEmpty(t, activeOption.Value)
 
 	err = SaveAlipayDirectConfig(AlipayDirectConfig{
 		Enabled: true, AppID: "invalid", SellerID: savedConfig.SellerID,

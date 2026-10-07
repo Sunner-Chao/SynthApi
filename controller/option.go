@@ -39,6 +39,9 @@ func isSensitiveOptionKey(key string) bool {
 	if key == "TurnstileSiteKey" {
 		return false
 	}
+	if key == setting.AlipayProfilesOptionKey {
+		return true
+	}
 	// This is a numeric concurrency setting, not credential material.
 	if key == "ModelRequestMaxConcurrencyPerToken" {
 		return false
@@ -149,7 +152,13 @@ func UpdateOption(c *gin.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
-	if setting.IsAlipayDirectOptionKey(option.Key) {
+	previousAnnouncementJSON := ""
+	if option.Key == "console_setting.announcements" {
+		common.OptionMapRWMutex.RLock()
+		previousAnnouncementJSON = common.OptionMap[option.Key]
+		common.OptionMapRWMutex.RUnlock()
+	}
+	if setting.IsAlipayDirectOptionKey(option.Key) || option.Key == setting.AlipayProfilesOptionKey || option.Key == setting.AlipayActiveProfileOptionKey {
 		common.ApiErrorMsg(c, "支付宝官方支付配置必须通过专用保存接口修改")
 		return
 	}
@@ -359,6 +368,9 @@ func UpdateOption(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if option.Key == "console_setting.announcements" {
+		model.NotifyPublishedAnnouncements(previousAnnouncementJSON, option.Value.(string))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

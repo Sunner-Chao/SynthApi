@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -47,6 +46,7 @@ import {
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
   paySubscriptionAlipayDirect,
+  paySubscriptionWechat,
 } from '../../api'
 import {
   displaySubscriptionAmountToQuota,
@@ -73,6 +73,7 @@ interface Props {
   enableOnlineTopUp?: boolean
   epayMethods?: PaymentMethod[]
   alipayDirectMethod?: PaymentMethod
+  enableWechatSubscription?: boolean
   purchaseLimit?: number
   purchaseCount?: number
   userQuota?: number
@@ -116,8 +117,18 @@ export function SubscriptionPurchaseDialog(props: Props) {
     String(plan.currency || '')
       .trim()
       .toUpperCase() === 'CNY'
+  const hasWechat =
+    props.enableWechatSubscription &&
+    String(plan.currency || '')
+      .trim()
+      .toUpperCase() === 'CNY'
   const hasAnyPayment =
-    hasAlipayDirect || hasStripe || hasCreem || hasWaffoPancake || hasEpay
+    hasWechat ||
+    hasAlipayDirect ||
+    hasStripe ||
+    hasCreem ||
+    hasWaffoPancake ||
+    hasEpay
   const selectedEpayMethodLabel =
     (props.epayMethods || []).find((m) => m.type === selectedEpayMethod)
       ?.name ||
@@ -267,6 +278,23 @@ export function SubscriptionPurchaseDialog(props: Props) {
             ? res.message
             : t('Payment request failed')
         )
+      }
+    } catch {
+      toast.error(t('Payment request failed'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  const handlePayWechat = async () => {
+    setPaying(true)
+    try {
+      const res = await paySubscriptionWechat({ plan_id: plan.id })
+      if (res.success && res.data?.pay_url) {
+        toast.success(t('Redirecting to payment page...'))
+        window.location.assign(res.data.pay_url)
+      } else {
+        toast.error(res.message || t('Payment request failed'))
       }
     } catch {
       toast.error(t('Payment request failed'))
@@ -426,22 +454,40 @@ export function SubscriptionPurchaseDialog(props: Props) {
               <p className='text-muted-foreground text-xs'>
                 {t('Select payment method')}
               </p>
-              {hasAlipayDirect && (
-                <Button
-                  className='h-auto min-h-14 w-full justify-between py-2'
-                  onClick={handlePayAlipayDirect}
-                  disabled={paying || limitReached}
-                >
-                  <span className='flex min-w-0 flex-1 flex-col items-start gap-0.5'>
-                    <span className='truncate font-medium'>
-                      {props.alipayDirectMethod?.name || t('Alipay (Official)')}
-                    </span>
-                    <span className='text-primary-foreground/80 text-left text-xs leading-4 font-normal whitespace-normal'>
-                      {t('Official direct payment, more stable')}
-                    </span>
-                  </span>
-                  <Badge variant='secondary'>{t('Recommended')}</Badge>
-                </Button>
+              {(hasWechat || hasAlipayDirect) && (
+                <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
+                  {hasWechat && (
+                    <Button
+                      variant='outline'
+                      className='h-auto min-h-14 w-full justify-start py-2'
+                      onClick={handlePayWechat}
+                      disabled={paying || limitReached}
+                    >
+                      <span className='flex min-w-0 flex-col items-start gap-0.5'>
+                        <span className='font-medium'>{t('WeChat Pay')}</span>
+                        <span className='text-muted-foreground text-xs font-normal'>
+                          {t('Scan with WeChat to pay')}
+                        </span>
+                      </span>
+                    </Button>
+                  )}
+                  {hasAlipayDirect && (
+                    <Button
+                      className='h-auto min-h-14 w-full justify-start py-2'
+                      onClick={handlePayAlipayDirect}
+                      disabled={paying || limitReached}
+                    >
+                      <span className='flex min-w-0 flex-col items-start gap-0.5'>
+                        <span className='font-medium'>
+                          {props.alipayDirectMethod?.name || t('Alipay')}
+                        </span>
+                        <span className='text-primary-foreground/80 text-xs font-normal'>
+                          {t('Pay securely with Alipay')}
+                        </span>
+                      </span>
+                    </Button>
+                  )}
+                </div>
               )}
               {(hasStripe || hasCreem || hasWaffoPancake) && (
                 <div className='grid grid-cols-2 gap-2 sm:flex'>

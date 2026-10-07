@@ -44,7 +44,20 @@ func GroupInUserUsableGroups(userGroup, groupName string) bool {
 	return ok
 }
 
+// NormalizeTokenGroup canonicalizes token group values before authorization
+// and routing. Token groups can be read from Redis caches created by older
+// versions, so whitespace and casing must not make the reserved auto group
+// fail its authorization check.
+func NormalizeTokenGroup(groupName string) string {
+	groupName = strings.TrimSpace(groupName)
+	if strings.EqualFold(groupName, "auto") {
+		return "auto"
+	}
+	return groupName
+}
+
 func IsUserTokenGroupAccessible(userGroup, groupName string) bool {
+	groupName = NormalizeTokenGroup(groupName)
 	return groupName == "auto" || GroupInUserUsableGroups(userGroup, groupName)
 }
 

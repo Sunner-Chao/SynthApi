@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -50,4 +51,23 @@ func TestManualCompleteTopUpUsesStoredQuotaForMPay(t *testing.T) {
 	require.NoError(t, DB.Where("trade_no = ?", topUp.TradeNo).First(&completed).Error)
 	require.Equal(t, common.TopUpStatusSuccess, completed.Status)
 	require.NotZero(t, completed.CompleteTime)
+}
+
+// Ordinary top-ups have no promotion date. PostgreSQL DATE columns cannot
+// accept the empty string that SQLite would otherwise silently store.
+func TestTopUpInsertNullablePromotionDay(t *testing.T) {
+	truncateTables(t)
+	for _, day := range []string{"", "2026-10-06"} {
+		order := &TopUp{TradeNo: "nullable-day-" + day, PromotionDay: day, PaymentProvider: PaymentProviderAlipayDirect, PaymentProfile: "secondary#test"}
+		require.NoError(t, order.Insert())
+		var stored sql.NullString
+		require.NoError(t, DB.Raw("SELECT promotion_day FROM top_ups WHERE id = ?", order.Id).Row().Scan(&stored))
+		require.Equal(t, day != "", stored.Valid)
+		if day != "" {
+			require.Contains(t, stored.String, day)
+		}
+		var loaded TopUp
+		require.NoError(t, DB.First(&loaded, order.Id).Error)
+		require.Equal(t, "secondary#test", loaded.PaymentProfile)
+	}
 }

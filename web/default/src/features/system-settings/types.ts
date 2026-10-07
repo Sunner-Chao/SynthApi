@@ -368,6 +368,27 @@ export type OperationsSettings = {
   'long_context_optimization.apply_to_groups': string
 }
 
+export type AlipayProfileView = {
+  id: string
+  name: string
+  enabled: boolean
+  app_id: string
+  seller_id: string
+  sandbox: boolean
+  notify_url: string
+  return_url: string
+  min_topup: number
+  private_key_configured: boolean
+  platform_public_key_configured: boolean
+  configuration_ready: boolean
+}
+
+export type AlipayProfilesResponse = {
+  success: boolean
+  message?: string
+  data: { profiles: AlipayProfileView[]; active_profile: string }
+}
+
 export type SecuritySettings = {
   ModelRequestMaxConcurrencyPerUser: number
   ModelRequestMaxConcurrencyPerToken: number

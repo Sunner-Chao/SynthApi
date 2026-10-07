@@ -96,7 +96,10 @@ def main():
     totals = previous_snapshot.get('tokens') or {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
     for row in records:
         row['quality_summary'] = {
-            'model_allowed': row.get('model') in ('claude-opus-5', 'claude-fable-5', 'gpt-5.6'),
+            'model_allowed': row.get('model') in (
+                'claude-fable-5', 'claude-fable-5-1',
+                'claude-opus-5', 'claude-opus-5-5', 'gpt-5.6',
+            ) or row.get('model', '').startswith('gpt-6'),
             'completed_response': row.get('status') == 'success' and row.get('termination_reason') in ('response.completed', 'end_turn', 'stop'),
             'token_usage_present': row.get('total_tokens') is not None,
             'session_id_present': bool(row.get('session_id')),

@@ -127,9 +127,9 @@ func chooseMPayPromotion(tx *gorm.DB, userID int, storedAmount int64, displayAmo
 	var activeWins int64
 	if !isAdmin {
 		if err := tx.Model(&model.TopUp{}).
-		Where("user_id = ? AND promotion_day = ? AND promotion_percent > 0", userID, today).
-		Where("status NOT IN ?", []string{common.TopUpStatusFailed, common.TopUpStatusExpired}).
-		Count(&activeWins).Error; err != nil {
+			Where("user_id = ? AND promotion_day = ? AND promotion_percent > 0", userID, today).
+			Where("status NOT IN ?", []string{common.TopUpStatusFailed, common.TopUpStatusExpired}).
+			Count(&activeWins).Error; err != nil {
 			return mpayPromotion{}, fmt.Errorf("failed to check daily promotion: %w", err)
 		}
 	}
@@ -273,7 +273,7 @@ func CreateMPayOrder(ctx context.Context, userID int, amount float64, paymentMet
 	}, nil
 }
 
-func createRemoteMPayOrder(ctx context.Context, localTradeNo string, amount float64, payMoney float64, paymentMethod string, notifyURL string, returnURL string, promotionParam string) (*MPayCreateResult, error) {
+func createRemoteMPayOrder(ctx context.Context, localTradeNo string, amount float64, payMoney float64, paymentMethod string, notifyURL string, returnURL string, promotionParam string, subjects ...string) (*MPayCreateResult, error) {
 	if notifyURL == "" {
 		notifyURL = setting.MPayNotifyURL
 	}
@@ -290,18 +290,27 @@ func createRemoteMPayOrder(ctx context.Context, localTradeNo string, amount floa
 		returnURL = defaultMPayReturnURL()
 	}
 
+	subject := fmt.Sprintf("SynthAPI topup %.2f", amount)
+	if len(subjects) > 0 && strings.TrimSpace(subjects[0]) != "" {
+		subject = subjects[0]
+	}
 	payload := map[string]string{
 		"pid":          setting.MPayPid,
 		"type":         normalizeMPayMethod(paymentMethod),
 		"out_trade_no": localTradeNo,
 		"notify_url":   notifyURL,
 		"return_url":   returnURL,
-		"name":         fmt.Sprintf("SynthAPI topup %.2f", amount),
+		"name":         subject,
 		"money":        strconv.FormatFloat(payMoney, 'f', 2, 64),
 		"clientip":     "",
 		"device":       "pc",
 		"param":        promotionParam,
 		"sign_type":    "MD5",
+	}
+	// Subscription checkout must open the hosted cashier so the user sees
+	// the amount/remark required by the existing WeChat receipt listener.
+	if len(subjects) > 0 {
+		payload["device"] = "jump"
 	}
 	payload["sign"] = SignMPayParams(payload, setting.MPayKey)
 

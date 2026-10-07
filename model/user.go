@@ -57,6 +57,8 @@ type User struct {
 	RegisterIP                 string         `json:"register_ip" gorm:"type:varchar(45);column:register_ip;index"`
 	CreatedAt                  int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt                int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	LastInactiveReminderAt     int64          `json:"-" gorm:"default:0;column:last_inactive_reminder_at;index"`
+	MarketingEmailOptOut       bool           `json:"-" gorm:"default:false;column:marketing_email_opt_out;index"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -533,6 +535,9 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
 // This should be called after the transaction commits successfully.
 func (user *User) FinalizeOAuthUserCreation(inviterId int) {
+	if inviterId > 0 {
+		NotifyInviteRegistration(user.Id, inviterId)
+	}
 	// 用户创建成功后，根据角色初始化边栏配置
 	var createdUser User
 	if err := DB.Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
@@ -566,13 +571,20 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 // row is the idempotency key, so repeated payment callbacks cannot duplicate
 // the inviter's quota or count.
 func GrantInviteRewardAfterPayment(tradeNo string) error {
+	_, err := grantInviteRewardAfterPayment(tradeNo)
+	return err
+}
+
+// grantInviteRewardAfterPayment reports whether this payment newly settled the
+// one-time invited-user reward. Callers use that result for one-time notices.
+func grantInviteRewardAfterPayment(tradeNo string) (bool, error) {
 	if !common.AffiliateRewardAfterPayment || common.QuotaForInviter <= 0 || tradeNo == "" {
-		return nil
+		return false, nil
 	}
 
 	topUp := GetTopUpByTradeNo(tradeNo)
 	if topUp == nil || topUp.Status != common.TopUpStatusSuccess || topUp.Money < common.AffiliateRewardMinPayment {
-		return nil
+		return false, nil
 	}
 
 	var inviterID int
@@ -612,13 +624,13 @@ func GrantInviteRewardAfterPayment(tradeNo string) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if inviterID != 0 {
 		RecordLog(inviterID, LogTypeSystem, fmt.Sprintf("邀请用户完成充值，赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 		RecordLog(topUp.UserId, LogTypeSystem, "邀请奖励已在充值完成后结算")
 	}
-	return nil
+	return inviterID != 0, nil
 }
 
 func (user *User) Update(updatePassword bool) error {
@@ -1123,7 +1135,7 @@ func GetRootUser() (user *User) {
 }
 
 func UpdateUserLastLoginAt(id int) {
-	if err := DB.Model(&User{}).Where("id = ?", id).Update("last_login_at", common.GetTimestamp()).Error; err != nil {
+	if err := DB.Model(&User{}).Where("id = ?", id).Updates(map[string]interface{}{"last_login_at": common.GetTimestamp(), "last_inactive_reminder_at": 0}).Error; err != nil {
 		common.SysLog("failed to update user last_login_at: " + err.Error())
 	}
 }

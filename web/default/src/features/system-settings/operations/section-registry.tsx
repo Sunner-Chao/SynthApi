@@ -24,6 +24,7 @@ import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { LongContextOptimizationSection } from '../maintenance/long-context-optimization-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
+import { AlipayProfilesSection } from './alipay-profiles-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
@@ -175,6 +176,11 @@ const OPERATIONS_SECTIONS = [
         }}
       />
     ),
+  },
+  {
+    id: 'alipay',
+    titleKey: 'Alipay payment profiles',
+    build: () => <AlipayProfilesSection />,
   },
   {
     id: 'update-checker',

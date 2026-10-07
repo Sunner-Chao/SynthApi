@@ -1077,9 +1077,6 @@ func ListRechargeBenefitClaims(pageInfo *common.PageInfo, status string) ([]Rech
 }
 
 func ReviewRechargeBenefitClaim(claimID int, adminID int, grant bool, remark string) (*RechargeBenefitClaim, error) {
-	if !setting.IsRechargeBenefitEnabled() {
-		return nil, errors.New("千元充能活动当前未开放")
-	}
 	if claimID <= 0 || adminID <= 0 {
 		return nil, errors.New("invalid claim or admin id")
 	}

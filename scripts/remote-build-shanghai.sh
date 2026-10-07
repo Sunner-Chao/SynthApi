@@ -16,6 +16,7 @@ BUILD_CPU_QUOTA="${SYNTHAPI_BUILD_CPU_QUOTA:-200%}"
 BUILD_MEMORY_HIGH="${SYNTHAPI_BUILD_MEMORY_HIGH:-1200M}"
 BUILD_MEMORY_MAX="${SYNTHAPI_BUILD_MEMORY_MAX:-1500M}"
 GO_BUILD_PARALLELISM="${SYNTHAPI_GO_BUILD_PARALLELISM:-2}"
+NODE_OPTIONS_VALUE="${SYNTHAPI_NODE_OPTIONS:---max-old-space-size=3072}"
 BUILD_USER="${SYNTHAPI_BUILD_USER:-ubuntu}"
 BUILD_VERSION="${SYNTHAPI_BUILD_VERSION:-$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)}"
 BUILD_VERSION="$(printf '%s' "$BUILD_VERSION" | tr -cs 'A-Za-z0-9._+-' '-')"
@@ -77,6 +78,7 @@ Environment:
   SYNTHAPI_BUILD_MEMORY_HIGH systemd MemoryHigh on Shanghai (default: 1200M)
   SYNTHAPI_BUILD_MEMORY_MAX  systemd MemoryMax on Shanghai (default: 1500M)
   SYNTHAPI_GO_BUILD_PARALLELISM Go build -p value (default: 2)
+  SYNTHAPI_NODE_OPTIONS      Node.js memory flags for the frontend build (default: --max-old-space-size=3072)
   SYNTHAPI_BUILD_USER        User owning remote build artifacts (default: ubuntu)
   SYNTHAPI_BUILD_VERSION     Version embedded in the Go binary (default: local git describe)
 EOF
@@ -143,7 +145,7 @@ build_remote() {
     -p "MemoryHigh=$BUILD_MEMORY_HIGH" \
     -p "MemoryMax=$BUILD_MEMORY_MAX" \
     sudo -u "$BUILD_USER" -H bash -s -- \
-    "$REMOTE_DIR" "$remote_output_dir" "$artifact_name" "$INSTALL_DEPS" "$GO_BUILD_PARALLELISM" "$BUILD_VERSION" <<'REMOTE_BUILD'
+    "$REMOTE_DIR" "$remote_output_dir" "$artifact_name" "$INSTALL_DEPS" "$GO_BUILD_PARALLELISM" "$BUILD_VERSION" "$NODE_OPTIONS_VALUE" <<'REMOTE_BUILD'
 set -euo pipefail
 
 project_root="$1"
@@ -152,9 +154,10 @@ artifact_name="$3"
 install_deps="$4"
 go_build_parallelism="$5"
 build_version="$6"
+node_options="${7:---max-old-space-size=3072}"
 
 export PATH="$HOME/.bun/bin:/usr/local/go/bin:$PATH"
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1024}"
+export NODE_OPTIONS="$node_options"
 export GOMAXPROCS="${GOMAXPROCS:-2}"
 
 mkdir -p "$output_dir"

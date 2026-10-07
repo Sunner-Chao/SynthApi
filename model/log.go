@@ -260,8 +260,12 @@ func buildPaymentAuditAdminInfo(audit PaymentAuditInfo) map[string]interface{} {
 
 func RecordPaymentLog(userId int, content string, audit PaymentAuditInfo) {
 	if audit.Event == "topup_completed" && audit.TradeNo != "" {
-		if err := GrantInviteRewardAfterPayment(audit.TradeNo); err != nil {
+		inviteRewardSettled, err := grantInviteRewardAfterPayment(audit.TradeNo)
+		if err != nil {
 			common.SysLog(fmt.Sprintf("failed to settle affiliate reward for trade %s: %v", audit.TradeNo, err))
+		}
+		if inviteRewardSettled {
+			NotifyInviteePayment(audit.TradeNo)
 		}
 		if err := SettleAffiliateMilestoneRebate(audit.TradeNo); err != nil {
 			common.SysLog(fmt.Sprintf("failed to settle affiliate milestone rebate for trade %s: %v", audit.TradeNo, err))

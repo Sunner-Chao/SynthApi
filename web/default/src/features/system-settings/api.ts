@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import type {
   AlipayDirectConfigRequest,
+  AlipayProfilesResponse,
   ConfirmPaymentComplianceResponse,
   DeleteLogsResponse,
   FetchUpstreamRatiosRequest,
@@ -55,6 +56,28 @@ export async function saveAlipayDirectConfig(
     request,
     { skipBusinessError: true } as Record<string, unknown>
   )
+  return res.data
+}
+
+export type AlipayProfileConfigRequest = AlipayDirectConfigRequest & {
+  id: string
+  name: string
+}
+
+export async function getAlipayProfiles() {
+  const res = await api.get<AlipayProfilesResponse>('/api/option/alipay-profiles')
+  return res.data
+}
+
+export async function saveAlipayProfile(request: AlipayProfileConfigRequest) {
+  const res = await api.post('/api/option/alipay-profiles/save', request, {
+    skipBusinessError: true,
+  })
+  return res.data
+}
+
+export async function activateAlipayProfile(id: string) {
+  const res = await api.post('/api/option/alipay-profiles/activate', { id })
   return res.data
 }
 

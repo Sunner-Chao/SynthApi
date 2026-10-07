@@ -69,7 +69,18 @@ func SupportAgentConversationDelete(c *gin.Context) {
 	supportAgentProxy(c, "/v1/conversations/"+id, false)
 }
 func SupportAgentFeedback(c *gin.Context)      { supportAgentProxy(c, "/v1/feedback", false) }
-func SupportAgentTicketRequest(c *gin.Context) { supportAgentProxy(c, "/v1/tickets", false) }
+func SupportAgentTicketRequest(c *gin.Context) {
+	supportAgentProxyWithData(c, "/v1/tickets", false, func(data interface{}) interface{} {
+		if root, ok := data.(map[string]interface{}); ok {
+			if ticket, ok := root["ticket"].(map[string]interface{}); ok {
+				if ticketID := strings.TrimSpace(fmt.Sprint(ticket["id"])); ticketID != "" {
+					model.NotifySupportHandoff(ticketID, c.GetInt("id"), "用户请求人工客服处理")
+				}
+			}
+		}
+		return data
+	})
+}
 func SupportAgentTicketNote(c *gin.Context)    { supportAgentTicket(c, "note") }
 func SupportAgentTicketClose(c *gin.Context)   { supportAgentTicket(c, "close") }
 

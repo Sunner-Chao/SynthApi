@@ -62,8 +62,26 @@ pruned_count=0
 export_one() {
   local source="$1" meta model session_id request_id start_time end_time provider
   meta="$(jq -er '
-    select((.model // "") | (startswith("gpt-5.6") or startswith("gpt-6")))
-    | select(.status == "success" and .termination_reason == "response.completed")
+    select((.model // "") as $model | (
+      # Keep gpt-6.1-sol explicit so this model remains covered if the
+      # broader GPT-6 naming convention changes later.
+      ($model == "gpt-6.1-sol") or
+      ($model | startswith("gpt-5.6")) or
+      ($model | startswith("gpt-6")) or
+      ($model == "claude-fable-5") or
+      ($model == "claude-fable-5-1") or
+      ($model == "claude-opus-5") or
+      ($model == "claude-opus-5-5")
+    ))
+    | select(.status == "success")
+    | select(
+        (.termination_reason == "response.completed") or
+        (.termination_reason == "end_turn") or
+        (.termination_reason == "stop") or
+        (.termination_reason == "[DONE]") or
+        (.termination_reason == "message_stop") or
+        (.termination_reason == "response_closed")
+      )
     | select((.request | type) == "object" and (.response | type) == "object")
     | [.model, .session_id, .request_id, .start_time, .end_time, .provider]
     | @tsv

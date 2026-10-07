@@ -97,6 +97,7 @@ type alipayLocalOrder struct {
 	Status          string
 	Amount          float64
 	Money           float64
+	ProfileID       string
 }
 
 type alipayTradeQueryResponse struct {
@@ -112,7 +113,7 @@ type alipayTradeQueryResponse struct {
 }
 
 func AlipayDirectGateway() string {
-	return alipayDirectGateway(setting.GetAlipayDirectConfig())
+	return alipayDirectGateway(setting.GetActiveAlipayDirectConfig())
 }
 
 func alipayDirectGateway(config setting.AlipayDirectConfig) string {
@@ -123,7 +124,7 @@ func alipayDirectGateway(config setting.AlipayDirectConfig) string {
 }
 
 func IsAlipayDirectConfigured() bool {
-	return validateAlipayConfiguration(setting.GetAlipayDirectConfig()) == nil
+	return validateAlipayConfiguration(setting.GetActiveAlipayDirectConfig()) == nil
 }
 
 func hasAlipayDirectConfiguration(config setting.AlipayDirectConfig) bool {
@@ -160,11 +161,176 @@ func SaveAlipayDirectConfig(config AlipayDirectConfig) error {
 		}
 	}
 
-	return model.UpdateOptionsBulk(setting.AlipayDirectConfigToOptions(config))
+	profiles, active := setting.GetAlipayProfiles()
+	found := false
+	for i := range profiles {
+		if profiles[i].ID == setting.LegacyAlipayProfileID {
+			if !alipayConfigsEqual(profiles[i].Config, config) {
+				appendAlipayConfigVersion(&profiles[i])
+			}
+			profiles[i].Config = config
+			found = true
+		}
+	}
+	if !found {
+		profiles = append([]setting.AlipayProfile{{ID: setting.LegacyAlipayProfileID, Name: "现有支付宝配置", Config: config}}, profiles...)
+	}
+	profilesJSON, err := setting.AlipayProfilesToJSON(profiles)
+	if err != nil {
+		return err
+	}
+	options := setting.AlipayDirectConfigToOptions(config)
+	options[setting.AlipayProfilesOptionKey] = profilesJSON
+	options[setting.AlipayActiveProfileOptionKey] = active
+	return model.UpdateOptionsBulk(options)
+}
+
+func alipayConfigsEqual(left, right setting.AlipayDirectConfig) bool {
+	leftJSON, leftErr := common.Marshal(left)
+	rightJSON, rightErr := common.Marshal(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
+}
+
+func appendAlipayConfigVersion(profile *setting.AlipayProfile) {
+	versionID := setting.AlipayProfileVersionID(*profile)
+	for _, version := range profile.Versions {
+		if version.ID == versionID {
+			return
+		}
+	}
+	profile.Versions = append(profile.Versions, setting.AlipayProfileCredential{ID: versionID, Config: profile.Config})
+}
+
+type AlipayProfileView struct {
+	ID                    string  `json:"id"`
+	Name                  string  `json:"name"`
+	Enabled               bool    `json:"enabled"`
+	AppID                 string  `json:"app_id"`
+	SellerID              string  `json:"seller_id"`
+	Sandbox               bool    `json:"sandbox"`
+	NotifyURL             string  `json:"notify_url"`
+	ReturnURL             string  `json:"return_url"`
+	MinTopUp              float64 `json:"min_topup"`
+	PrivateKeyConfigured  bool    `json:"private_key_configured"`
+	PlatformKeyConfigured bool    `json:"platform_public_key_configured"`
+	ConfigurationReady    bool    `json:"configuration_ready"`
+}
+
+func alipayProfileView(profile setting.AlipayProfile) AlipayProfileView {
+	config := profile.Config
+	return AlipayProfileView{
+		ID: profile.ID, Name: profile.Name, Enabled: config.Enabled,
+		AppID: config.AppID, SellerID: config.SellerID, Sandbox: config.Sandbox,
+		NotifyURL: config.NotifyURL, ReturnURL: config.ReturnURL, MinTopUp: config.MinTopUp,
+		PrivateKeyConfigured:  strings.TrimSpace(config.PrivateKey) != "",
+		PlatformKeyConfigured: strings.TrimSpace(config.PlatformPublicKey) != "",
+		ConfigurationReady:    validateAlipayConfiguration(config) == nil,
+	}
+}
+
+func GetAlipayProfileViews() ([]AlipayProfileView, string) {
+	profiles, active := setting.GetAlipayProfiles()
+	views := make([]AlipayProfileView, 0, len(profiles))
+	for _, profile := range profiles {
+		views = append(views, alipayProfileView(profile))
+	}
+	return views, active
+}
+
+func SaveAlipayProfile(id, name string, config AlipayDirectConfig) error {
+	alipayConfigSaveMu.Lock()
+	defer alipayConfigSaveMu.Unlock()
+
+	if !operation_setting.IsPaymentComplianceConfirmed() && config.Enabled {
+		return errors.New("启用支付宝支付前必须先确认支付合规条款")
+	}
+	profiles, active := setting.GetAlipayProfiles()
+	id = strings.TrimSpace(id)
+	if id == "" {
+		id = "secondary"
+	}
+	if id != setting.LegacyAlipayProfileID && id != "secondary" {
+		return errors.New("支付宝配置档案标识无效")
+	}
+	var existing *setting.AlipayProfile
+	for i := range profiles {
+		if profiles[i].ID == id {
+			existing = &profiles[i]
+			break
+		}
+	}
+	if existing == nil {
+		if len(profiles) >= 2 {
+			return errors.New("最多保留两套支付宝收款配置")
+		}
+		profiles = append(profiles, setting.AlipayProfile{ID: id, Name: name})
+		existing = &profiles[len(profiles)-1]
+	}
+	if strings.TrimSpace(config.PrivateKey) == "" {
+		config.PrivateKey = existing.Config.PrivateKey
+	}
+	if strings.TrimSpace(config.PlatformPublicKey) == "" {
+		config.PlatformPublicKey = existing.Config.PlatformPublicKey
+	}
+	if config.MinTopUp <= 0 {
+		config.MinTopUp = 1
+	}
+	if config.Enabled {
+		if err := validateAlipayConfiguration(config); err != nil {
+			return err
+		}
+	}
+	if !alipayConfigsEqual(existing.Config, config) && existing.Config.AppID != "" {
+		appendAlipayConfigVersion(existing)
+	}
+	existing.Name = strings.TrimSpace(name)
+	if existing.Name == "" {
+		existing.Name = id
+	}
+	existing.Config = config
+	profilesJSON, err := setting.AlipayProfilesToJSON(profiles)
+	if err != nil {
+		return err
+	}
+	options := map[string]string{
+		setting.AlipayProfilesOptionKey:      profilesJSON,
+		setting.AlipayActiveProfileOptionKey: active,
+	}
+	if id == setting.LegacyAlipayProfileID {
+		for key, value := range setting.AlipayDirectConfigToOptions(config) {
+			options[key] = value
+		}
+	}
+	return model.UpdateOptionsBulk(options)
+}
+
+func ActivateAlipayProfile(id string) error {
+	alipayConfigSaveMu.Lock()
+	defer alipayConfigSaveMu.Unlock()
+
+	profiles, _ := setting.GetAlipayProfiles()
+	id = strings.TrimSpace(id)
+	var target *setting.AlipayProfile
+	for i := range profiles {
+		if profiles[i].ID == id {
+			target = &profiles[i]
+			break
+		}
+	}
+	if target == nil {
+		return errors.New("支付宝配置档案不存在")
+	}
+	if !target.Config.Enabled {
+		return errors.New("该支付宝配置未启用")
+	}
+	if err := validateAlipayConfiguration(target.Config); err != nil {
+		return err
+	}
+	return model.UpdateOption(setting.AlipayActiveProfileOptionKey, id)
 }
 
 func IsAlipayDirectTopUpEnabled() bool {
-	return isAlipayDirectTopUpEnabled(setting.GetAlipayDirectConfig())
+	return isAlipayDirectTopUpEnabled(setting.GetActiveAlipayDirectConfig())
 }
 
 func isAlipayDirectTopUpEnabled(config setting.AlipayDirectConfig) bool {
@@ -175,7 +341,7 @@ func isAlipayDirectTopUpEnabled(config setting.AlipayDirectConfig) bool {
 }
 
 func GetAlipayDirectMinTopUp() float64 {
-	return getAlipayDirectMinTopUp(setting.GetAlipayDirectConfig())
+	return getAlipayDirectMinTopUp(setting.GetActiveAlipayDirectConfig())
 }
 
 func getAlipayDirectMinTopUp(config setting.AlipayDirectConfig) float64 {
@@ -191,7 +357,8 @@ func getAlipayDirectMinTopUp(config setting.AlipayDirectConfig) float64 {
 }
 
 func CreateAlipayDirectTopUpOrder(ctx context.Context, userID int, amount float64) (*AlipayDirectOrder, error) {
-	config := setting.GetAlipayDirectConfig()
+	profile := setting.GetActiveAlipayProfile()
+	config := profile.Config
 	canonicalAmount, err := NormalizePaymentTopUpAmount(amount)
 	if err != nil {
 		return nil, err
@@ -231,6 +398,7 @@ func CreateAlipayDirectTopUpOrder(ctx context.Context, userID int, amount float6
 		Currency:        "CNY",
 		PaymentMethod:   model.PaymentMethodAlipay,
 		PaymentProvider: model.PaymentProviderAlipayDirect,
+		PaymentProfile:  setting.AlipayProfileVersionID(profile),
 		CreateTime:      common.GetTimestamp(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -245,7 +413,8 @@ func CreateAlipayDirectTopUpOrder(ctx context.Context, userID int, amount float6
 }
 
 func CreateAlipayDirectSubscriptionOrder(ctx context.Context, userID int, planID int) (*AlipayDirectOrder, error) {
-	config := setting.GetAlipayDirectConfig()
+	profile := setting.GetActiveAlipayProfile()
+	config := profile.Config
 	if !isAlipayDirectTopUpEnabled(config) {
 		return nil, errors.New("支付宝官方支付未配置或未启用")
 	}
@@ -289,6 +458,7 @@ func CreateAlipayDirectSubscriptionOrder(ctx context.Context, userID int, planID
 		TradeNo:         tradeNo,
 		PaymentMethod:   model.PaymentMethodAlipay,
 		PaymentProvider: model.PaymentProviderAlipayDirect,
+		PaymentProfile:  setting.AlipayProfileVersionID(profile),
 		CreateTime:      common.GetTimestamp(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -333,7 +503,18 @@ func createAlipayPagePayURL(config setting.AlipayDirectConfig, tradeNo string, a
 }
 
 func HandleAlipayDirectNotification(ctx context.Context, params map[string]string, callerIP string) error {
-	config := setting.GetAlipayDirectConfig()
+	tradeNo := strings.TrimSpace(params["out_trade_no"])
+	if tradeNo == "" {
+		return errors.New("支付宝通知缺少 out_trade_no")
+	}
+	local, err := loadAlipayLocalOrder(tradeNo)
+	if err != nil {
+		return err
+	}
+	config, err := alipayConfigForOrder(local)
+	if err != nil {
+		return err
+	}
 	if err := validateAlipayConfiguration(config); err != nil {
 		return errors.New("支付宝官方支付未配置")
 	}
@@ -351,14 +532,6 @@ func HandleAlipayDirectNotification(ctx context.Context, params map[string]strin
 		return errors.New("支付宝通知 seller_id 不匹配")
 	}
 
-	tradeNo := strings.TrimSpace(params["out_trade_no"])
-	if tradeNo == "" {
-		return errors.New("支付宝通知缺少 out_trade_no")
-	}
-	local, err := loadAlipayLocalOrder(tradeNo)
-	if err != nil {
-		return err
-	}
 	if err := validateAlipayAmount(local.Money, params["total_amount"]); err != nil {
 		return err
 	}
@@ -414,7 +587,15 @@ func HandleAlipayDirectNotification(ctx context.Context, params map[string]strin
 }
 
 func QueryAndCompleteAlipayDirectOrder(ctx context.Context, tradeNo string, callerIP string) (*AlipayDirectOrder, error) {
-	return queryAndCompleteAlipayDirectOrder(ctx, setting.GetAlipayDirectConfig(), tradeNo, callerIP)
+	local, err := loadAlipayLocalOrder(strings.TrimSpace(tradeNo))
+	if err != nil {
+		return nil, err
+	}
+	config, err := alipayConfigForOrder(local)
+	if err != nil {
+		return nil, err
+	}
+	return queryAndCompleteAlipayDirectOrder(ctx, config, tradeNo, callerIP)
 }
 
 func queryAndCompleteAlipayDirectOrder(ctx context.Context, config setting.AlipayDirectConfig, tradeNo string, callerIP string) (*AlipayDirectOrder, error) {
@@ -503,7 +684,18 @@ func queryAndCompleteAlipayDirectOrderWithRefund(ctx context.Context, config set
 }
 
 func ProcessAlipayDirectReturn(ctx context.Context, params map[string]string, callerIP string) (*AlipayDirectOrder, error) {
-	config := setting.GetAlipayDirectConfig()
+	tradeNo := strings.TrimSpace(params["out_trade_no"])
+	if tradeNo == "" {
+		return nil, errors.New("支付宝同步返回缺少 out_trade_no")
+	}
+	local, err := loadAlipayLocalOrder(tradeNo)
+	if err != nil {
+		return nil, err
+	}
+	config, err := alipayConfigForOrder(local)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateAlipayConfiguration(config); err != nil {
 		return nil, errors.New("支付宝官方支付未配置")
 	}
@@ -519,11 +711,19 @@ func ProcessAlipayDirectReturn(ctx context.Context, params map[string]string, ca
 	if sellerID := strings.TrimSpace(params["seller_id"]); sellerID != "" && sellerID != strings.TrimSpace(config.SellerID) {
 		return nil, errors.New("支付宝同步返回 seller_id 不匹配")
 	}
-	tradeNo := strings.TrimSpace(params["out_trade_no"])
-	if tradeNo == "" {
-		return nil, errors.New("支付宝同步返回缺少 out_trade_no")
-	}
 	return queryAndCompleteAlipayDirectOrder(ctx, config, tradeNo, callerIP)
+}
+
+func alipayConfigForOrder(local *alipayLocalOrder) (setting.AlipayDirectConfig, error) {
+	profileID := strings.TrimSpace(local.ProfileID)
+	if profileID == "" {
+		profileID = setting.LegacyAlipayProfileID
+	}
+	profile, ok := setting.GetAlipayProfileVersion(profileID)
+	if !ok {
+		return setting.AlipayDirectConfig{}, errors.New("支付宝订单对应的收款配置不存在")
+	}
+	return profile.Config, nil
 }
 
 func GetAlipayDirectOrderForUser(tradeNo string, userID int) (*AlipayDirectOrder, error) {
@@ -732,6 +932,7 @@ func loadAlipayLocalOrder(tradeNo string) (*alipayLocalOrder, error) {
 			Kind:            alipayOrderKindSub,
 			Status:          subscriptionOrder.Status,
 			Money:           subscriptionOrder.Money,
+			ProfileID:       subscriptionOrder.PaymentProfile,
 		}, nil
 	}
 	if topUp := model.GetTopUpByTradeNo(tradeNo); topUp != nil {
@@ -746,6 +947,7 @@ func loadAlipayLocalOrder(tradeNo string) (*alipayLocalOrder, error) {
 			Status:          topUp.Status,
 			Amount:          topUp.DisplayAmount,
 			Money:           topUp.Money,
+			ProfileID:       topUp.PaymentProfile,
 		}, nil
 	}
 	return nil, errAlipayOrderNotFound
@@ -1009,7 +1211,7 @@ func signAlipayContent(canonical string, privateKey string) (string, error) {
 }
 
 func VerifyAlipayDirectParams(params map[string]string) error {
-	config := setting.GetAlipayDirectConfig()
+	config := setting.GetActiveAlipayDirectConfig()
 	return verifyAlipayDirectParams(params, config.PlatformPublicKey)
 }
 

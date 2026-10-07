@@ -34,6 +34,15 @@ over completing a locally authorized build.
 
 ## Overview
 
+## Project-specific operating context
+
+Before starting a SynthAPI or SightFlow task, read the maintained context file
+`/home/ubuntu/.codex/project-context/SynthAPI.md`. It records the production /
+Shanghai build boundary, current model-channel rules, support-agent and RAG
+architecture, mail and R2 constraints, and the current verification backlog.
+Keep that file free of credentials and update it only with objective,
+non-sensitive project facts.
+
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
 
 ## Tech Stack

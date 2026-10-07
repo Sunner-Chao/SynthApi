@@ -191,6 +191,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
 		"enable_xpay_topup":                enableXPay,
 		"enable_mpay_topup":                enableMPay,
+		"enable_wechat_subscription":       enableMPay,
 		"enable_alipay_direct_topup":       enableAlipayDirect,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,

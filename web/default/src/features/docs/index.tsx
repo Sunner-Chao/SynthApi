@@ -1580,14 +1580,14 @@ function TopicContent({
         </p>
         <div className='docs-learning-actions'>
           <a
-            href='/tutorials/synthapi-cc-switch-v2.mp4'
+            href='/tutorials/synthapi-cc-switch-v5-gpt6sol.mp4'
             target='_blank'
             rel='noreferrer'
           >
             <Video />
             打开视频教程 <ExternalLink />
           </a>
-          <a href='/tutorials/synthapi-cc-switch-v2.docx' download>
+          <a href='/tutorials/synthapi-cc-switch-v5-gpt6sol.docx' download>
             <BookOpen />
             下载图文教程
           </a>
@@ -1626,7 +1626,7 @@ function TopicContent({
           <video
             controls
             preload='metadata'
-            src='/tutorials/synthapi-cc-switch-v2.mp4'
+            src='/tutorials/synthapi-cc-switch-v5-gpt6sol.mp4'
           />
         </div>
         <div className='docs-support-callout'>

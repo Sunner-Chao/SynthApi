@@ -167,14 +167,14 @@ export function SubscriptionPlansCard({
       (method) => method.provider === PAYMENT_PROVIDERS.ALIPAY_DIRECT
     )
     if (configured) {
-      return { ...configured, name: t('Alipay (Official)') }
+      return { ...configured, name: t('Alipay') }
     }
     if (!topupInfo?.enable_alipay_direct_topup) return undefined
 
     return {
       type: PAYMENT_TYPES.ALIPAY,
       provider: PAYMENT_PROVIDERS.ALIPAY_DIRECT,
-      name: t('Alipay (Official)'),
+      name: t('Alipay'),
       min_topup: topupInfo.alipay_direct_min_topup,
     }
   }, [t, topupInfo])
@@ -902,6 +902,7 @@ export function SubscriptionPlansCard({
         enableOnlineTopUp={enableOnlineTopUp}
         epayMethods={epayMethods}
         alipayDirectMethod={alipayDirectMethod}
+        enableWechatSubscription={topupInfo?.enable_wechat_subscription}
         userQuota={userQuota}
         onPurchaseSuccess={refreshUserAccessState}
         purchaseLimit={

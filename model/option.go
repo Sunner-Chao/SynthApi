@@ -247,9 +247,14 @@ func loadOptionsFromDatabase() {
 		return
 	}
 	alipayValues := make(map[string]string)
+	alipayProfileValues := make(map[string]string)
 	for _, option := range options {
 		if setting.IsAlipayDirectOptionKey(option.Key) {
 			alipayValues[option.Key] = option.Value
+			continue
+		}
+		if option.Key == setting.AlipayProfilesOptionKey || option.Key == setting.AlipayActiveProfileOptionKey {
+			alipayProfileValues[option.Key] = option.Value
 			continue
 		}
 		if isDisplayQuotaOption(option.Key) {
@@ -261,7 +266,7 @@ func loadOptionsFromDatabase() {
 		}
 	}
 	for _, option := range options {
-		if setting.IsAlipayDirectOptionKey(option.Key) {
+		if setting.IsAlipayDirectOptionKey(option.Key) || option.Key == setting.AlipayProfilesOptionKey || option.Key == setting.AlipayActiveProfileOptionKey {
 			continue
 		}
 		if !isDisplayQuotaOption(option.Key) {
@@ -273,6 +278,7 @@ func loadOptionsFromDatabase() {
 		}
 	}
 	publishAlipayOptions(alipayValues)
+	publishAlipayProfileOptions(alipayProfileValues)
 }
 
 func SyncOptions(frequency int) {
@@ -348,9 +354,14 @@ func UpdateOptionsBulk(values map[string]string) error {
 		return err
 	}
 	alipayValues := make(map[string]string)
+	alipayProfileValues := make(map[string]string)
 	for k, v := range values {
 		if setting.IsAlipayDirectOptionKey(k) {
 			alipayValues[k] = v
+			continue
+		}
+		if k == setting.AlipayProfilesOptionKey || k == setting.AlipayActiveProfileOptionKey {
+			alipayProfileValues[k] = v
 			continue
 		}
 		if err := updateOptionMap(k, v); err != nil {
@@ -360,7 +371,36 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(alipayValues) > 0 {
 		publishAlipayOptions(alipayValues)
 	}
+	if len(alipayProfileValues) > 0 {
+		publishAlipayProfileOptions(alipayProfileValues)
+	}
 	return nil
+}
+
+func publishAlipayProfileOptions(values map[string]string) {
+	profilesJSON := values[setting.AlipayProfilesOptionKey]
+	active := values[setting.AlipayActiveProfileOptionKey]
+	if profilesJSON == "" {
+		common.OptionMapRWMutex.RLock()
+		profilesJSON = common.OptionMap[setting.AlipayProfilesOptionKey]
+		common.OptionMapRWMutex.RUnlock()
+	}
+	if active == "" {
+		common.OptionMapRWMutex.RLock()
+		active = common.OptionMap[setting.AlipayActiveProfileOptionKey]
+		common.OptionMapRWMutex.RUnlock()
+	}
+	if profilesJSON != "" {
+		if err := setting.AlipayProfilesFromOptions(profilesJSON, active); err != nil {
+			common.SysLog("failed to publish Alipay profiles: " + err.Error())
+			return
+		}
+	}
+	common.OptionMapRWMutex.Lock()
+	for key, value := range values {
+		common.OptionMap[key] = value
+	}
+	common.OptionMapRWMutex.Unlock()
 }
 
 func publishAlipayOptions(values map[string]string) {
@@ -401,6 +441,18 @@ func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 	common.OptionMap[key] = value
+	if key == setting.AlipayProfilesOptionKey || key == setting.AlipayActiveProfileOptionKey {
+		profilesJSON := common.OptionMap[setting.AlipayProfilesOptionKey]
+		active := common.OptionMap[setting.AlipayActiveProfileOptionKey]
+		if profilesJSON != "" {
+			if err := setting.AlipayProfilesFromOptions(profilesJSON, active); err != nil {
+				return err
+			}
+		} else if key == setting.AlipayActiveProfileOptionKey {
+			setting.SetAlipayActiveProfile(active)
+		}
+		return nil
+	}
 	if setting.IsAlipayDirectOptionKey(key) {
 		config := setting.AlipayDirectConfigFromOptions(
 			setting.GetAlipayDirectConfig(),

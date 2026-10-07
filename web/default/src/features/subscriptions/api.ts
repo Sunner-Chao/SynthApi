@@ -146,6 +146,15 @@ export async function paySubscriptionBalance(
   return res.data
 }
 
+export async function paySubscriptionWechat(
+  data: SubscriptionPayRequest
+): Promise<SubscriptionPayResponse> {
+  const res = await api.post('/api/subscription/mpay/pay', data, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
 export async function paySubscriptionAlipayDirect(
   data: SubscriptionPayRequest
 ): Promise<SubscriptionPayResponse> {

@@ -153,6 +153,8 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
+	service.StartInactiveUserReminderTask()
+	model.StartBusinessEmailRetryTask()
 
 	// XPay v3.1 order status polling for automatic top-up confirmation
 	service.StartXPayOrderPollingTask()

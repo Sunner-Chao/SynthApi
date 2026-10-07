@@ -164,7 +164,7 @@ export function getPaymentMethodDisplayName(
   translate: (key: string) => string
 ): string {
   if (method.provider === PAYMENT_PROVIDERS.ALIPAY_DIRECT) {
-    return translate('Alipay (Official)')
+    return translate('Alipay')
   }
   if (method.provider === PAYMENT_PROVIDERS.MPAY) {
     return method.type === PAYMENT_TYPES.WECHAT
@@ -185,15 +185,16 @@ export function getPaymentMethodDisplayName(
  */
 export function sortPaymentMethods(methods: PaymentMethod[]): PaymentMethod[] {
   const priority = (method: PaymentMethod) => {
-    if (isAlipayDirectPayment(method)) return 0
-    if (method.recommended) return 1
+    if (method.type === PAYMENT_TYPES.WECHAT) return 0
+    if (isAlipayDirectPayment(method)) return 1
+    if (method.recommended) return 2
     if (
       method.provider === PAYMENT_PROVIDERS.MPAY ||
       method.provider === PAYMENT_PROVIDERS.XPAY
     ) {
-      return 3
+      return 4
     }
-    return 2
+    return 3
   }
 
   return methods

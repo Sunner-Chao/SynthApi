@@ -57,6 +57,14 @@ func TestAutoTokenGroupIsAccessibleWithoutExplicitGroupPermission(t *testing.T) 
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
 
 	assert.True(t, IsUserTokenGroupAccessible("default", "auto"))
+	assert.True(t, IsUserTokenGroupAccessible("default", " auto "))
+	assert.True(t, IsUserTokenGroupAccessible("default", "AUTO"))
 	assert.True(t, IsUserTokenGroupAccessible("default", "default"))
 	assert.False(t, IsUserTokenGroupAccessible("default", "vip"))
+}
+
+func TestNormalizeTokenGroup(t *testing.T) {
+	assert.Equal(t, "auto", NormalizeTokenGroup(" auto "))
+	assert.Equal(t, "auto", NormalizeTokenGroup("AUTO"))
+	assert.Equal(t, "Plus专线", NormalizeTokenGroup(" Plus专线 "))
 }

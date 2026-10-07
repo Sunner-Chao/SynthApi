@@ -24,6 +24,7 @@ type TopUp struct {
 	Currency         string  `json:"currency" gorm:"type:varchar(8);default:''"`
 	PaymentMethod    string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider  string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	PaymentProfile   string  `json:"-" gorm:"type:varchar(64);index"`
 	PromotionScene   string  `json:"promotion_scene" gorm:"type:varchar(16);index"`
 	PromotionPercent int     `json:"promotion_percent" gorm:"default:0"`
 	PromotionQuota   int64   `json:"promotion_quota" gorm:"default:0"`
@@ -69,9 +70,15 @@ var (
 )
 
 func (topUp *TopUp) Insert() error {
-	var err error
-	err = DB.Create(topUp).Error
-	return err
+	// PostgreSQL rejects an empty string in the nullable promotion_day DATE
+	// column. Most payment providers do not use promotion metadata, so leave
+	// the column out of INSERTs when it has no value and let the database store
+	// NULL. This keeps ordinary and direct-Alipay orders portable across the
+	// supported databases.
+	if strings.TrimSpace(topUp.PromotionDay) == "" {
+		return DB.Omit("promotion_day").Create(topUp).Error
+	}
+	return DB.Create(topUp).Error
 }
 
 func (topUp *TopUp) Update() error {

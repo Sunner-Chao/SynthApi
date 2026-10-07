@@ -143,6 +143,7 @@ func reviewRechargeBenefit(c *gin.Context, grant bool) {
 		common.ApiError(c, err)
 		return
 	}
+	model.NotifyRechargeBenefitReview(claim)
 	common.ApiSuccess(c, claim)
 }
 

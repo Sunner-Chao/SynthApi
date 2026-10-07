@@ -174,7 +174,7 @@ export function RechargeFormCard({
     fallbackPaymentMethods.push({
       type: PAYMENT_TYPES.ALIPAY,
       provider: PAYMENT_PROVIDERS.ALIPAY_DIRECT,
-      name: t('Alipay (Official)'),
+      name: t('Alipay'),
       min_topup: topupInfo.alipay_direct_min_topup || 0,
     })
   }

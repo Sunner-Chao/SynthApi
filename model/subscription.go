@@ -308,6 +308,7 @@ type SubscriptionOrder struct {
 	TradeNo         string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	PaymentProfile  string `json:"-" gorm:"type:varchar(64);index"`
 	Status          string `json:"status"`
 	CreateTime      int64  `json:"create_time"`
 	CompleteTime    int64  `json:"complete_time"`
@@ -788,7 +789,7 @@ func CompleteSubscriptionOrderWithAudit(tradeNo string, providerPayload string, 
 }
 
 func subscriptionProviderTradeNo(paymentProvider string, providerPayload string) (string, error) {
-	if paymentProvider != PaymentProviderAlipayDirect {
+	if paymentProvider != PaymentProviderAlipayDirect && paymentProvider != PaymentProviderMPay {
 		return "", nil
 	}
 	var payload map[string]string
@@ -803,7 +804,7 @@ func subscriptionProviderTradeNo(paymentProvider string, providerPayload string)
 }
 
 func validateSubscriptionProviderTradeNo(order *SubscriptionOrder, paymentProvider string, incomingProviderTradeNo string) error {
-	if paymentProvider != PaymentProviderAlipayDirect {
+	if paymentProvider != PaymentProviderAlipayDirect && paymentProvider != PaymentProviderMPay {
 		return nil
 	}
 	storedProviderTradeNo, err := subscriptionProviderTradeNo(paymentProvider, order.ProviderPayload)
@@ -818,6 +819,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 		return errors.New("invalid subscription order")
 	}
 	now := common.GetTimestamp()
+	providerTradeNo, err := subscriptionProviderTradeNo(order.PaymentProvider, order.ProviderPayload)
+	if err != nil {
+		return err
+	}
 	var topup TopUp
 	if err := tx.Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -828,8 +833,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				TradeNo:         order.TradeNo,
 				PaymentMethod:   order.PaymentMethod,
 				PaymentProvider: order.PaymentProvider,
+				PaymentProfile:  order.PaymentProfile,
+				ProviderTradeNo: providerTradeNo,
 				Currency: func() string {
-					if order.PaymentProvider == PaymentProviderAlipayDirect {
+					if order.PaymentProvider == PaymentProviderAlipayDirect || order.PaymentProvider == PaymentProviderMPay {
 						return "CNY"
 					}
 					return ""
@@ -838,7 +845,9 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				CompleteTime: now,
 				Status:       common.TopUpStatusSuccess,
 			}
-			return tx.Create(&topup).Error
+			// Non-promotional subscription audit rows store NULL in the DATE
+			// column; PostgreSQL does not accept a string zero value.
+			return tx.Omit("promotion_day").Create(&topup).Error
 		}
 		return err
 	}
@@ -856,8 +865,18 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if topup.CreateTime == 0 {
 		topup.CreateTime = order.CreateTime
 	}
+	topup.PaymentProfile = order.PaymentProfile
+	if providerTradeNo != "" {
+		if topup.ProviderTradeNo != "" && topup.ProviderTradeNo != providerTradeNo {
+			return ErrProviderTradeMismatch
+		}
+		topup.ProviderTradeNo = providerTradeNo
+	}
 	topup.CompleteTime = now
 	topup.Status = common.TopUpStatusSuccess
+	if strings.TrimSpace(topup.PromotionDay) == "" {
+		return tx.Omit("promotion_day").Save(&topup).Error
+	}
 	return tx.Save(&topup).Error
 }
 

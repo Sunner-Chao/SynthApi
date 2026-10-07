@@ -29,10 +29,10 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/status-badge'
-import { useIsAdmin } from '@/hooks/use-admin'
 import '@/features/channel-monitor/components/success-rate-strip'
 import {
   getAvailabilityRate,
@@ -167,17 +167,19 @@ export function ChannelMonitorPanel() {
                 : 'text-success'
             }
           />
-          {isAdmin && <MonitorMetric
-            icon={Users}
-            label={t('Active users')}
-            value={loading ? '' : String(summary?.active_users ?? 0)}
-            loading={loading}
-            valueClassName={
-              summary && summary.active_users > 0
-                ? 'text-primary'
-                : 'text-muted-foreground'
-            }
-          />}
+          {isAdmin && (
+            <MonitorMetric
+              icon={Users}
+              label={t('Active users')}
+              value={loading ? '' : String(summary?.active_users ?? 0)}
+              loading={loading}
+              valueClassName={
+                summary && summary.active_users > 0
+                  ? 'text-primary'
+                  : 'text-muted-foreground'
+              }
+            />
+          )}
         </div>
 
         {loading ? (
@@ -233,6 +235,7 @@ function MonitorMetric(props: {
 }
 
 function ChannelMonitorRow(props: { item: ChannelMonitorItem }) {
+  const isAdmin = useIsAdmin()
   const { t } = useTranslation()
   const item = props.item
   const meta = statusMeta(item.status, t)
@@ -268,9 +271,11 @@ function ChannelMonitorRow(props: { item: ChannelMonitorItem }) {
         <div className='text-muted-foreground mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]'>
           <span>{t('{{count}} models', { count: item.model_count })}</span>
           <span>{t('{{count}} channel(s)', { count: channelCount })}</span>
-          {isAdmin && <span>
-            {t('{{count}} active user(s)', { count: item.active_users ?? 0 })}
-          </span>}
+          {isAdmin && (
+            <span>
+              {t('{{count}} active user(s)', { count: item.active_users ?? 0 })}
+            </span>
+          )}
         </div>
       </div>
 

@@ -1,9 +1,14 @@
 package setting
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 const (
@@ -16,6 +21,8 @@ const (
 	AlipayNotifyURLOptionKey         = "AlipayNotifyURL"
 	AlipayReturnURLOptionKey         = "AlipayReturnURL"
 	AlipayMinTopUpOptionKey          = "AlipayMinTopUp"
+	AlipayProfilesOptionKey          = "AlipayProfiles"
+	AlipayActiveProfileOptionKey     = "AlipayActiveProfile"
 )
 
 var alipayDirectOptionKeys = [...]string{
@@ -29,6 +36,24 @@ var alipayDirectOptionKeys = [...]string{
 	AlipayReturnURLOptionKey,
 	AlipayMinTopUpOptionKey,
 }
+
+const LegacyAlipayProfileID = "legacy"
+
+type AlipayProfile struct {
+	ID       string                    `json:"id"`
+	Name     string                    `json:"name"`
+	Config   AlipayDirectConfig        `json:"config"`
+	Versions []AlipayProfileCredential `json:"versions,omitempty"`
+}
+
+type AlipayProfileCredential struct {
+	ID     string             `json:"id"`
+	Config AlipayDirectConfig `json:"config"`
+}
+
+var alipayProfilesMu sync.RWMutex
+var alipayProfiles []AlipayProfile
+var alipayActiveProfile string
 
 // AlipayDirectConfig is immutable after publication. Keep this struct limited
 // to value types so callers can safely retain a request-scoped copy.
@@ -62,6 +87,169 @@ func StoreAlipayDirectConfig(config AlipayDirectConfig) {
 	config.NotifyURL = strings.TrimSpace(config.NotifyURL)
 	config.ReturnURL = strings.TrimSpace(config.ReturnURL)
 	alipayDirectConfig.Store(config)
+	alipayProfilesMu.Lock()
+	defer alipayProfilesMu.Unlock()
+	if len(alipayProfiles) == 0 {
+		return
+	}
+	for i := range alipayProfiles {
+		if alipayProfiles[i].ID == LegacyAlipayProfileID {
+			alipayProfiles[i].Config = config
+		}
+	}
+}
+
+func GetAlipayProfiles() ([]AlipayProfile, string) {
+	alipayProfilesMu.RLock()
+	profiles := append([]AlipayProfile(nil), alipayProfiles...)
+	active := alipayActiveProfile
+	alipayProfilesMu.RUnlock()
+	if len(profiles) == 0 {
+		return []AlipayProfile{
+			{ID: LegacyAlipayProfileID, Name: "现有支付宝配置", Config: GetAlipayDirectConfig()},
+			{ID: "secondary", Name: "第二套支付宝配置"},
+		}, LegacyAlipayProfileID
+	}
+	if active == "" {
+		active = profiles[0].ID
+	}
+	return profiles, active
+}
+
+func GetAlipayProfile(id string) (AlipayProfile, bool) {
+	profiles, _ := GetAlipayProfiles()
+	for _, profile := range profiles {
+		if profile.ID == id {
+			return profile, true
+		}
+	}
+	return AlipayProfile{}, false
+}
+
+func GetActiveAlipayProfile() AlipayProfile {
+	profiles, active := GetAlipayProfiles()
+	for _, profile := range profiles {
+		if profile.ID == active {
+			return profile
+		}
+	}
+	return profiles[0]
+}
+
+func GetActiveAlipayDirectConfig() AlipayDirectConfig {
+	return GetActiveAlipayProfile().Config
+}
+
+func GetAlipayProfileID() string {
+	_, active := GetAlipayProfiles()
+	return active
+}
+
+func SetAlipayActiveProfile(id string) bool {
+	id = strings.TrimSpace(id)
+	alipayProfilesMu.Lock()
+	defer alipayProfilesMu.Unlock()
+	for _, profile := range alipayProfiles {
+		if profile.ID == id {
+			alipayActiveProfile = id
+			return true
+		}
+	}
+	return false
+}
+
+func AlipayProfileVersionID(profile AlipayProfile) string {
+	data, err := common.Marshal(profile.Config)
+	if err != nil {
+		return profile.ID
+	}
+	hash := sha256.Sum256(data)
+	return profile.ID + "#" + hex.EncodeToString(hash[:8])
+}
+
+func GetAlipayProfileVersion(id string) (AlipayProfile, bool) {
+	profiles, _ := GetAlipayProfiles()
+	for _, profile := range profiles {
+		if id == LegacyAlipayProfileID && len(profile.Versions) > 0 {
+			profile.Config = profile.Versions[0].Config
+			return profile, true
+		}
+		if id == profile.ID || id == AlipayProfileVersionID(profile) {
+			return profile, true
+		}
+		for _, version := range profile.Versions {
+			if id == version.ID {
+				profile.Config = version.Config
+				return profile, true
+			}
+		}
+	}
+	return AlipayProfile{}, false
+}
+
+func StoreAlipayProfiles(profiles []AlipayProfile, active string) {
+	normalized := make([]AlipayProfile, 0, len(profiles))
+	seen := make(map[string]struct{}, len(profiles))
+	for _, profile := range profiles {
+		profile.ID = strings.TrimSpace(profile.ID)
+		if profile.ID == "" {
+			continue
+		}
+		if _, exists := seen[profile.ID]; exists {
+			continue
+		}
+		profile.Name = strings.TrimSpace(profile.Name)
+		if profile.Name == "" {
+			profile.Name = profile.ID
+		}
+		profile.Config.AppID = strings.TrimSpace(profile.Config.AppID)
+		profile.Config.SellerID = strings.TrimSpace(profile.Config.SellerID)
+		profile.Config.PrivateKey = strings.TrimSpace(profile.Config.PrivateKey)
+		profile.Config.PlatformPublicKey = strings.TrimSpace(profile.Config.PlatformPublicKey)
+		profile.Config.NotifyURL = strings.TrimSpace(profile.Config.NotifyURL)
+		profile.Config.ReturnURL = strings.TrimSpace(profile.Config.ReturnURL)
+		normalized = append(normalized, profile)
+		seen[profile.ID] = struct{}{}
+	}
+	hasLegacy := false
+	for _, profile := range normalized {
+		if profile.ID == LegacyAlipayProfileID {
+			hasLegacy = true
+			break
+		}
+	}
+	if !hasLegacy {
+		normalized = append([]AlipayProfile{{ID: LegacyAlipayProfileID, Name: "现有支付宝配置", Config: GetAlipayDirectConfig()}}, normalized...)
+	}
+	seen[LegacyAlipayProfileID] = struct{}{}
+	if len(normalized) == 1 {
+		normalized = append(normalized, AlipayProfile{ID: "secondary", Name: "第二套支付宝配置"})
+	}
+	active = strings.TrimSpace(active)
+	if _, ok := seen[active]; !ok {
+		active = normalized[0].ID
+	}
+	alipayProfilesMu.Lock()
+	alipayProfiles = normalized
+	alipayActiveProfile = active
+	alipayProfilesMu.Unlock()
+}
+
+func AlipayProfilesFromOptions(profilesJSON, active string) error {
+	var profiles []AlipayProfile
+	if strings.TrimSpace(profilesJSON) == "" {
+		return nil
+	}
+	if err := common.UnmarshalJsonStr(profilesJSON, &profiles); err != nil {
+		return err
+	}
+	StoreAlipayProfiles(profiles, active)
+	return nil
+}
+
+func AlipayProfilesToJSON(profiles []AlipayProfile) (string, error) {
+	data, err := common.Marshal(profiles)
+	return string(data), err
 }
 
 func IsAlipayDirectOptionKey(key string) bool {

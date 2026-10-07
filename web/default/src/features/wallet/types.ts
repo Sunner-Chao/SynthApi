@@ -190,6 +190,8 @@ export interface TopupInfo {
   xpay_min_topup?: number
   /** Whether MPay topup is enabled */
   enable_mpay_topup?: boolean
+  /** Direct WeChat checkout for CNY subscription plans. */
+  enable_wechat_subscription?: boolean
   /** Minimum topup amount for MPay */
   mpay_min_topup?: number
   /** Whether official Alipay direct topup is enabled */
